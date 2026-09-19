@@ -322,6 +322,45 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun numberedChapterWithServiceWordInTitleIsNotDropped() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "ch0010",
+                    "text/ch0010.xhtml",
+                    "<h1>Глава 10 — Справочник мага</h1><p>Обычный текст десятой главы.</p>"
+                )
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(listOf("10"), book.chapters.map { it.number })
+    }
+
+    @Test
+    fun preservesListAndPreformattedTextBlocks() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "ch0001",
+                    "text/ch0001.xhtml",
+                    "<h1>Глава 1</h1><ul><li>Первый пункт</li><li>Второй пункт</li></ul><pre>СТАТУС: 10/10</pre>"
+                )
+            )
+        )
+
+        val book = parser.parse(epub)
+        val paragraphs = book.chapters.single().blocks
+            .filterIsInstance<ReaderBlock.Paragraph>()
+            .map { it.text }
+
+        assertTrue(paragraphs.contains("Первый пункт"))
+        assertTrue(paragraphs.contains("Второй пункт"))
+        assertTrue(paragraphs.contains("СТАТУС: 10/10"))
+    }
+
+    @Test
     fun commonServicePagesDoNotTriggerUnnumberedWarning() {
         val epub = buildEpub(
             docs = listOf(
