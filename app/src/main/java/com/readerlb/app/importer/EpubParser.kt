@@ -22,7 +22,7 @@ class EpubParser(private val context: Context) {
             ZipFile(temp).use { zip ->
                 val container = readText(zip, "META-INF/container.xml")
                 val containerDoc = Jsoup.parse(container, "", Parser.xmlParser())
-                val opfPath = containerDoc.getElementsByTag("rootfile")
+                val opfPath = elementsByLocalName(containerDoc, "rootfile")
                     .firstOrNull()?.attr("full-path")
                     ?.takeIf { it.isNotBlank() }
                     ?: error("В EPUB не найден OPF")
@@ -35,7 +35,7 @@ class EpubParser(private val context: Context) {
                 val description = metaText(opfDoc, "description")
                 val language = metaText(opfDoc, "language")
 
-                val manifest = opfDoc.getElementsByTag("item").associate { item ->
+                val manifest = elementsByLocalName(opfDoc, "item").associate { item ->
                     item.attr("id") to ManifestItem(
                         id = item.attr("id"),
                         href = item.attr("href"),
@@ -44,7 +44,7 @@ class EpubParser(private val context: Context) {
                     )
                 }
 
-                val spine = opfDoc.getElementsByTag("itemref")
+                val spine = elementsByLocalName(opfDoc, "itemref")
                     .map { it.attr("idref") }
                     .filter { it.isNotBlank() }
 
@@ -181,7 +181,7 @@ class EpubParser(private val context: Context) {
             it.properties.split(' ').any { p -> p == "cover-image" }
         }?.let { return it }
 
-        val coverId = doc.getElementsByTag("meta")
+        val coverId = elementsByLocalName(doc, "meta")
             .firstOrNull { it.attr("name").equals("cover", true) }
             ?.attr("content")
         coverId?.let(manifest::get)?.let { return it }
@@ -189,6 +189,14 @@ class EpubParser(private val context: Context) {
         return manifest.values.firstOrNull {
             it.mediaType.startsWith("image/") &&
                 (it.id.contains("cover", true) || it.href.contains("cover", true))
+        }
+    }
+
+    private fun elementsByLocalName(doc: Document, localName: String): List<Element> {
+        val wanted = localName.lowercase()
+        return doc.getAllElements().filter { element ->
+            val tag = element.tagName().lowercase()
+            tag == wanted || tag.endsWith(":$wanted")
         }
     }
 
