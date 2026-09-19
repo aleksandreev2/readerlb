@@ -67,7 +67,7 @@ class RanobeLibPackageBuilderTest {
             title = "Тест",
             chapters = listOf(
                 ParsedChapter(
-                    number = 1,
+                    number = "1",
                     title = "Начало",
                     blocks = listOf(
                         ReaderBlock.Paragraph("Первый абзац."),
