@@ -59,12 +59,25 @@ data class ExportResult(
     val downloadUri: String? = null
 )
 
-fun chapterNumberDecimal(value: String): BigDecimal? =
-    runCatching {
-        BigDecimal(
-            value.trim().replace(',', '.')
-        )
+private val SUPPORTED_CHAPTER_NUMBER = Regex(
+    """\d+(?:\.\d+)?"""
+)
+
+fun chapterNumberDecimal(
+    value: String
+): BigDecimal? {
+    val normalized = value
+        .trim()
+        .replace(',', '.')
+
+    if (!SUPPORTED_CHAPTER_NUMBER.matches(normalized)) {
+        return null
+    }
+
+    return runCatching {
+        BigDecimal(normalized)
     }.getOrNull()
+}
 
 fun compareChapterNumbers(
     left: String,
