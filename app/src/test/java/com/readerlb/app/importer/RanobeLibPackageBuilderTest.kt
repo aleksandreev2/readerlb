@@ -44,7 +44,6 @@ class RanobeLibPackageBuilderTest {
                 chapters
                     .getJSONObject(it)
                     .getString("number")
-                    .toInt()
             }
         )
 
