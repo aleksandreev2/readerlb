@@ -80,6 +80,7 @@ class EpubArchiveParserTest {
     @Test
     fun chapterFilenameWorksWhenHeadingIsNotRussianOrEnglish() {
         val epub = buildEpub(
+            opfVersion = "2.0",
             docs = listOf(
                 Doc("chapter0001", "Text/chapter0001.xhtml", "<h1>첫 번째 이야기</h1><p>한국어 본문이 충분히 길게 들어 있는 첫 번째 장입니다.</p>"),
                 Doc("chapter0002", "Text/chapter0002.xhtml", "<h1>두 번째 이야기</h1><p>한국어 본문이 충분히 길게 들어 있는 두 번째 장입니다.</p>")
@@ -139,7 +140,8 @@ class EpubArchiveParserTest {
     private fun buildEpub(
         docs: List<Doc>,
         namespacedOpf: Boolean = false,
-        namespacedContainer: Boolean = false
+        namespacedContainer: Boolean = false,
+        opfVersion: String = "3.0"
     ): File {
         val file = Files.createTempFile("readerlb_test_", ".epub").toFile()
         file.deleteOnExit()
@@ -167,7 +169,7 @@ class EpubArchiveParserTest {
 
         val opf = if (namespacedOpf) {
             """<?xml version="1.0" encoding="utf-8"?>
-<ns0:package xmlns:ns0="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
+<ns0:package xmlns:ns0="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="$opfVersion">
   <ns0:metadata>
     <dc:title>Тестовая книга</dc:title>
     <dc:creator>Автор</dc:creator>
@@ -178,7 +180,7 @@ class EpubArchiveParserTest {
 </ns0:package>"""
         } else {
             """<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="$opfVersion">
   <metadata>
     <dc:title>Тестовая книга</dc:title>
     <dc:creator>Автор</dc:creator>
