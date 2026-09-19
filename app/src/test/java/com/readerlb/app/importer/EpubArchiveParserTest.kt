@@ -63,6 +63,23 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun detectsCyrillicChapterWordInsideText() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "sec0002",
+                    "text/sec0002.xhtml",
+                    "<h1>Вторая</h1><p>Глава 2. Текст главы.</p>"
+                )
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(listOf("2"), book.chapters.map { it.number })
+    }
+
+    @Test
     fun supportsMixedFilenameAndTextNumbering() {
         val epub = buildEpub(
             docs = listOf(
@@ -322,7 +339,7 @@ class EpubArchiveParserTest {
     }
 
     @Test
-    fun warnsAboutUnnumberedContentWhenNumberedChaptersExist() {
+    fun preservesPrologueAsChapterZero() {
         val epub = buildEpub(
             docs = listOf(
                 Doc("prologue", "text/prologue.xhtml", "<h1>Пролог</h1><p>Длинный содержательный пролог без явного номера главы.</p>"),
@@ -332,8 +349,8 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(1), book.chapters.map { it.number })
-        assertTrue(book.issues.any { it.code == "UNNUMBERED_CONTENT_OMITTED" })
+        assertEquals(listOf("0", "1"), book.chapters.map { it.number })
+        assertTrue(book.issues.none { it.code == "UNNUMBERED_CONTENT_OMITTED" })
     }
 
     @Test
