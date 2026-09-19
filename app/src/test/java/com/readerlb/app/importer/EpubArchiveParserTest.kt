@@ -436,6 +436,19 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun warnsWhenMultipleTocEntriesShareOneXhtmlFile() {
+        val epub = buildEpubWithSharedNavigationFile()
+
+        val book = parser.parse(epub)
+
+        assertTrue(
+            book.issues.any {
+                it.code == "MULTIPLE_TOC_ENTRIES_ONE_FILE"
+            }
+        )
+    }
+
+    @Test
     fun reportsFilenameAndTextNumberMismatch() {
         val epub = buildEpub(
             docs = listOf(
