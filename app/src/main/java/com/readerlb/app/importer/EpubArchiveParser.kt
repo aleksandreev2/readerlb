@@ -86,6 +86,26 @@ class EpubArchiveParser {
                     )
                 }
 
+            val inlineImages = docs.sumOf { it.inlineImageCount }
+            if (inlineImages > 0) {
+                issues += ImportIssue(
+                    code = "INLINE_IMAGES_OMITTED",
+                    message = "В EPUB найдено изображений внутри глав: " + inlineImages + ". " +
+                        "Текущая версия ReaderLB импортирует текст, но не переносит эти изображения."
+                )
+            }
+
+            val emptyDocuments = docs.filter {
+                !it.serviceDocument && it.plainText.isBlank() && it.inlineImageCount == 0
+            }
+            if (emptyDocuments.isNotEmpty()) {
+                issues += ImportIssue(
+                    code = "EMPTY_CONTENT_DOCUMENTS",
+                    message = "В EPUB найдено пустых файлов содержимого: " +
+                        emptyDocuments.size + "."
+                )
+            }
+
             val numbered = docs
                 .filterNot { it.serviceDocument }
                 .mapNotNull { doc ->
@@ -218,7 +238,10 @@ class EpubArchiveParser {
             blocks = extractBlocks(body, heading),
             hrefChapterNumber = chapterNumberFromHref(item.href),
             textChapterNumber = chapterNumberFromText(plain),
-            serviceDocument = SERVICE_HINTS.any(hint::contains)
+            serviceDocument = SERVICE_HINTS.any(hint::contains),
+            inlineImageCount = body.getAllElements().count {
+                it.tagName().substringAfterLast(':').equals("img", ignoreCase = true)
+            }
         )
     }
 
@@ -451,7 +474,8 @@ class EpubArchiveParser {
         val blocks: List<ReaderBlock>,
         val hrefChapterNumber: Int?,
         val textChapterNumber: Int?,
-        val serviceDocument: Boolean
+        val serviceDocument: Boolean,
+        val inlineImageCount: Int
     ) {
         fun toCandidate(number: Int) = ChapterCandidate(
             number = number,
