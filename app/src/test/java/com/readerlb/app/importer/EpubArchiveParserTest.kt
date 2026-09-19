@@ -138,6 +138,35 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun warnsAboutUnnumberedContentWhenNumberedChaptersExist() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("prologue", "text/prologue.xhtml", "<h1>Пролог</h1><p>Длинный содержательный пролог без явного номера главы.</p>"),
+                Doc("ch0001", "text/ch0001.xhtml", "<h1>Глава 1</h1><p>Первая глава с нормальным номером.</p>")
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(listOf(1), book.chapters.map { it.number })
+        assertTrue(book.issues.any { it.code == "UNNUMBERED_CONTENT_OMITTED" })
+    }
+
+    @Test
+    fun filenameRangeSupportsUnderscoreSeparator() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("ch0001", "text/ch0001.xhtml", "<h1>Глава 1</h1><p>Содержимое первой главы достаточно длинное.</p>"),
+                Doc("ch0002", "text/ch0002.xhtml", "<h1>Глава 2</h1><p>Содержимое второй главы достаточно длинное.</p>")
+            )
+        )
+
+        val book = parser.parse(epub, "Книга_главы_1_3.epub")
+
+        assertTrue(book.issues.any { it.code == "SOURCE_RANGE_MISMATCH" })
+    }
+
+    @Test
     fun warnsWhenChapterImagesWouldBeOmitted() {
         val epub = buildEpub(
             docs = listOf(
