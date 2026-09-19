@@ -18,19 +18,19 @@ class RanobeLibPackageBuilderTest {
 
     @Test
     fun preservesRealNumbersForPartialRanges() {
-        val book = bookWithChapters(431, 432, 433)
+        val book = bookWithChapters("431", "432", "433")
         val root = Files.createTempDirectory("readerlb_package_").toFile()
 
         val built = builder.build(
             book = book,
             rootDir = root,
-            firstChapter = 432,
-            lastChapter = 433
+            firstChapter = "432",
+            lastChapter = "433"
         )
 
         assertEquals(2, built.chapterCount)
-        assertEquals(432, built.firstChapter)
-        assertEquals(433, built.lastChapter)
+        assertEquals("432", built.firstChapter)
+        assertEquals("433", built.lastChapter)
 
         val chapters = JSONArray(
             built.titleDir
@@ -39,7 +39,7 @@ class RanobeLibPackageBuilderTest {
         )
 
         assertEquals(
-            listOf(432, 433),
+            listOf("432", "433"),
             (0 until chapters.length()).map {
                 chapters
                     .getJSONObject(it)
@@ -129,8 +129,8 @@ class RanobeLibPackageBuilderTest {
             language = "zh",
             description = "<p>Описание книги</p>",
             chapters = listOf(
-                chapter(1),
-                chapter(2)
+                chapter("1"),
+                chapter("2")
             ),
             coverBytes = byteArrayOf(1, 2, 3, 4),
             coverExtension = "png"
@@ -160,7 +160,7 @@ class RanobeLibPackageBuilderTest {
     fun verifierDetectsTamperedChapterZip() {
         val root = Files.createTempDirectory("readerlb_package_").toFile()
         val built = builder.build(
-            book = bookWithChapters(1, 2),
+            book = bookWithChapters("1", "2"),
             rootDir = root
         )
 
@@ -173,7 +173,7 @@ class RanobeLibPackageBuilderTest {
 
         val report = builder.verify(
             built = built,
-            expectedChapterNumbers = listOf(1, 2)
+            expectedChapterNumbers = listOf("1", "2")
         )
 
         assertFalse(report.isValid)
@@ -190,8 +190,8 @@ class RanobeLibPackageBuilderTest {
         val book = ParsedBook(
             title = "Дубликаты",
             chapters = listOf(
-                chapter(10),
-                chapter(10)
+                chapter("10"),
+                chapter("10")
             )
         )
         val root = Files.createTempDirectory("readerlb_package_").toFile()
@@ -210,10 +210,10 @@ class RanobeLibPackageBuilderTest {
 
         try {
             builder.build(
-                book = bookWithChapters(1, 2, 3),
+                book = bookWithChapters("1", "2", "3"),
                 rootDir = root,
-                firstChapter = 3,
-                lastChapter = 1
+                firstChapter = "3",
+                lastChapter = "1"
             )
             fail("Expected reversed range validation to fail")
         } catch (error: IllegalArgumentException) {
@@ -221,6 +221,53 @@ class RanobeLibPackageBuilderTest {
                 error.message
                     .orEmpty()
                     .contains("Начальная глава")
+            )
+        }
+    }
+
+    @Test
+    fun decimalAndZeroPaddedNumbersSurvivePackageRoundTrip() {
+        val root = Files.createTempDirectory(
+            "readerlb_package_"
+        ).toFile()
+
+        val built = builder.build(
+            book = bookWithChapters(
+                "0",
+                "0.5",
+                "001",
+                "1",
+                "2.91"
+            ),
+            rootDir = root
+        )
+
+        val chapters = JSONArray(
+            built.titleDir
+                .resolve("chapters.json")
+                .readText()
+        )
+
+        val numbers = (0 until chapters.length())
+            .map {
+                chapters
+                    .getJSONObject(it)
+                    .getString("number")
+            }
+
+        assertEquals(
+            listOf("0", "0.5", "001", "1", "2.91"),
+            numbers
+        )
+
+        numbers.forEach { number ->
+            assertTrue(
+                built.titleDir
+                    .listFiles()
+                    .orEmpty()
+                    .any {
+                        it.name.startsWith("v1-n$number-")
+                    }
             )
         }
     }
@@ -238,14 +285,14 @@ class RanobeLibPackageBuilderTest {
     }
 
     private fun bookWithChapters(
-        vararg numbers: Int
+        vararg numbers: String
     ): ParsedBook =
         ParsedBook(
             title = "Тестовая новелла",
             chapters = numbers.map(::chapter)
         )
 
-    private fun chapter(number: Int): ParsedChapter =
+    private fun chapter(number: String): ParsedChapter =
         ParsedChapter(
             number = number,
             title = "Глава $number",
