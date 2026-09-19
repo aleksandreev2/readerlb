@@ -5,32 +5,53 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
 import java.io.File
+import java.math.BigDecimal
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.zip.ZipFile
 
 /**
- * Pure EPUB parser. It intentionally has no Android dependencies so the exact
- * parsing path can be covered by JVM regression tests.
+ * Pure EPUB parser.
+ *
+ * No Android dependencies are allowed here: exactly the same parser used by
+ * the app is exercised by JVM regression and corpus tests.
  */
 class EpubArchiveParser {
 
-    fun parse(file: File, sourceName: String? = null): ParsedBook {
+    fun parse(
+        file: File,
+        sourceName: String? = null
+    ): ParsedBook {
         ZipFile(file).use { zip ->
             val issues = mutableListOf<ImportIssue>()
 
-            val container = readText(zip, "META-INF/container.xml")
-            val containerDoc = Jsoup.parse(container, "", Parser.xmlParser())
-            val opfPath = elementsByLocalName(containerDoc, "rootfile")
+            val container = readText(
+                zip,
+                "META-INF/container.xml"
+            )
+            val containerDoc = Jsoup.parse(
+                container,
+                "",
+                Parser.xmlParser()
+            )
+            val opfPath = elementsByLocalName(
+                containerDoc,
+                "rootfile"
+            )
                 .firstOrNull()
                 ?.attr("full-path")
-                ?.takeIf { it.isNotBlank() }
+                ?.takeIf(String::isNotBlank)
                 ?: error("В EPUB не найден OPF")
 
-            val opfDoc = Jsoup.parse(readText(zip, opfPath), "", Parser.xmlParser())
+            val opfDoc = Jsoup.parse(
+                readText(zip, opfPath),
+                "",
+                Parser.xmlParser()
+            )
             val opfBase = opfPath.substringBeforeLast('/', "")
 
-            val title = metaText(opfDoc, "title").ifBlank { "Локальная новелла" }
+            val title = metaText(opfDoc, "title")
+                .ifBlank { "Локальная новелла" }
             val author = metaText(opfDoc, "creator")
             val description = metaText(opfDoc, "description")
             val language = metaText(opfDoc, "language")
@@ -39,49 +60,89 @@ class EpubArchiveParser {
                 .mapNotNull { item ->
                     val id = item.attr("id")
                     val href = item.attr("href")
-                    if (id.isBlank() || href.isBlank()) null
-                    else id to ManifestItem(
-                        id = id,
-                        href = href,
-                        mediaType = item.attr("media-type"),
-                        properties = item.attr("properties")
-                    )
+                    if (id.isBlank() || href.isBlank()) {
+                        null
+                    } else {
+                        id to ManifestItem(
+                            id = id,
+                            href = href,
+                            mediaType = item.attr("media-type"),
+                            properties = item.attr("properties")
+                        )
+                    }
                 }
                 .toMap()
 
-            val spineIds = elementsByLocalName(opfDoc, "itemref")
+            val spineIds = elementsByLocalName(
+                opfDoc,
+                "itemref"
+            )
                 .map { it.attr("idref") }
-                .filter { it.isNotBlank() }
+                .filter(String::isNotBlank)
 
-            val missingSpineRefs = spineIds.filterNot(manifest::containsKey)
+            val missingSpineRefs = spineIds
+                .filterNot(manifest::containsKey)
             if (missingSpineRefs.isNotEmpty()) {
                 issues += ImportIssue(
                     code = "MISSING_SPINE_REFS",
-                    message = "В EPUB есть ссылки оглавления на отсутствующие элементы: " +
+                    message = "В EPUB есть ссылки на отсутствующие элементы: " +
                         missingSpineRefs.take(8).joinToString() +
                         if (missingSpineRefs.size > 8) "…" else ""
                 )
             }
 
-            val coverItem = findCover(opfDoc, manifest)
+            val coverItem = findCover(
+                opfDoc,
+                manifest
+            )
             val coverBytes = coverItem?.let { item ->
-                runCatching { readBytes(zip, resolve(opfBase, item.href)) }.getOrNull()
+                runCatching {
+                    readBytes(
+                        zip,
+                        resolve(opfBase, item.href)
+                    )
+                }.getOrNull()
             }
-            val coverExt = coverItem?.href
+            val coverExtension = coverItem
+                ?.href
                 ?.substringAfterLast('.', "jpg")
                 ?.lowercase()
-                ?.takeIf { it in setOf("jpg", "jpeg", "png", "webp") }
+                ?.takeIf {
+                    it in setOf(
+                        "jpg",
+                        "jpeg",
+                        "png",
+                        "webp"
+                    )
+                }
                 ?: "jpg"
+
+            val tocByPath = readNavigation(
+                zip = zip,
+                opfBase = opfBase,
+                manifest = manifest,
+                issues = issues
+            )
 
             val docs = spineIds
                 .mapNotNull(manifest::get)
-                .filter { it.mediaType.contains("html", ignoreCase = true) }
+                .filter {
+                    it.mediaType.contains(
+                        "html",
+                        ignoreCase = true
+                    )
+                }
                 .mapIndexedNotNull { spineIndex, item ->
+                    val contentPath = resolve(
+                        opfBase,
+                        item.href
+                    )
                     parseHtmlDocument(
                         zip = zip,
-                        opfBase = opfBase,
+                        contentPath = contentPath,
                         item = item,
                         spineIndex = spineIndex,
+                        tocLabel = tocByPath[contentPath],
                         issues = issues
                     )
                 }
@@ -89,16 +150,20 @@ class EpubArchiveParser {
             val inlineImages = docs
                 .filterNot { it.serviceDocument }
                 .sumOf { it.inlineImageCount }
+
             if (inlineImages > 0) {
                 issues += ImportIssue(
                     code = "INLINE_IMAGES_OMITTED",
-                    message = "В EPUB найдено изображений внутри глав: " + inlineImages + ". " +
-                        "Текущая версия ReaderLB импортирует текст, но не переносит эти изображения."
+                    message = "В главах найдено изображений: $inlineImages. " +
+                        "Текущая версия ReaderLB переносит текст, " +
+                        "но пока не переносит эти иллюстрации."
                 )
             }
 
             val emptyDocuments = docs.filter {
-                !it.serviceDocument && it.plainText.isBlank() && it.inlineImageCount == 0
+                !it.serviceDocument &&
+                    it.plainText.isBlank() &&
+                    it.inlineImageCount == 0
             }
             if (emptyDocuments.isNotEmpty()) {
                 issues += ImportIssue(
@@ -108,10 +173,45 @@ class EpubArchiveParser {
                 )
             }
 
+            val tocOverrides = docs.count { doc ->
+                val toc = doc.tocChapterNumber
+                val href = doc.hrefChapterNumber
+                toc != null &&
+                    href != null &&
+                    !chapterNumbersEquivalent(toc, href)
+            }
+            if (tocOverrides > 0) {
+                issues += ImportIssue(
+                    code = "TOC_NUMBERING_USED",
+                    message = "Для $tocOverrides разделов номера из оглавления " +
+                        "отличаются от технических имён файлов. " +
+                        "ReaderLB использовал оглавление.",
+                    severity = ImportIssueSeverity.INFO
+                )
+            }
+
+            val numberDisagreements = docs.filter { doc ->
+                val toc = doc.tocChapterNumber
+                val text = doc.textChapterNumber
+                toc != null &&
+                    text != null &&
+                    !chapterNumbersEquivalent(toc, text)
+            }
+            if (numberDisagreements.isNotEmpty()) {
+                issues += ImportIssue(
+                    code = "NUMBER_MISMATCH",
+                    message = "В ${numberDisagreements.size} главах номер " +
+                        "в оглавлении не совпадает с номером в тексте. " +
+                        "ReaderLB использовал оглавление."
+                )
+            }
+
             val numbered = docs
                 .filterNot { it.serviceDocument }
                 .mapNotNull { doc ->
-                    val number = doc.hrefChapterNumber ?: doc.textChapterNumber
+                    val number = doc.tocChapterNumber
+                        ?: doc.textChapterNumber
+                        ?: doc.hrefChapterNumber
                     number?.let(doc::toCandidate)
                 }
 
@@ -119,105 +219,138 @@ class EpubArchiveParser {
             if (numbered.isNotEmpty()) {
                 val omittedUnnumbered = docs.filter {
                     !it.serviceDocument &&
+                        it.tocChapterNumber == null &&
                         it.hrefChapterNumber == null &&
                         it.textChapterNumber == null &&
                         it.plainText.length >= MIN_CHAPTER_TEXT
                 }
+
                 if (omittedUnnumbered.isNotEmpty()) {
                     issues += ImportIssue(
                         code = "UNNUMBERED_CONTENT_OMITTED",
-                        message = "В EPUB есть содержательных разделов без номера главы: " +
-                            omittedUnnumbered.size +
-                            ". ReaderLB не присвоил им номера автоматически."
+                        message = "В EPUB есть содержательных разделов " +
+                            "без номера главы: ${omittedUnnumbered.size}. " +
+                            "ReaderLB не присвоил им номера автоматически."
                     )
                 }
                 candidates = numbered
             } else {
                 val fallback = docs.filter {
-                    !it.serviceDocument && it.plainText.length >= MIN_CHAPTER_TEXT
+                    !it.serviceDocument &&
+                        it.plainText.length >= MIN_CHAPTER_TEXT
                 }
-                require(fallback.isNotEmpty()) { "В EPUB не удалось найти главы" }
+                require(fallback.isNotEmpty()) {
+                    "В EPUB не удалось найти главы"
+                }
 
                 val declaredRange = sourceRangeFromName(sourceName)
-                if (declaredRange != null && declaredRange.count() == fallback.size) {
+                if (
+                    declaredRange != null &&
+                    declaredRange.count() == fallback.size
+                ) {
                     issues += ImportIssue(
                         code = "NUMBERING_FROM_FILENAME",
                         message = "Номера глав не найдены внутри EPUB. " +
-                            "ReaderLB восстановил диапазон ${declaredRange.first}–${declaredRange.last} " +
+                            "ReaderLB восстановил диапазон " +
+                            "${declaredRange.first}–${declaredRange.last} " +
                             "по имени файла.",
                         severity = ImportIssueSeverity.INFO
                     )
                     candidates = fallback.mapIndexed { index, doc ->
-                        doc.toCandidate(declaredRange.first + index)
+                        doc.toCandidate(
+                            (declaredRange.first + index)
+                                .toString()
+                        )
                     }
                 } else {
                     issues += ImportIssue(
                         code = "NUMBERING_INFERRED",
                         message = "Надёжные номера глав не найдены. " +
                             "ReaderLB временно использовал порядок файлов; " +
-                            "проверьте диапазон перед импортом.",
-                        severity = ImportIssueSeverity.WARNING
+                            "проверьте диапазон перед импортом."
                     )
                     candidates = fallback.mapIndexed { index, doc ->
-                        doc.toCandidate(index + 1)
+                        doc.toCandidate((index + 1).toString())
                     }
                 }
             }
 
-            val sorted = candidates.sortedWith(
-                compareBy<ChapterCandidate> { it.number }.thenBy { it.spineIndex }
-            )
-            val deduplicated = mutableListOf<ChapterCandidate>()
-            val duplicates = mutableListOf<Int>()
-            sorted.groupBy { it.number }.forEach { (number, sameNumber) ->
-                deduplicated += sameNumber.first()
-                if (sameNumber.size > 1) duplicates += number
+            val sorted = candidates.sortedWith { left, right ->
+                val numberCompare = compareChapterNumbers(
+                    left.number,
+                    right.number
+                )
+                if (numberCompare != 0) {
+                    numberCompare
+                } else {
+                    left.spineIndex.compareTo(right.spineIndex)
+                }
             }
+
+            val deduplicated = mutableListOf<ChapterCandidate>()
+            val duplicates = mutableListOf<String>()
+
+            sorted
+                .groupBy { it.number }
+                .forEach { (number, sameNumber) ->
+                    deduplicated += sameNumber.first()
+                    if (sameNumber.size > 1) {
+                        duplicates += number
+                    }
+                }
 
             if (duplicates.isNotEmpty()) {
                 issues += ImportIssue(
                     code = "DUPLICATE_CHAPTER_NUMBERS",
-                    message = "В EPUB повторяются номера глав: ${formatNumbers(duplicates)}"
+                    message = "В EPUB повторяются номера глав: " +
+                        formatNumbers(duplicates)
                 )
             }
 
-            val numbers = deduplicated.map { it.number }.sorted()
-            if (numbers.size >= 2) {
-                val present = numbers.toHashSet()
-                val gaps = (numbers.first()..numbers.last()).filterNot(present::contains)
-                if (gaps.isNotEmpty()) {
+            val numbers = deduplicated
+                .map { it.number }
+
+            findIntegerGaps(numbers)
+                .takeIf(List<Int>::isNotEmpty)
+                ?.let { gaps ->
                     issues += ImportIssue(
                         code = "CHAPTER_GAPS",
-                        message = "В исходном EPUB отсутствуют главы: ${formatRanges(gaps)}"
+                        message = "В исходном EPUB отсутствуют главы: " +
+                            formatIntegerRanges(gaps)
                     )
                 }
-            }
 
-            deduplicated.forEach { candidate ->
-                val textNumber = candidate.source.textChapterNumber
-                val hrefNumber = candidate.source.hrefChapterNumber
-                if (textNumber != null && hrefNumber != null && textNumber != hrefNumber) {
-                    issues += ImportIssue(
-                        code = "NUMBER_MISMATCH",
-                        message = "У файла ${candidate.source.item.href} номер $hrefNumber, " +
-                            "но в тексте указана глава $textNumber."
-                    )
-                }
-            }
-
-            validateExpectedRange(sourceName, numbers, issues)
+            validateExpectedRange(
+                sourceName = sourceName,
+                actualNumbers = numbers,
+                issues = issues
+            )
 
             val chapters = deduplicated.map { candidate ->
+                val source = candidate.source
+                val titleSource = source.tocLabel
+                    ?.takeIf(String::isNotBlank)
+                    ?: source.heading
+
                 ParsedChapter(
                     number = candidate.number,
-                    title = cleanChapterTitle(candidate.source.heading, candidate.number),
-                    blocks = candidate.source.blocks.ifEmpty {
-                        listOf(ReaderBlock.Paragraph(candidate.source.plainText))
+                    title = cleanChapterTitle(
+                        title = titleSource,
+                        number = candidate.number
+                    ),
+                    blocks = source.blocks.ifEmpty {
+                        listOf(
+                            ReaderBlock.Paragraph(
+                                source.plainText
+                            )
+                        )
                     }
                 )
             }
 
-            require(chapters.isNotEmpty()) { "В EPUB не удалось найти главы" }
+            require(chapters.isNotEmpty()) {
+                "В EPUB не удалось найти главы"
+            }
 
             return ParsedBook(
                 title = title,
@@ -226,61 +359,227 @@ class EpubArchiveParser {
                 language = language,
                 chapters = chapters,
                 coverBytes = coverBytes,
-                coverExtension = coverExt,
-                issues = issues.distinctBy { it.code to it.message }
+                coverExtension = coverExtension,
+                issues = issues.distinctBy {
+                    it.code to it.message
+                }
             )
         }
     }
 
-    private fun parseHtmlDocument(
+    private fun readNavigation(
         zip: ZipFile,
         opfBase: String,
+        manifest: Map<String, ManifestItem>,
+        issues: MutableList<ImportIssue>
+    ): Map<String, String> {
+        val result = linkedMapOf<String, String>()
+
+        val navigationItems = manifest.values.filter { item ->
+            item.mediaType.equals(
+                "application/x-dtbncx+xml",
+                ignoreCase = true
+            ) ||
+                item.properties
+                    .split(' ')
+                    .any {
+                        it.equals(
+                            "nav",
+                            ignoreCase = true
+                        )
+                    }
+        }
+
+        navigationItems.forEach { item ->
+            val navigationPath = resolve(
+                opfBase,
+                item.href
+            )
+
+            val raw = runCatching {
+                readText(zip, navigationPath)
+            }.getOrElse {
+                issues += ImportIssue(
+                    code = "BROKEN_NAVIGATION",
+                    message = "Не удалось прочитать оглавление EPUB: " +
+                        item.href
+                )
+                return@forEach
+            }
+
+            val doc = Jsoup.parse(
+                raw,
+                "",
+                Parser.xmlParser()
+            )
+            val navigationBase = navigationPath
+                .substringBeforeLast('/', "")
+
+            if (
+                item.mediaType.equals(
+                    "application/x-dtbncx+xml",
+                    ignoreCase = true
+                )
+            ) {
+                elementsByLocalName(doc, "navPoint")
+                    .forEach { navPoint ->
+                        val content = descendantsByLocalName(
+                            navPoint,
+                            "content"
+                        ).firstOrNull()
+                        val src = content
+                            ?.attr("src")
+                            ?.takeIf(String::isNotBlank)
+                            ?: return@forEach
+
+                        val label = descendantsByLocalName(
+                            navPoint,
+                            "navLabel"
+                        )
+                            .firstOrNull()
+                            ?.let {
+                                descendantsByLocalName(
+                                    it,
+                                    "text"
+                                ).firstOrNull()
+                            }
+                            ?.text()
+                            ?.trim()
+                            .orEmpty()
+
+                        if (label.isNotBlank()) {
+                            result[
+                                resolve(
+                                    navigationBase,
+                                    src
+                                )
+                            ] = label
+                        }
+                    }
+            } else {
+                elementsByLocalName(doc, "a")
+                    .forEach { anchor ->
+                        val href = anchor
+                            .attr("href")
+                            .takeIf(String::isNotBlank)
+                            ?: return@forEach
+                        val label = anchor
+                            .text()
+                            .trim()
+                        if (label.isNotBlank()) {
+                            result[
+                                resolve(
+                                    navigationBase,
+                                    href
+                                )
+                            ] = label
+                        }
+                    }
+            }
+        }
+
+        return result
+    }
+
+    private fun parseHtmlDocument(
+        zip: ZipFile,
+        contentPath: String,
         item: ManifestItem,
         spineIndex: Int,
+        tocLabel: String?,
         issues: MutableList<ImportIssue>
     ): HtmlDoc? {
-        val path = resolve(opfBase, item.href)
-        val raw = runCatching { readText(zip, path) }.getOrElse {
+        val raw = runCatching {
+            readText(
+                zip,
+                contentPath
+            )
+        }.getOrElse {
             issues += ImportIssue(
                 code = "MISSING_CONTENT_FILE",
-                message = "В EPUB отсутствует файл главы: ${item.href}"
+                message = "В EPUB отсутствует файл главы: " +
+                    item.href
             )
             return null
         }
 
-        val doc = Jsoup.parse(raw, "", Parser.xmlParser())
-        // XmlTreeBuilder does not always populate Document.body() for XHTML,
-        // especially with namespaces. Resolve by local tag name first.
-        val body = elementsByLocalName(doc, "body").firstOrNull() ?: doc
-        val plain = body.text().replace('\u00A0', ' ').trim()
-        val heading = body.getAllElements()
+        val doc = Jsoup.parse(
+            raw,
+            "",
+            Parser.xmlParser()
+        )
+
+        // XmlTreeBuilder does not always populate Document.body()
+        // for namespace-heavy XHTML.
+        val body = elementsByLocalName(
+            doc,
+            "body"
+        ).firstOrNull() ?: doc
+
+        val plainText = body
+            .text()
+            .replace('\u00A0', ' ')
+            .trim()
+
+        val heading = body
+            .getAllElements()
             .firstOrNull {
-                it.tagName().substringAfterLast(':').lowercase() in setOf("h1", "h2", "h3")
+                it.tagName()
+                    .substringAfterLast(':')
+                    .lowercase() in setOf(
+                    "h1",
+                    "h2",
+                    "h3"
+                )
             }
             ?.text()
             ?.trim()
             .orEmpty()
-        val hint = (item.id + " " + item.href + " " + item.properties).lowercase()
 
         return HtmlDoc(
             item = item,
             spineIndex = spineIndex,
             heading = heading,
-            plainText = plain,
-            blocks = extractBlocks(body, heading),
-            hrefChapterNumber = chapterNumberFromHref(item.href),
-            textChapterNumber = chapterNumberFromText(plain),
+            tocLabel = tocLabel,
+            plainText = plainText,
+            blocks = extractBlocks(
+                body,
+                heading
+            ),
+            hrefChapterNumber = chapterNumberFromHref(
+                item.href
+            ),
+            textChapterNumber = chapterNumberFromText(
+                plainText = plainText,
+                heading = heading
+            ),
+            tocChapterNumber = chapterNumberFromLabel(
+                tocLabel
+            ),
             serviceDocument = isServiceDocument(item),
-            inlineImageCount = body.getAllElements().count {
-                it.tagName().substringAfterLast(':').equals("img", ignoreCase = true)
-            }
+            inlineImageCount = body
+                .getAllElements()
+                .count {
+                    it.tagName()
+                        .substringAfterLast(':')
+                        .equals(
+                            "img",
+                            ignoreCase = true
+                        )
+                }
         )
     }
 
-    private fun isServiceDocument(item: ManifestItem): Boolean {
+    private fun isServiceDocument(
+        item: ManifestItem
+    ): Boolean {
         val id = item.id.lowercase()
-        val href = decodeHref(item.href).substringBefore('#').lowercase()
-        val base = href.substringAfterLast('/').substringBeforeLast('.')
+        val href = decodeHref(item.href)
+            .substringBefore('#')
+            .lowercase()
+        val base = href
+            .substringAfterLast('/')
+            .substringBeforeLast('.')
         val properties = item.properties
             .split(' ')
             .map(String::trim)
@@ -288,78 +587,235 @@ class EpubArchiveParser {
 
         return id in SERVICE_IDS ||
             base in SERVICE_IDS ||
-            properties.any { it.equals("nav", ignoreCase = true) } ||
+            properties.any {
+                it.equals(
+                    "nav",
+                    ignoreCase = true
+                )
+            } ||
             SERVICE_HINTS.any { hint ->
-                (" " + id + " " + href + " ").contains(hint)
+                (" " + id + " " + href + " ")
+                    .contains(hint)
             }
     }
 
-    private fun chapterNumberFromHref(href: String): Int? {
-        val decoded = decodeHref(href).substringBefore('#')
+    private fun chapterNumberFromHref(
+        href: String
+    ): String? {
+        val decoded = decodeHref(href)
+            .substringBefore('#')
+
         return CHAPTER_FILE_REGEX
             .find(decoded)
             ?.groupValues
             ?.getOrNull(1)
-            ?.toIntOrNull()
+            ?.let(::normalizeTechnicalNumber)
     }
 
-    private fun chapterNumberFromText(text: String): Int? {
-        return CHAPTER_TEXT_REGEX
-            .find(text.take(500))
+    private fun chapterNumberFromText(
+        plainText: String,
+        heading: String
+    ): String? {
+        chapterNumberFromLabel(heading)
+            ?.let { return it }
+
+        return CHAPTER_WORD_REGEX
+            .find(plainText.take(700))
+            ?.groupValues
+            ?.drop(1)
+            ?.firstOrNull(String::isNotBlank)
+            ?.let(::normalizeChapterNumber)
+    }
+
+    private fun chapterNumberFromLabel(
+        label: String?
+    ): String? {
+        if (label.isNullOrBlank()) {
+            return null
+        }
+
+        val cleaned = label
+            .replace('\u00A0', ' ')
+            .trim()
+
+        if (
+            PROLOGUE_MARKERS.any {
+                cleaned.contains(
+                    it,
+                    ignoreCase = true
+                )
+            }
+        ) {
+            return "0"
+        }
+
+        CHAPTER_WORD_REGEX
+            .find(cleaned)
+            ?.groupValues
+            ?.drop(1)
+            ?.firstOrNull(String::isNotBlank)
+            ?.let {
+                return normalizeChapterNumber(it)
+            }
+
+        LEADING_NUMBER_REGEX
+            .find(cleaned)
             ?.groupValues
             ?.getOrNull(1)
-            ?.toIntOrNull()
+            ?.let {
+                return normalizeChapterNumber(it)
+            }
+
+        return null
     }
 
-    private fun extractBlocks(root: Element, firstHeading: String): List<ReaderBlock> {
+    private fun normalizeTechnicalNumber(
+        value: String
+    ): String {
+        val normalized = normalizeChapterNumber(value)
+        val decimal = chapterNumberDecimal(normalized)
+            ?: return normalized
+
+        return if (
+            !normalized.contains('.') &&
+            !normalized.contains(',')
+        ) {
+            decimal
+                .stripTrailingZeros()
+                .toPlainString()
+        } else {
+            normalized
+        }
+    }
+
+    private fun normalizeChapterNumber(
+        value: String
+    ): String =
+        value
+            .trim()
+            .replace(',', '.')
+
+    private fun chapterNumbersEquivalent(
+        first: String,
+        second: String
+    ): Boolean {
+        val firstDecimal = chapterNumberDecimal(first)
+        val secondDecimal = chapterNumberDecimal(second)
+
+        return if (
+            firstDecimal != null &&
+            secondDecimal != null
+        ) {
+            firstDecimal.compareTo(secondDecimal) == 0
+        } else {
+            first == second
+        }
+    }
+
+    private fun extractBlocks(
+        root: Element,
+        firstHeading: String
+    ): List<ReaderBlock> {
         val out = mutableListOf<ReaderBlock>()
 
         fun walk(element: Element) {
             element.children().forEach { child ->
-                when (child.tagName().substringAfterLast(':').lowercase()) {
+                when (
+                    child.tagName()
+                        .substringAfterLast(':')
+                        .lowercase()
+                ) {
                     "h1", "h2", "h3" -> {
-                        val text = child.text().trim()
-                        if (text.isNotBlank() && text != firstHeading) {
+                        val text = child
+                            .text()
+                            .trim()
+                        if (
+                            text.isNotBlank() &&
+                            text != firstHeading
+                        ) {
                             out += ReaderBlock.Paragraph(text)
                         }
                     }
+
                     "p" -> {
-                        val text = child.wholeText().replace('\u00A0', ' ').trim()
+                        val text = child
+                            .wholeText()
+                            .replace('\u00A0', ' ')
+                            .trim()
+
                         if (text.isNotBlank()) {
-                            val cls = child.classNames().map(String::lowercase)
-                            if (cls.any { it.contains("scene") || it.contains("separator") }) {
+                            val classes = child
+                                .classNames()
+                                .map(String::lowercase)
+
+                            if (
+                                classes.any {
+                                    it.contains("scene") ||
+                                        it.contains("separator")
+                                }
+                            ) {
                                 out += ReaderBlock.HorizontalRule
                             } else {
                                 out += ReaderBlock.Paragraph(text)
                             }
                         }
                     }
-                    "hr" -> out += ReaderBlock.HorizontalRule
-                    "blockquote" -> {
-                        val lines = child.select("p")
-                            .map { it.text().trim() }
-                            .filter(String::isNotBlank)
-                        if (lines.isNotEmpty()) out += ReaderBlock.Quote(lines)
+
+                    "hr" -> {
+                        out += ReaderBlock.HorizontalRule
                     }
+
+                    "blockquote" -> {
+                        val lines = child
+                            .select("p")
+                            .map {
+                                it.text().trim()
+                            }
+                            .filter(String::isNotBlank)
+
+                        if (lines.isNotEmpty()) {
+                            out += ReaderBlock.Quote(lines)
+                        }
+                    }
+
                     "div" -> {
-                        val cls = child.classNames().map(String::lowercase)
-                        if (cls.any {
+                        val classes = child
+                            .classNames()
+                            .map(String::lowercase)
+
+                        if (
+                            classes.any {
                                 it.contains("system") ||
                                     it.contains("quote") ||
                                     it.contains("notice")
                             }
                         ) {
-                            val lines = child.select("p")
-                                .map { it.text().trim() }
+                            val lines = child
+                                .select("p")
+                                .map {
+                                    it.text().trim()
+                                }
                                 .filter(String::isNotBlank)
-                            if (lines.isNotEmpty()) out += ReaderBlock.Quote(lines)
-                            else walk(child)
+
+                            if (lines.isNotEmpty()) {
+                                out += ReaderBlock.Quote(lines)
+                            } else {
+                                walk(child)
+                            }
                         } else {
                             walk(child)
                         }
                     }
-                    "section", "article", "main" -> walk(child)
-                    else -> if (child.children().isNotEmpty()) walk(child)
+
+                    "section", "article", "main" -> {
+                        walk(child)
+                    }
+
+                    else -> {
+                        if (child.children().isNotEmpty()) {
+                            walk(child)
+                        }
+                    }
                 }
             }
         }
@@ -368,151 +824,360 @@ class EpubArchiveParser {
         return out
     }
 
-    private fun cleanChapterTitle(title: String, number: Int): String {
-        if (title.isBlank()) return ""
+    private fun cleanChapterTitle(
+        title: String,
+        number: String
+    ): String {
+        if (title.isBlank()) {
+            return ""
+        }
+
+        val escapedNumber = Regex.escape(number)
+
         return title
             .replace(
                 Regex(
-                    """^(?:глава|chapter)\s*$number\s*[-—.:]?\s*""",
+                    """^(?:глава|chapter)\s*$escapedNumber\s*[-—.:：]?\s*""",
                     RegexOption.IGNORE_CASE
                 ),
                 ""
             )
+            .replace(
+                Regex(
+                    """^$escapedNumber\s*[.、:：\-–—]\s*"""
+                ),
+                ""
+            )
             .trim()
-            .takeIf { it.isNotBlank() }
-            ?: "Глава $number"
+            .takeIf(String::isNotBlank)
+            ?: title.trim()
     }
 
     private fun findCover(
         doc: Document,
         manifest: Map<String, ManifestItem>
     ): ManifestItem? {
-        manifest.values.firstOrNull {
-            it.properties.split(' ').any { p -> p == "cover-image" }
-        }?.let { return it }
-
-        val coverId = elementsByLocalName(doc, "meta")
-            .firstOrNull { it.attr("name").equals("cover", true) }
-            ?.attr("content")
-        coverId?.let(manifest::get)?.let { return it }
-
-        return manifest.values.firstOrNull {
-            it.mediaType.startsWith("image/") &&
-                (it.id.contains("cover", true) || it.href.contains("cover", true))
-        }
-    }
-
-    private fun elementsByLocalName(doc: Document, localName: String): List<Element> {
-        val wanted = localName.lowercase()
-        return doc.getAllElements().filter { element ->
-            val tag = element.tagName().lowercase()
-            tag == wanted || tag.substringAfterLast(':') == wanted
-        }
-    }
-
-    private fun metaText(doc: Document, localName: String): String {
-        val wanted = localName.lowercase()
-        return doc.getAllElements()
+        manifest.values
             .firstOrNull {
-                val tag = it.tagName().lowercase()
-                tag == wanted || tag.substringAfterLast(':') == wanted
+                it.properties
+                    .split(' ')
+                    .any { property ->
+                        property == "cover-image"
+                    }
             }
+            ?.let { return it }
+
+        val coverId = elementsByLocalName(
+            doc,
+            "meta"
+        )
+            .firstOrNull {
+                it.attr("name")
+                    .equals(
+                        "cover",
+                        true
+                    )
+            }
+            ?.attr("content")
+
+        coverId
+            ?.let(manifest::get)
+            ?.let { return it }
+
+        return manifest.values
+            .firstOrNull {
+                it.mediaType.startsWith("image/") &&
+                    (
+                        it.id.contains(
+                            "cover",
+                            true
+                        ) ||
+                            it.href.contains(
+                                "cover",
+                                true
+                            )
+                        )
+            }
+    }
+
+    private fun elementsByLocalName(
+        doc: Document,
+        localName: String
+    ): List<Element> =
+        doc.getAllElements()
+            .filter {
+                localName(it) == localName.lowercase()
+            }
+
+    private fun descendantsByLocalName(
+        element: Element,
+        localName: String
+    ): List<Element> =
+        element.getAllElements()
+            .filter {
+                localName(it) == localName.lowercase()
+            }
+
+    private fun localName(
+        element: Element
+    ): String =
+        element
+            .tagName()
+            .lowercase()
+            .substringAfterLast(':')
+
+    private fun metaText(
+        doc: Document,
+        localName: String
+    ): String =
+        elementsByLocalName(
+            doc,
+            localName
+        )
+            .firstOrNull()
             ?.text()
             ?.trim()
             .orEmpty()
-    }
 
-    private fun resolve(base: String, href: String): String {
-        val decoded = decodeHref(href).substringBefore('#')
-        val raw = if (base.isBlank()) decoded else "$base/$decoded"
-        val parts = ArrayDeque<String>()
-        raw.split('/').forEach { part ->
-            when (part) {
-                "", "." -> Unit
-                ".." -> if (parts.isNotEmpty()) parts.removeLast()
-                else -> parts.addLast(part)
-            }
+    private fun resolve(
+        base: String,
+        href: String
+    ): String {
+        val decoded = decodeHref(href)
+            .substringBefore('#')
+
+        val raw = if (base.isBlank()) {
+            decoded
+        } else {
+            "$base/$decoded"
         }
+
+        val parts = ArrayDeque<String>()
+        raw.split('/')
+            .forEach { part ->
+                when (part) {
+                    "", "." -> Unit
+                    ".." -> {
+                        if (parts.isNotEmpty()) {
+                            parts.removeLast()
+                        }
+                    }
+                    else -> {
+                        parts.addLast(part)
+                    }
+                }
+            }
+
         return parts.joinToString("/")
     }
 
-    private fun decodeHref(value: String): String {
-        // URLDecoder treats '+' as a space. EPUB hrefs may legitimately contain '+'.
-        return URLDecoder.decode(
+    private fun decodeHref(
+        value: String
+    ): String =
+        URLDecoder.decode(
             value.replace("+", "%2B"),
             StandardCharsets.UTF_8.name()
         )
+
+    private fun readText(
+        zip: ZipFile,
+        path: String
+    ): String =
+        readBytes(
+            zip,
+            path
+        ).toString(Charsets.UTF_8)
+
+    private fun readBytes(
+        zip: ZipFile,
+        path: String
+    ): ByteArray {
+        val entry = zip.getEntry(path)
+            ?: error(
+                "В EPUB отсутствует $path"
+            )
+
+        return zip
+            .getInputStream(entry)
+            .use {
+                it.readBytes()
+            }
     }
 
-    private fun readText(zip: ZipFile, path: String): String =
-        readBytes(zip, path).toString(Charsets.UTF_8)
+    private fun sourceRangeFromName(
+        sourceName: String?
+    ): IntRange? {
+        if (sourceName.isNullOrBlank()) {
+            return null
+        }
 
-    private fun readBytes(zip: ZipFile, path: String): ByteArray {
-        val entry = zip.getEntry(path) ?: error("В EPUB отсутствует $path")
-        return zip.getInputStream(entry).use { it.readBytes() }
-    }
+        val match = SOURCE_RANGE_REGEX
+            .find(sourceName)
+            ?: return null
 
-    private fun sourceRangeFromName(sourceName: String?): IntRange? {
-        if (sourceName.isNullOrBlank()) return null
-        val match = SOURCE_RANGE_REGEX.find(sourceName) ?: return null
-        val start = match.groupValues[1].toIntOrNull() ?: return null
-        val end = match.groupValues[2].toIntOrNull() ?: return null
-        return if (end >= start) start..end else null
+        val start = match
+            .groupValues[1]
+            .toIntOrNull()
+            ?: return null
+
+        val end = match
+            .groupValues[2]
+            .toIntOrNull()
+            ?: return null
+
+        return if (end >= start) {
+            start..end
+        } else {
+            null
+        }
     }
 
     private fun validateExpectedRange(
         sourceName: String?,
-        actualNumbers: List<Int>,
+        actualNumbers: List<String>,
         issues: MutableList<ImportIssue>
     ) {
-        if (actualNumbers.isEmpty()) return
-        val expected = sourceRangeFromName(sourceName) ?: return
-        val start = expected.first
-        val end = expected.last
+        val expected = sourceRangeFromName(sourceName)
+            ?: return
+        if (actualNumbers.isEmpty()) {
+            return
+        }
 
-        val actual = actualNumbers.toHashSet()
-        val missing = expected.filterNot(actual::contains)
-        val outside = actualNumbers.filter { it !in expected }
+        val actualDecimals = actualNumbers
+            .mapNotNull(::chapterNumberDecimal)
 
-        if (missing.isNotEmpty() || outside.isNotEmpty()) {
+        val actualIntegerValues = actualDecimals
+            .filter {
+                it.stripTrailingZeros().scale() <= 0
+            }
+            .map {
+                it.toInt()
+            }
+            .toSet()
+
+        val missing = expected
+            .filterNot(actualIntegerValues::contains)
+
+        val start = BigDecimal(expected.first)
+        val end = BigDecimal(expected.last)
+        val outside = actualNumbers.filter { raw ->
+            val value = chapterNumberDecimal(raw)
+                ?: return@filter true
+            value < start || value > end
+        }
+
+        if (
+            missing.isNotEmpty() ||
+            outside.isNotEmpty()
+        ) {
             val details = buildList {
-                if (missing.isNotEmpty()) add("не найдены: ${formatRanges(missing)}")
-                if (outside.isNotEmpty()) add("вне заявленного диапазона: ${formatRanges(outside)}")
+                if (missing.isNotEmpty()) {
+                    add(
+                        "не найдены: " +
+                            formatIntegerRanges(missing)
+                    )
+                }
+                if (outside.isNotEmpty()) {
+                    add(
+                        "вне заявленного диапазона: " +
+                            formatNumbers(outside)
+                    )
+                }
             }.joinToString("; ")
+
             issues += ImportIssue(
                 code = "SOURCE_RANGE_MISMATCH",
-                message = "Имя файла заявляет главы $start–$end, но структура EPUB не совпадает ($details)."
+                message = "Имя файла заявляет главы " +
+                    "${expected.first}–${expected.last}, " +
+                    "но структура EPUB не совпадает ($details)."
             )
         }
     }
 
-    private fun formatNumbers(numbers: List<Int>): String =
-        numbers.distinct().sorted().take(20).joinToString() +
-            if (numbers.distinct().size > 20) "…" else ""
+    private fun findIntegerGaps(
+        values: List<String>
+    ): List<Int> {
+        val canonicalIntegers = values
+            .filter {
+                CANONICAL_INTEGER_REGEX
+                    .matches(it)
+            }
+            .mapNotNull(String::toIntOrNull)
+            .distinct()
+            .sorted()
 
-    private fun formatRanges(numbers: List<Int>): String {
-        if (numbers.isEmpty()) return ""
-        val sorted = numbers.distinct().sorted()
+        if (canonicalIntegers.size < 2) {
+            return emptyList()
+        }
+
+        val first = canonicalIntegers.first()
+        val last = canonicalIntegers.last()
+
+        if (last - first > MAX_GAP_SCAN) {
+            return emptyList()
+        }
+
+        val present = canonicalIntegers.toHashSet()
+        return (first..last)
+            .filterNot(present::contains)
+    }
+
+    private fun formatNumbers(
+        numbers: List<String>
+    ): String {
+        val unique = numbers
+            .distinct()
+            .sortedWith(::compareChapterNumbers)
+
+        return unique
+            .take(20)
+            .joinToString() +
+            if (unique.size > 20) "…" else ""
+    }
+
+    private fun formatIntegerRanges(
+        numbers: List<Int>
+    ): String {
+        if (numbers.isEmpty()) {
+            return ""
+        }
+
+        val sorted = numbers
+            .distinct()
+            .sorted()
         val ranges = mutableListOf<IntRange>()
+
         var start = sorted.first()
         var previous = start
 
-        sorted.drop(1).forEach { value ->
-            if (value == previous + 1) {
-                previous = value
-            } else {
-                ranges += start..previous
-                start = value
-                previous = value
+        sorted
+            .drop(1)
+            .forEach { value ->
+                if (value == previous + 1) {
+                    previous = value
+                } else {
+                    ranges += start..previous
+                    start = value
+                    previous = value
+                }
             }
-        }
+
         ranges += start..previous
 
-        val rendered = ranges.take(8).joinToString { range ->
-            if (range.first == range.last) range.first.toString()
-            else "${range.first}–${range.last}"
-        }
-        return rendered + if (ranges.size > 8) "…" else ""
+        val rendered = ranges
+            .take(8)
+            .joinToString { range ->
+                if (
+                    range.first == range.last
+                ) {
+                    range.first.toString()
+                } else {
+                    "${range.first}–${range.last}"
+                }
+            }
+
+        return rendered +
+            if (ranges.size > 8) "…" else ""
     }
 
     private data class ManifestItem(
@@ -526,40 +1191,66 @@ class EpubArchiveParser {
         val item: ManifestItem,
         val spineIndex: Int,
         val heading: String,
+        val tocLabel: String?,
         val plainText: String,
         val blocks: List<ReaderBlock>,
-        val hrefChapterNumber: Int?,
-        val textChapterNumber: Int?,
+        val hrefChapterNumber: String?,
+        val textChapterNumber: String?,
+        val tocChapterNumber: String?,
         val serviceDocument: Boolean,
         val inlineImageCount: Int
     ) {
-        fun toCandidate(number: Int) = ChapterCandidate(
-            number = number,
-            spineIndex = spineIndex,
-            source = this
-        )
+        fun toCandidate(
+            number: String
+        ): ChapterCandidate =
+            ChapterCandidate(
+                number = number,
+                spineIndex = spineIndex,
+                source = this
+            )
     }
 
     private data class ChapterCandidate(
-        val number: Int,
+        val number: String,
         val spineIndex: Int,
         val source: HtmlDoc
     )
 
     private companion object {
         const val MIN_CHAPTER_TEXT = 20
+        const val MAX_GAP_SCAN = 10_000
 
         val CHAPTER_FILE_REGEX = Regex(
-            """(?:^|/)(?:ch|chapter)[-_ ]?0*(\d{1,6})\.(?:xhtml|html?)$""",
+            """(?:^|/)(?:ch|chapter)[-_ ]?0*(\d+(?:[.,]\d+)?)\.(?:xhtml|html?)$""",
             RegexOption.IGNORE_CASE
         )
 
-        val CHAPTER_TEXT_REGEX = Regex(
-            """(?iu)(?:глава|chapter)\s*[:#№-]?\s*(\d{1,6})"""
+        // First alternative: Russian/English. Second: Korean. Third: CJK.
+        val CHAPTER_WORD_REGEX = Regex(
+            """(?:\b(?:глава|chapter)\s+(\d+(?:[.,]\d+)?)\b)|""" +
+                """(?:제\s*(\d+(?:[.,]\d+)?)\s*화)|""" +
+                """(?:第\s*(\d+(?:[.,]\d+)?)\s*[章話话])""",
+            RegexOption.IGNORE_CASE
+        )
+
+        val LEADING_NUMBER_REGEX = Regex(
+            """^\s*(\d+(?:[.,]\d+)?)\s*[.、:：\-–—]"""
         )
 
         val SOURCE_RANGE_REGEX = Regex(
-            """(?iu)(?:глав(?:ы|а)?|chapters?)[_\s-]*(\d{1,6})[_–—-](\d{1,6})"""
+            """(?:глав\p{L}*|chapters?)[^\d]{0,24}(\d{1,6})\s*[_–—-]\s*(\d{1,6})""",
+            RegexOption.IGNORE_CASE
+        )
+
+        val CANONICAL_INTEGER_REGEX = Regex(
+            """0|[1-9]\d*"""
+        )
+
+        val PROLOGUE_MARKERS = setOf(
+            "пролог",
+            "prologue",
+            "프롤로그",
+            "序章"
         )
 
         val SERVICE_IDS = setOf(
