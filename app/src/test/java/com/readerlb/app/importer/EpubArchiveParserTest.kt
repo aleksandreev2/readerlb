@@ -122,6 +122,77 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun fallbackNumberingUsesExactRangeFromFilename() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("partA", "text/part-a.xhtml", "<h1>Часть A</h1><p>Первый длинный фрагмент без номера.</p>"),
+                Doc("partB", "text/part-b.xhtml", "<h1>Часть B</h1><p>Второй длинный фрагмент без номера.</p>"),
+                Doc("partC", "text/part-c.xhtml", "<h1>Часть C</h1><p>Третий длинный фрагмент без номера.</p>")
+            )
+        )
+
+        val book = parser.parse(
+            epub,
+            "Тестовая_книга_главы_431-433.epub"
+        )
+
+        assertEquals(
+            listOf(431, 432, 433),
+            book.chapters.map { it.number }
+        )
+        assertTrue(
+            book.issues.any {
+                it.code == "NUMBERING_FROM_FILENAME" &&
+                    it.severity == ImportIssueSeverity.INFO
+            }
+        )
+        assertTrue(
+            book.issues.none {
+                it.code == "SOURCE_RANGE_MISMATCH"
+            }
+        )
+    }
+
+    @Test
+    fun fallbackWithoutReliableRangeRequiresAcknowledgement() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("partA", "text/part-a.xhtml", "<h1>Начало</h1><p>Первый длинный фрагмент без номера.</p>"),
+                Doc("partB", "text/part-b.xhtml", "<h1>Продолжение</h1><p>Второй длинный фрагмент без номера.</p>")
+            )
+        )
+
+        val book = parser.parse(epub, "Тестовая_книга.epub")
+
+        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertTrue(
+            book.issues.any {
+                it.code == "NUMBERING_INFERRED" &&
+                    it.severity == ImportIssueSeverity.WARNING
+            }
+        )
+    }
+
+    @Test
+    fun mismatchedFilenameRangeDoesNotInventMissingChapterNumbers() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("partA", "text/part-a.xhtml", "<h1>Начало</h1><p>Первый длинный фрагмент без номера.</p>"),
+                Doc("partB", "text/part-b.xhtml", "<h1>Продолжение</h1><p>Второй длинный фрагмент без номера.</p>")
+            )
+        )
+
+        val book = parser.parse(
+            epub,
+            "Тестовая_книга_главы_431-433.epub"
+        )
+
+        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertTrue(book.issues.any { it.code == "NUMBERING_INFERRED" })
+        assertTrue(book.issues.any { it.code == "SOURCE_RANGE_MISMATCH" })
+    }
+
+    @Test
     fun validatesDeclaredRangeFromSourceFilename() {
         val epub = buildEpub(
             docs = listOf(
