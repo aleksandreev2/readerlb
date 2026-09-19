@@ -1300,9 +1300,14 @@ class EpubArchiveParser {
             RegexOption.IGNORE_CASE
         )
 
-        // First alternative: Russian/English. Second: Korean. Third: CJK.
+        // Jsoup's XML tree can concatenate adjacent XHTML block text
+        // (for example </h1><p> -> "...Глава 2"). Russian "глава" can
+        // therefore be preceded by a letter in the flattened text. Matching
+        // the keyword itself is safe because whitespace after it is required.
+        // English keeps a Latin-word boundary to avoid matching "subchapter".
         val CHAPTER_WORD_REGEX = Regex(
-            """(?:(?<![\p{L}\p{N}_])(?:глава|chapter)\s+(\d+(?:[.,]\d+)?)(?!\d))|""" +
+            """(?:глава\s+(\d+(?:[.,]\d+)?)(?!\d))|""" +
+                """(?:(?<![A-Za-z0-9_])chapter\s+(\d+(?:[.,]\d+)?)(?!\d))|""" +
                 """(?:제\s*(\d+(?:[.,]\d+)?)\s*화)|""" +
                 """(?:第\s*(\d+(?:[.,]\d+)?)\s*[章話话])""",
             RegexOption.IGNORE_CASE
