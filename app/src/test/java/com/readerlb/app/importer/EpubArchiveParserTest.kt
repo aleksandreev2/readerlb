@@ -107,6 +107,22 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun validatesDeclaredRangeFromSourceFilename() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("ch0001", "text/ch0001.xhtml", "<h1>Глава 1</h1><p>Содержимое первой главы достаточно длинное.</p>"),
+                Doc("ch0002", "text/ch0002.xhtml", "<h1>Глава 2</h1><p>Содержимое второй главы достаточно длинное.</p>")
+            )
+        )
+
+        val book = parser.parse(epub, "Книга_главы_1-3.epub")
+
+        assertTrue(book.issues.any {
+            it.code == "SOURCE_RANGE_MISMATCH" && it.message.contains("3")
+        })
+    }
+
+    @Test
     fun reportsFilenameAndTextNumberMismatch() {
         val epub = buildEpub(
             docs = listOf(
