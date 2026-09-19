@@ -467,13 +467,11 @@ class EpubArchiveParser {
         )
 
         val CHAPTER_TEXT_REGEX = Regex(
-            """(?:^|\s)(?:глава|chapter)\s+(\d{1,6})(?=\s|[.:—-]|$)""",
-            RegexOption.IGNORE_CASE
+            """(?iu)(?:глава|chapter)\s*[:#№-]?\s*(\d{1,6})"""
         )
 
         val SOURCE_RANGE_REGEX = Regex(
-            """(?:глав(?:ы|а)?|chapters?)[_\s-]*(\d{1,6})[_–—-](\d{1,6})""",
-            RegexOption.IGNORE_CASE
+            """(?iu)(?:глав(?:ы|а)?|chapters?)[_\s-]*(\d{1,6})[_–—-](\d{1,6})"""
         )
 
         val SERVICE_HINTS = listOf(
