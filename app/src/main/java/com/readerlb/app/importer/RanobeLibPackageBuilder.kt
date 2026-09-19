@@ -7,7 +7,6 @@ import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
-import kotlin.math.absoluteValue
 
 data class BuiltRanobeLibPackage(
     val rootDir: File,
@@ -79,6 +78,17 @@ class RanobeLibPackageBuilder(
 
         val title = titleOverride.trim().ifBlank { book.title.trim() }
         require(title.isNotBlank()) { "Название новеллы не может быть пустым" }
+
+        val invalidNumbers = book.chapters
+            .map { it.number }
+            .filter {
+                chapterNumberDecimal(it) == null
+            }
+            .distinct()
+        require(invalidNumbers.isEmpty()) {
+            "Неподдерживаемые номера глав: " +
+                invalidNumbers.take(20).joinToString()
+        }
 
         val duplicateSourceNumbers = book.chapters
             .groupingBy { it.number }
@@ -580,11 +590,11 @@ class RanobeLibPackageBuilder(
             )
 
         val raw = (
-            (digest[0].toInt() shl 24) or
+            ((digest[0].toInt() and 0xff) shl 24) or
                 ((digest[1].toInt() and 0xff) shl 16) or
                 ((digest[2].toInt() and 0xff) shl 8) or
                 (digest[3].toInt() and 0xff)
-            ).absoluteValue
+            ) and 0x7fffffff
 
         return 900_000_000 + (raw % 90_000_000)
     }
