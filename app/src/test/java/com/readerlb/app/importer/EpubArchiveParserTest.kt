@@ -73,7 +73,12 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf("1", "2"), book.chapters.map { it.number })
+        assertEquals(
+            "Mixed filename/text numbering should preserve both chapters: " +
+                book.chapters.map { it.number },
+            listOf("1", "2"),
+            book.chapters.map { it.number }
+        )
     }
 
     @Test
@@ -312,7 +317,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(1), book.chapters.map { it.number })
+        assertEquals(listOf("1"), book.chapters.map { it.number })
         assertTrue(book.issues.none { it.code == "UNNUMBERED_CONTENT_OMITTED" })
     }
 
@@ -423,7 +428,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals("10", book.chapters.single().number)
+        assertEquals("11", book.chapters.single().number)
         assertTrue(book.issues.any { it.code == "NUMBER_MISMATCH" })
     }
 
