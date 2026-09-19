@@ -266,9 +266,13 @@ private fun OnboardingVisual(
         Box(Modifier.fillMaxSize()) {
             when (page) {
                 0 -> {
-                    ReaderLogo(
-                        size = 96.dp
-                    )
+                    Box(
+                        modifier = Modifier.align(Alignment.Center)
+                    ) {
+                        ReaderLogo(
+                            size = 96.dp
+                        )
+                    }
                     Text(
                         "Разработчик  dollar",
                         color = Color(0xFF9DC9E8),
