@@ -86,7 +86,9 @@ class EpubArchiveParser {
                     )
                 }
 
-            val inlineImages = docs.sumOf { it.inlineImageCount }
+            val inlineImages = docs
+                .filterNot { it.serviceDocument }
+                .sumOf { it.inlineImageCount }
             if (inlineImages > 0) {
                 issues += ImportIssue(
                     code = "INLINE_IMAGES_OMITTED",
