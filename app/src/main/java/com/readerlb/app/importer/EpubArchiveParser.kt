@@ -384,6 +384,16 @@ class EpubArchiveParser {
         issues: MutableList<ImportIssue>
     ): Map<String, String> {
         val result = linkedMapOf<String, String>()
+        val ambiguousPaths = linkedSetOf<String>()
+
+        fun rememberLabel(path: String, label: String) {
+            val existing = result[path]
+            if (existing == null) {
+                result[path] = label
+            } else if (existing != label) {
+                ambiguousPaths += path
+            }
+        }
 
         val navigationItems = manifest.values.filter { item ->
             item.mediaType.equals(
@@ -458,12 +468,13 @@ class EpubArchiveParser {
                             .orEmpty()
 
                         if (label.isNotBlank()) {
-                            result[
-                                resolve(
+                            rememberLabel(
+                                path = resolve(
                                     navigationBase,
                                     src
-                                )
-                            ] = label
+                                ),
+                                label = label
+                            )
                         }
                     }
             } else {
@@ -504,15 +515,25 @@ class EpubArchiveParser {
                         .trim()
 
                     if (label.isNotBlank()) {
-                        result[
-                            resolve(
+                        rememberLabel(
+                            path = resolve(
                                 navigationBase,
                                 href
-                            )
-                        ] = label
+                            ),
+                            label = label
+                        )
                     }
                 }
             }
+        }
+
+        if (ambiguousPaths.isNotEmpty()) {
+            issues += ImportIssue(
+                code = "MULTIPLE_TOC_ENTRIES_ONE_FILE",
+                message = "В оглавлении несколько разделов указывают на один XHTML-файл " +
+                    "для ${ambiguousPaths.size} файлов. ReaderLB 0.2 не делит один XHTML " +
+                    "на несколько глав, поэтому такой EPUB требует проверки."
+            )
         }
 
         return result
