@@ -8,7 +8,7 @@ class EpubParser(private val context: Context) {
 
     private val archiveParser = EpubArchiveParser()
 
-    fun parse(uri: Uri): ParsedBook {
+    fun parse(uri: Uri, sourceName: String? = null): ParsedBook {
         val temp = File.createTempFile("readerlb_", ".epub", context.cacheDir)
         context.contentResolver.openInputStream(uri).use { input ->
             requireNotNull(input) { "Не удалось открыть файл" }
@@ -16,7 +16,7 @@ class EpubParser(private val context: Context) {
         }
 
         return try {
-            archiveParser.parse(temp)
+            archiveParser.parse(temp, sourceName)
         } finally {
             temp.delete()
         }
