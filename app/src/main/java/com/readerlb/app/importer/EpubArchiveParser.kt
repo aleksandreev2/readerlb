@@ -583,7 +583,8 @@ class EpubArchiveParser {
             tocChapterNumber = chapterNumberFromLabel(
                 tocLabel
             ),
-            serviceDocument = isServiceDocument(item),
+            serviceDocument = isServiceDocument(item) ||
+                isServiceLabel(tocLabel, heading),
             inlineImageCount = body
                 .getAllElements()
                 .count {
@@ -595,6 +596,22 @@ class EpubArchiveParser {
                         )
                 }
         )
+    }
+
+    private fun isServiceLabel(
+        tocLabel: String?,
+        heading: String
+    ): Boolean {
+        val label = sequenceOf(
+            tocLabel.orEmpty(),
+            heading
+        )
+            .joinToString(" ")
+            .lowercase()
+
+        return SERVICE_LABEL_MARKERS.any {
+            marker -> label.contains(marker)
+        }
     }
 
     private fun isServiceDocument(
@@ -1278,6 +1295,16 @@ class EpubArchiveParser {
             "prologue",
             "프롤로그",
             "序章"
+        )
+
+        val SERVICE_LABEL_MARKERS = setOf(
+            "сведения о переводе",
+            "информация о переводе",
+            "справочник",
+            "глоссарий",
+            "translation info",
+            "translation information",
+            "glossary"
         )
 
         val SERVICE_IDS = setOf(
