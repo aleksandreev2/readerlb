@@ -129,28 +129,22 @@ private fun Onboarding(onDone: () -> Unit) {
     var page by remember { mutableIntStateOf(0) }
     val pages = listOf(
         OnboardingPage(
-            title = "Импортер глав для",
-            accent = "RanobeLib APP",
-            body = "Удобный импорт глав новелл в RanobeLib. Добавляйте свои файлы и читайте любимые истории в одном месте.",
-            icon = Icons.Default.UploadFile
-        ),
-        OnboardingPage(
-            title = "Порядок в ваших",
-            accent = "новеллах",
-            body = "Автоматически проверяйте, организуйте и отслеживайте импортированные главы. Всё под контролем — ничего не потеряется.",
+            title = "Создано",
+            accent = "с заботой",
+            body = "Импортер глав для RanobeLib APP\n\nРазработчик · dollar",
             icon = Icons.Default.CheckCircle
         ),
         OnboardingPage(
-            title = "Родная читалка",
-            accent = "RanobeLib",
-            body = "ReaderLB готовит локальный формат так, чтобы главы открывались прямо в привычной встроенной читалке.",
-            icon = Icons.Default.AutoStories
+            title = "Просто. Удобно.",
+            accent = "Для вас.",
+            body = "Быстрый импорт EPUB и TXT. ReaderLB сам проверит структуру, подготовит главы и формат RanobeLib.",
+            icon = Icons.Default.UploadFile
         ),
         OnboardingPage(
-            title = "Один файл —",
-            accent = "одна кнопка",
-            body = "Выберите EPUB или TXT, проверьте название и диапазон глав — остальное ReaderLB сделает сам.",
-            icon = Icons.Default.FolderOpen
+            title = "Важно",
+            accent = "знать",
+            body = "На Android 11+ система ограничивает доступ к Android/data. Если прямой импорт недоступен, ReaderLB сохранит готовый ZIP для ручного переноса.",
+            icon = Icons.Default.Settings
         )
     )
     val current = pages[page]
@@ -227,7 +221,7 @@ private fun Onboarding(onDone: () -> Unit) {
             Spacer(Modifier.height(24.dp))
 
             GradientButton(
-                text = if (page == pages.lastIndex) "Начать" else "Следующее  →",
+                text = if (page == pages.lastIndex) "Понятно" else "Следующее  →",
                 onClick = {
                     if (page == pages.lastIndex) onDone() else page++
                 }
@@ -264,46 +258,79 @@ private fun OnboardingVisual(
             .height(220.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0D2945)),
         shape = RoundedCornerShape(28.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x334BC4FF))
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            Color(0x334BC4FF)
+        )
     ) {
         Box(Modifier.fillMaxSize()) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = Cyan,
-                modifier = Modifier
-                    .size(92.dp)
-                    .align(Alignment.Center)
-            )
-            if (page == 0) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 22.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    MiniFile("EPUB")
-                    MiniFile("TXT")
-                    MiniFile("ZIP")
+            when (page) {
+                0 -> {
+                    ReaderLogo(
+                        size = 96.dp
+                    )
+                    Text(
+                        "Разработчик  dollar",
+                        color = Color(0xFF9DC9E8),
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 22.dp)
+                    )
                 }
-            } else if (page == 1) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-                    repeat(3) { index ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Глава ${index + 1}", color = Color.White, fontSize = 13.sp)
-                            Spacer(Modifier.width(14.dp))
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                null,
-                                tint = Cyan,
-                                modifier = Modifier.size(17.dp)
+
+                1 -> {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = Cyan,
+                        modifier = Modifier
+                            .size(86.dp)
+                            .align(Alignment.Center)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 22.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        MiniFile("EPUB")
+                        MiniFile("TXT")
+                        MiniFile("ZIP")
+                    }
+                }
+
+                else -> {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = Cyan,
+                        modifier = Modifier
+                            .size(88.dp)
+                            .align(Alignment.Center)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 22.dp)
+                            .clip(RoundedCornerShape(99.dp))
+                            .background(Color(0xFF153A5D))
+                            .border(
+                                1.dp,
+                                Color(0x555DD9FF),
+                                RoundedCornerShape(99.dp)
                             )
-                        }
+                            .padding(
+                                horizontal = 18.dp,
+                                vertical = 8.dp
+                            )
+                    ) {
+                        Text(
+                            "Android 11+",
+                            color = Cyan,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -586,7 +613,6 @@ private fun ImportScreen(
                             "application/epub+zip",
                             "application/zip",
                             "text/plain",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             "application/octet-stream"
                         )
                     )
@@ -850,7 +876,7 @@ private fun FileDropCard(
                 Text("Выбрать файл", color = Color.White, fontWeight = FontWeight.Bold)
             }
             Text(
-                "Поддерживаются: EPUB, ZIP, TXT · DOCX скоро",
+                "Поддерживаются: EPUB, TXT · ZIP с EPUB-структурой",
                 color = Muted,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 12.dp)
