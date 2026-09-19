@@ -273,6 +273,48 @@ class RanobeLibPackageBuilderTest {
     }
 
     @Test
+    fun buildsAndVerifiesLargeBook() {
+        val root = Files.createTempDirectory(
+            "readerlb_large_package_"
+        ).toFile()
+
+        val chapters = (1..1200).map { number ->
+            chapter(number.toString())
+        }
+
+        val built = builder.build(
+            book = ParsedBook(
+                title = "Большая тестовая новелла",
+                chapters = chapters
+            ),
+            rootDir = root
+        )
+
+        assertEquals(1200, built.chapterCount)
+        assertEquals("1", built.firstChapter)
+        assertEquals("1200", built.lastChapter)
+
+        val report = builder.verify(
+            built = built,
+            expectedChapterNumbers = chapters.map { it.number }
+        )
+        assertTrue(
+            report.errors.joinToString(),
+            report.isValid
+        )
+
+        assertEquals(
+            1200,
+            built.titleDir
+                .listFiles()
+                .orEmpty()
+                .count {
+                    it.extension == "zip"
+                }
+        )
+    }
+
+    @Test
     fun stableIdentityDoesNotChangeBetweenBuilds() {
         val first = builder.stableMediaId("  Культивация Онлайн ")
         val second = builder.stableMediaId("культивация онлайн")
