@@ -252,11 +252,28 @@ class EpubArchiveParser {
             blocks = extractBlocks(body, heading),
             hrefChapterNumber = chapterNumberFromHref(item.href),
             textChapterNumber = chapterNumberFromText(plain),
-            serviceDocument = SERVICE_HINTS.any(hint::contains),
+            serviceDocument = isServiceDocument(item),
             inlineImageCount = body.getAllElements().count {
                 it.tagName().substringAfterLast(':').equals("img", ignoreCase = true)
             }
         )
+    }
+
+    private fun isServiceDocument(item: ManifestItem): Boolean {
+        val id = item.id.lowercase()
+        val href = decodeHref(item.href).substringBefore('#').lowercase()
+        val base = href.substringAfterLast('/').substringBeforeLast('.')
+        val properties = item.properties
+            .split(' ')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+
+        return id in SERVICE_IDS ||
+            base in SERVICE_IDS ||
+            properties.any { it.equals("nav", ignoreCase = true) } ||
+            SERVICE_HINTS.any { hint ->
+                (" " + id + " " + href + " ").contains(hint)
+            }
     }
 
     private fun chapterNumberFromHref(href: String): Int? {
@@ -520,17 +537,34 @@ class EpubArchiveParser {
             """(?iu)(?:глав(?:ы|а)?|chapters?)[_\s-]*(\d{1,6})[_–—-](\d{1,6})"""
         )
 
-        val SERVICE_HINTS = listOf(
+        val SERVICE_IDS = setOf(
             "cover",
+            "title",
             "titlepage",
-            "/title.",
             "translator",
             "translation",
+            "info",
+            "fullversion",
             "copyright",
             "colophon",
             "toc",
             "nav",
             "about"
+        )
+
+        val SERVICE_HINTS = listOf(
+            "/cover.",
+            "/title.",
+            "/titlepage.",
+            "/translator.",
+            "/translation.",
+            "/info.",
+            "/fullversion.",
+            "/copyright.",
+            "/colophon.",
+            "/toc.",
+            "/nav.",
+            "/about."
         )
     }
 }
