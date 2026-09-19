@@ -462,6 +462,64 @@ class EpubArchiveParserTest {
         assertTrue(book.issues.any { it.code == "NUMBER_MISMATCH" })
     }
 
+    private fun buildEpubWithSharedNavigationFile(): File {
+        val file = Files.createTempFile(
+            "readerlb_shared_nav_",
+            ".epub"
+        ).toFile()
+        file.deleteOnExit()
+
+        val container = """<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+        val opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"
+         version="3.0">
+  <metadata><dc:title>Shared XHTML</dc:title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="chapter" href="text/chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="chapter"/></spine>
+</package>"""
+
+        val nav = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:epub="http://www.idpf.org/2007/ops">
+<body>
+<nav epub:type="toc">
+  <ol>
+    <li><a href="text/chapter.xhtml#one">Глава 1</a></li>
+    <li><a href="text/chapter.xhtml#two">Глава 2</a></li>
+  </ol>
+</nav>
+</body>
+</html>"""
+
+        val chapter = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<body>
+<h1 id="one">Глава 1</h1><p>Первая часть текста достаточно длинная.</p>
+<h1 id="two">Глава 2</h1><p>Вторая часть текста достаточно длинная.</p>
+</body>
+</html>"""
+
+        ZipOutputStream(file.outputStream()).use { zip ->
+            put(zip, "mimetype", "application/epub+zip")
+            put(zip, "META-INF/container.xml", container)
+            put(zip, "OEBPS/content.opf", opf)
+            put(zip, "OEBPS/nav.xhtml", nav)
+            put(zip, "OEBPS/text/chapter.xhtml", chapter)
+        }
+
+        return file
+    }
+
     private fun buildEpubWithNav(
         docs: List<Doc>,
         tocLabels: List<String>
