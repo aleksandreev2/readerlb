@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.sp
 import com.readerlb.app.importer.ImportRepository
 import com.readerlb.app.importer.ParsedBook
 import com.readerlb.app.importer.RanobeLibExporter
+import com.readerlb.app.importer.compareChapterNumbers
 import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
 import com.readerlb.app.storage.Preferences
@@ -651,20 +652,50 @@ private fun ImportScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = firstChapter,
-                    onValueChange = { firstChapter = it.filter(Char::isDigit) },
+                    onValueChange = { firstChapter = sanitizeChapterRangeInput(it) },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text(parsed?.chapters?.minOfOrNull { it.number }?.toString() ?: "1") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    placeholder = {
+                        Text(
+                            parsed
+                                ?.chapters
+                                ?.minWithOrNull(
+                                    Comparator { left, right ->
+                                        compareChapterNumbers(
+                                            left.number,
+                                            right.number
+                                        )
+                                    }
+                                )
+                                ?.number
+                                ?: "1"
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
                 )
                 Text(" — ", color = Muted, modifier = Modifier.padding(horizontal = 8.dp))
                 OutlinedTextField(
                     value = lastChapter,
-                    onValueChange = { lastChapter = it.filter(Char::isDigit) },
+                    onValueChange = { lastChapter = sanitizeChapterRangeInput(it) },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text(parsed?.chapters?.maxOfOrNull { it.number }?.toString() ?: "100") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    placeholder = {
+                        Text(
+                            parsed
+                                ?.chapters
+                                ?.maxWithOrNull(
+                                    Comparator { left, right ->
+                                        compareChapterNumbers(
+                                            left.number,
+                                            right.number
+                                        )
+                                    }
+                                )
+                                ?.number
+                                ?: "100"
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -752,8 +783,8 @@ private fun ImportScreen(
                                 exporter.export(
                                     book = book,
                                     titleOverride = title,
-                                    firstChapter = firstChapter.toIntOrNull(),
-                                    lastChapter = lastChapter.toIntOrNull(),
+                                    firstChapter = firstChapter.ifBlank { null },
+                                    lastChapter = lastChapter.ifBlank { null },
                                     ranobeLibBookTree = if (direct) folderUri else null
                                 )
                             }
@@ -865,8 +896,28 @@ private fun ParsedPreview(book: ParsedBook) {
                     if (book.author.isNotBlank()) {
                         Text(book.author, color = Muted, fontSize = 12.sp, maxLines = 1)
                     }
-                    val first = book.chapters.minOfOrNull { it.number } ?: 0
-                    val last = book.chapters.maxOfOrNull { it.number } ?: 0
+                    val first = book.chapters
+                        .minWithOrNull(
+                            Comparator { left, right ->
+                                compareChapterNumbers(
+                                    left.number,
+                                    right.number
+                                )
+                            }
+                        )
+                        ?.number
+                        ?: "0"
+                    val last = book.chapters
+                        .maxWithOrNull(
+                            Comparator { left, right ->
+                                compareChapterNumbers(
+                                    left.number,
+                                    right.number
+                                )
+                            }
+                        )
+                        ?.number
+                        ?: "0"
                     val range = if (first == last) "глава $first" else "главы $first–$last"
                     Text(
                         "${book.chapters.size} найдено · $range",
@@ -1207,5 +1258,26 @@ private fun ReaderLogo(size: androidx.compose.ui.unit.Dp) {
             fontSize = (size.value * 0.34f).sp,
             modifier = Modifier.align(Alignment.Center)
         )
+    }
+}
+
+
+private fun sanitizeChapterRangeInput(
+    value: String
+): String {
+    val normalized = value
+        .replace(',', '.')
+        .filter { character ->
+            character.isDigit() || character == '.'
+        }
+
+    val dot = normalized.indexOf('.')
+    return if (dot < 0) {
+        normalized
+    } else {
+        normalized.substring(0, dot + 1) +
+            normalized
+                .substring(dot + 1)
+                .replace(".", "")
     }
 }
