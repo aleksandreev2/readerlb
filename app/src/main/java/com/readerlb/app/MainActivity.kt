@@ -529,6 +529,7 @@ private fun ImportScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var success by remember { mutableStateOf<String?>(null) }
+    var warningsAcknowledged by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -538,6 +539,7 @@ private fun ImportScreen(
             parsed = null
             error = null
             success = null
+            warningsAcknowledged = false
             busy = true
             scope.launch {
                 runCatching {
@@ -594,6 +596,39 @@ private fun ImportScreen(
         parsed?.let { book ->
             item {
                 ParsedPreview(book)
+            }
+            if (book.issues.any { it.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING }) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7E6)),
+                        shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF2C46D))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Проверьте предупреждения",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF7A4E00)
+                                )
+                                Text(
+                                    "ReaderLB не будет молча продолжать импорт при подозрении на пропущенные или конфликтующие главы.",
+                                    color = Color(0xFF8A641B),
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            Switch(
+                                checked = warningsAcknowledged,
+                                onCheckedChange = { warningsAcknowledged = it }
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -700,7 +735,12 @@ private fun ImportScreen(
         item {
             GradientButton(
                 text = if (busy) "Подготовка..." else "↥  Импортировать",
-                enabled = !busy && parsed != null && (!direct || folderUri != null),
+                enabled = !busy &&
+                    parsed != null &&
+                    (!direct || folderUri != null) &&
+                    (parsed?.issues?.none {
+                        it.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING
+                    } != false || warningsAcknowledged),
                 onClick = {
                     val book = parsed ?: return@GradientButton
                     busy = true
