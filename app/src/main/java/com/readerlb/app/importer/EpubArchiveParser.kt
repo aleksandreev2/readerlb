@@ -115,6 +115,20 @@ class EpubArchiveParser {
 
             val candidates: List<ChapterCandidate>
             if (numbered.isNotEmpty()) {
+                val omittedUnnumbered = docs.filter {
+                    !it.serviceDocument &&
+                        it.hrefChapterNumber == null &&
+                        it.textChapterNumber == null &&
+                        it.plainText.length >= MIN_CHAPTER_TEXT
+                }
+                if (omittedUnnumbered.isNotEmpty()) {
+                    issues += ImportIssue(
+                        code = "UNNUMBERED_CONTENT_OMITTED",
+                        message = "В EPUB есть содержательных разделов без номера главы: " +
+                            omittedUnnumbered.size +
+                            ". ReaderLB не присвоил им номера автоматически."
+                    )
+                }
                 candidates = numbered
             } else {
                 val fallback = docs.filter {
