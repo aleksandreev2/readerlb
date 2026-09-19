@@ -1,0 +1,258 @@
+package com.readerlb.app.importer
+
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Test
+import java.nio.file.Files
+import java.util.zip.ZipFile
+
+class RanobeLibPackageBuilderTest {
+
+    private val builder = RanobeLibPackageBuilder(
+        nowMillis = { 1_700_000_000_000L }
+    )
+
+    @Test
+    fun preservesRealNumbersForPartialRanges() {
+        val book = bookWithChapters(431, 432, 433)
+        val root = Files.createTempDirectory("readerlb_package_").toFile()
+
+        val built = builder.build(
+            book = book,
+            rootDir = root,
+            firstChapter = 432,
+            lastChapter = 433
+        )
+
+        assertEquals(2, built.chapterCount)
+        assertEquals(432, built.firstChapter)
+        assertEquals(433, built.lastChapter)
+
+        val chapters = JSONArray(
+            built.titleDir
+                .resolve("chapters.json")
+                .readText()
+        )
+
+        assertEquals(
+            listOf(432, 433),
+            (0 until chapters.length()).map {
+                chapters
+                    .getJSONObject(it)
+                    .getString("number")
+                    .toInt()
+            }
+        )
+
+        val zipNames = built.titleDir
+            .listFiles()
+            .orEmpty()
+            .filter { it.extension == "zip" }
+            .map { it.name }
+            .sorted()
+
+        assertEquals(2, zipNames.size)
+        assertTrue(zipNames.any { it.startsWith("v1-n432-") })
+        assertTrue(zipNames.any { it.startsWith("v1-n433-") })
+        assertFalse(zipNames.any { it.startsWith("v1-n1-") })
+    }
+
+    @Test
+    fun everyGeneratedChapterContainsValidReaderDocument() {
+        val book = ParsedBook(
+            title = "Тест",
+            chapters = listOf(
+                ParsedChapter(
+                    number = 1,
+                    title = "Начало",
+                    blocks = listOf(
+                        ReaderBlock.Paragraph("Первый абзац."),
+                        ReaderBlock.HorizontalRule,
+                        ReaderBlock.Quote(
+                            listOf("Системное сообщение")
+                        )
+                    )
+                )
+            )
+        )
+        val root = Files.createTempDirectory("readerlb_package_").toFile()
+
+        val built = builder.build(
+            book = book,
+            rootDir = root
+        )
+
+        val zip = built.titleDir
+            .listFiles()
+            .orEmpty()
+            .single { it.extension == "zip" }
+
+        ZipFile(zip).use { archive ->
+            val entry = archive.getEntry("data.txt")
+            assertTrue(entry != null)
+
+            val data = archive
+                .getInputStream(entry)
+                .use {
+                    it.readBytes().toString(Charsets.UTF_8)
+                }
+
+            val document = JSONObject(data)
+            assertEquals("doc", document.getString("type"))
+
+            val nodes = document.getJSONArray("content")
+            assertEquals(3, nodes.length())
+            assertEquals(
+                "paragraph",
+                nodes.getJSONObject(0).getString("type")
+            )
+            assertEquals(
+                "horizontalRule",
+                nodes.getJSONObject(1).getString("type")
+            )
+            assertEquals(
+                "blockquote",
+                nodes.getJSONObject(2).getString("type")
+            )
+        }
+    }
+
+    @Test
+    fun infoJsonMatchesGeneratedPackage() {
+        val book = ParsedBook(
+            title = "Первоклассная удача",
+            author = "Автор",
+            language = "zh",
+            description = "<p>Описание книги</p>",
+            chapters = listOf(
+                chapter(1),
+                chapter(2)
+            ),
+            coverBytes = byteArrayOf(1, 2, 3, 4),
+            coverExtension = "png"
+        )
+        val root = Files.createTempDirectory("readerlb_package_").toFile()
+
+        val built = builder.build(
+            book = book,
+            rootDir = root
+        )
+
+        val info = JSONObject(
+            built.titleDir
+                .resolve("info.json")
+                .readText()
+        )
+        val media = info.getJSONObject("media")
+
+        assertEquals(built.slugUrl, media.getString("slugUrl"))
+        assertEquals(2, media.getInt("uploadedCount"))
+        assertEquals("Первоклассная удача", media.getString("name"))
+        assertTrue(media.getString("imageUrl").endsWith("/cover.png"))
+        assertTrue(built.titleDir.resolve("cover.png").isFile)
+    }
+
+    @Test
+    fun verifierDetectsTamperedChapterZip() {
+        val root = Files.createTempDirectory("readerlb_package_").toFile()
+        val built = builder.build(
+            book = bookWithChapters(1, 2),
+            rootDir = root
+        )
+
+        val zip = built.titleDir
+            .listFiles()
+            .orEmpty()
+            .first { it.name.startsWith("v1-n1-") }
+
+        zip.writeText("not-a-zip")
+
+        val report = builder.verify(
+            built = built,
+            expectedChapterNumbers = listOf(1, 2)
+        )
+
+        assertFalse(report.isValid)
+        assertTrue(
+            report.errors.any {
+                it.contains("повреждён") ||
+                    it.contains("data.txt")
+            }
+        )
+    }
+
+    @Test
+    fun duplicateChapterNumbersAreRejectedBeforeWriting() {
+        val book = ParsedBook(
+            title = "Дубликаты",
+            chapters = listOf(
+                chapter(10),
+                chapter(10)
+            )
+        )
+        val root = Files.createTempDirectory("readerlb_package_").toFile()
+
+        try {
+            builder.build(book = book, rootDir = root)
+            fail("Expected duplicate chapter validation to fail")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("повторяются"))
+        }
+    }
+
+    @Test
+    fun reversedRangeIsRejectedBeforeWriting() {
+        val root = Files.createTempDirectory("readerlb_package_").toFile()
+
+        try {
+            builder.build(
+                book = bookWithChapters(1, 2, 3),
+                rootDir = root,
+                firstChapter = 3,
+                lastChapter = 1
+            )
+            fail("Expected reversed range validation to fail")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(
+                error.message
+                    .orEmpty()
+                    .contains("Начальная глава")
+            )
+        }
+    }
+
+    @Test
+    fun stableIdentityDoesNotChangeBetweenBuilds() {
+        val first = builder.stableMediaId("  Культивация Онлайн ")
+        val second = builder.stableMediaId("культивация онлайн")
+
+        assertEquals(first, second)
+        assertEquals(
+            builder.slugify("Культивация Онлайн"),
+            builder.slugify("культивация онлайн")
+        )
+    }
+
+    private fun bookWithChapters(
+        vararg numbers: Int
+    ): ParsedBook =
+        ParsedBook(
+            title = "Тестовая новелла",
+            chapters = numbers.map(::chapter)
+        )
+
+    private fun chapter(number: Int): ParsedChapter =
+        ParsedChapter(
+            number = number,
+            title = "Глава $number",
+            blocks = listOf(
+                ReaderBlock.Paragraph(
+                    "Содержимое главы $number"
+                )
+            )
+        )
+}
