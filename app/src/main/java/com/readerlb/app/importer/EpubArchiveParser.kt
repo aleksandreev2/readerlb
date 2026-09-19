@@ -1281,7 +1281,7 @@ class EpubArchiveParser {
 
         // First alternative: Russian/English. Second: Korean. Third: CJK.
         val CHAPTER_WORD_REGEX = Regex(
-            """(?:(?<![\p{L}\p{N}_])(?:глава|chapter)\s+(\d+(?:[.,]\d+)?)(?![\d.,]))|""" +
+            """(?:(?<![\p{L}\p{N}_])(?:глава|chapter)\s+(\d+(?:[.,]\d+)?)(?!\d))|""" +
                 """(?:제\s*(\d+(?:[.,]\d+)?)\s*화)|""" +
                 """(?:第\s*(\d+(?:[.,]\d+)?)\s*[章話话])""",
             RegexOption.IGNORE_CASE
