@@ -32,6 +32,18 @@ jobs:
       - name: Run unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
 
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReaderLB-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest
+            app/build/test-results/testDebugUnitTest
+
+      - name: Run Android lint
+        run: gradle :app:lintDebug --stacktrace
+
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
 
