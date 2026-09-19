@@ -49,4 +49,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("org.jsoup:jsoup:1.18.3")
+
+    testImplementation("junit:junit:4.13.2")
 }
