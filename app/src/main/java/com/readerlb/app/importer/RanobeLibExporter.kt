@@ -17,8 +17,8 @@ class RanobeLibExporter(private val context: Context) {
     fun export(
         book: ParsedBook,
         titleOverride: String = "",
-        firstChapter: Int? = null,
-        lastChapter: Int? = null,
+        firstChapter: String? = null,
+        lastChapter: String? = null,
         ranobeLibBookTree: Uri? = null
     ): ExportResult {
         val tempRoot = File(
