@@ -112,6 +112,8 @@ class RanobeLibExporter(private val context: Context) {
         return ExportResult(
             title = title,
             chapterCount = selected.size,
+            firstChapter = selected.minOf { it.number },
+            lastChapter = selected.maxOf { it.number },
             slugUrl = slugUrl,
             installedDirectly = installed,
             downloadUri = download?.toString()
