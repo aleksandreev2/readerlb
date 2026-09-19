@@ -39,22 +39,19 @@ class RanobeLibExporter(private val context: Context) {
                 lastChapter = lastChapter
             )
 
-            var installed = false
+            val installed = ranobeLibBookTree != null
             if (ranobeLibBookTree != null) {
-                installed = runCatching {
-                    copyToRanobeLibTree(
-                        treeUri = ranobeLibBookTree,
-                        source = built.titleDir,
-                        slugUrl = built.slugUrl
-                    )
-                    true
-                }.getOrDefault(false)
+                copyToRanobeLibTree(
+                    treeUri = ranobeLibBookTree,
+                    source = built.titleDir,
+                    slugUrl = built.slugUrl
+                )
             }
 
-            val download = if (!installed) {
-                saveZipToDownloads(built)
-            } else {
+            val download = if (installed) {
                 null
+            } else {
+                saveZipToDownloads(built)
             }
 
             return ExportResult(
@@ -79,8 +76,12 @@ class RanobeLibExporter(private val context: Context) {
         val root = DocumentFile.fromTreeUri(context, treeUri)
             ?: error("Нет доступа к папке RanobeLib")
 
-        val titleDir = root.findFile(slugUrl)
-            ?: root.createDirectory(slugUrl)
+        require(root.findFile(slugUrl) == null) {
+            "Тайтл уже существует в RanobeLib. " +
+                "Безопасное обновление существующих тайтлов появится в ReaderLB 0.3."
+        }
+
+        val titleDir = root.createDirectory(slugUrl)
             ?: error("Не удалось создать папку тайтла")
 
         val sourceFiles = source
@@ -93,50 +94,47 @@ class RanobeLibExporter(private val context: Context) {
             "Подготовленный пакет пуст"
         }
 
-        val existing = titleDir
-            .listFiles()
-            .associateBy { it.name }
+        try {
+            sourceFiles.forEach { file ->
+                val target = titleDir.createFile(
+                    mimeType(file),
+                    file.name
+                ) ?: error("Не удалось создать ${file.name}")
 
-        sourceFiles.forEach { file ->
-            existing[file.name]?.let { old ->
-                require(old.delete()) {
-                    "Не удалось заменить ${file.name}"
+                context.contentResolver
+                    .openOutputStream(target.uri, "w")
+                    .use { output ->
+                        requireNotNull(output) {
+                            "Не удалось открыть ${file.name} для записи"
+                        }
+                        file.inputStream().use { input ->
+                            input.copyTo(output)
+                        }
+                    }
+
+                require(target.length() == file.length()) {
+                    "Размер ${file.name} после копирования не совпадает"
                 }
             }
 
-            val target = titleDir.createFile(
-                mimeType(file),
-                file.name
-            ) ?: error("Не удалось создать ${file.name}")
+            val installed = titleDir
+                .listFiles()
+                .associateBy { it.name }
 
-            context.contentResolver
-                .openOutputStream(target.uri, "w")
-                .use { output ->
-                    requireNotNull(output) {
-                        "Не удалось открыть ${file.name} для записи"
-                    }
-                    file.inputStream().use { input ->
-                        input.copyTo(output)
-                    }
+            sourceFiles.forEach { sourceFile ->
+                val target = installed[sourceFile.name]
+                require(target != null && target.isFile) {
+                    "После копирования отсутствует ${sourceFile.name}"
                 }
-
-            require(target.length() == file.length()) {
-                "Размер ${file.name} после копирования не совпадает"
+                require(target.length() == sourceFile.length()) {
+                    "Проверка ${sourceFile.name} после копирования не пройдена"
+                }
             }
-        }
-
-        val installed = titleDir
-            .listFiles()
-            .associateBy { it.name }
-
-        sourceFiles.forEach { sourceFile ->
-            val target = installed[sourceFile.name]
-            require(target != null && target.isFile) {
-                "После копирования отсутствует ${sourceFile.name}"
-            }
-            require(target.length() == sourceFile.length()) {
-                "Проверка ${sourceFile.name} после копирования не пройдена"
-            }
+        } catch (throwable: Throwable) {
+            // This directory was created by this attempt. Removing it prevents
+            // RanobeLib from indexing a half-written book after a failed copy.
+            runCatching { titleDir.delete() }
+            throw throwable
         }
     }
 
