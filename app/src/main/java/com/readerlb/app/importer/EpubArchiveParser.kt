@@ -457,24 +457,51 @@ class EpubArchiveParser {
                         }
                     }
             } else {
-                elementsByLocalName(doc, "a")
-                    .forEach { anchor ->
-                        val href = anchor
-                            .attr("href")
-                            .takeIf(String::isNotBlank)
-                            ?: return@forEach
-                        val label = anchor
-                            .text()
-                            .trim()
-                        if (label.isNotBlank()) {
-                            result[
-                                resolve(
-                                    navigationBase,
-                                    href
-                                )
-                            ] = label
+                val navElements = elementsByLocalName(
+                    doc,
+                    "nav"
+                )
+                val tocRoot = navElements.firstOrNull { nav ->
+                    val type = sequenceOf(
+                        nav.attr("epub:type"),
+                        nav.attr("type"),
+                        nav.id()
+                    )
+                        .joinToString(" ")
+                        .lowercase()
+
+                    type
+                        .split(
+                            Regex("""\s+""")
+                        )
+                        .any {
+                            it == "toc" ||
+                                it.endsWith(":toc")
                         }
+                } ?: doc
+
+                descendantsByLocalName(
+                    tocRoot,
+                    "a"
+                ).forEach { anchor ->
+                    val href = anchor
+                        .attr("href")
+                        .takeIf(String::isNotBlank)
+                        ?: return@forEach
+
+                    val label = anchor
+                        .text()
+                        .trim()
+
+                    if (label.isNotBlank()) {
+                        result[
+                            resolve(
+                                navigationBase,
+                                href
+                            )
+                        ] = label
                     }
+                }
             }
         }
 
