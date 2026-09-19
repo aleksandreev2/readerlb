@@ -131,6 +131,11 @@ class EpubArchiveParserTest {
             ),
             book.chapters.map { it.title }
         )
+        assertTrue(
+            book.issues.none {
+                it.code == "UNNUMBERED_CONTENT_OMITTED"
+            }
+        )
     }
 
     @Test
