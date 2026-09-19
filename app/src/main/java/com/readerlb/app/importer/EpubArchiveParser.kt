@@ -197,9 +197,17 @@ class EpubArchiveParser {
         }
 
         val doc = Jsoup.parse(raw, "", Parser.xmlParser())
-        val body = doc.body()
+        // XmlTreeBuilder does not always populate Document.body() for XHTML,
+        // especially with namespaces. Resolve by local tag name first.
+        val body = elementsByLocalName(doc, "body").firstOrNull() ?: doc
         val plain = body.text().replace('\u00A0', ' ').trim()
-        val heading = body.selectFirst("h1, h2, h3")?.text()?.trim().orEmpty()
+        val heading = body.getAllElements()
+            .firstOrNull {
+                it.tagName().substringAfterLast(':').lowercase() in setOf("h1", "h2", "h3")
+            }
+            ?.text()
+            ?.trim()
+            .orEmpty()
         val hint = (item.id + " " + item.href + " " + item.properties).lowercase()
 
         return HtmlDoc(
