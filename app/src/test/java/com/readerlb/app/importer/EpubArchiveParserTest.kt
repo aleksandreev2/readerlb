@@ -63,6 +63,20 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun supportsMixedFilenameAndTextNumbering() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("ch0001", "text/ch0001.xhtml", "<h1>Глава 1</h1><p>Первая глава с номером в имени файла.</p>"),
+                Doc("sec0002", "text/sec0002.xhtml", "<h1>Вторая</h1><p>Глава 2 Вторая глава с номером только внутри текста.</p>")
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+    }
+
+    @Test
     fun reportsGapsInsteadOfSilentlyCollapsingChapterNumbers() {
         val epub = buildEpub(
             docs = listOf(
