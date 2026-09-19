@@ -138,13 +138,29 @@ class EpubArchiveParser {
                 }
                 require(fallback.isNotEmpty()) { "В EPUB не удалось найти главы" }
 
-                issues += ImportIssue(
-                    code = "NUMBERING_INFERRED",
-                    message = "Номера глав не найдены в EPUB. ReaderLB использовал порядок файлов.",
-                    severity = ImportIssueSeverity.INFO
-                )
-                candidates = fallback.mapIndexed { index, doc ->
-                    doc.toCandidate(index + 1)
+                val declaredRange = sourceRangeFromName(sourceName)
+                if (declaredRange != null && declaredRange.count() == fallback.size) {
+                    issues += ImportIssue(
+                        code = "NUMBERING_FROM_FILENAME",
+                        message = "Номера глав не найдены внутри EPUB. " +
+                            "ReaderLB восстановил диапазон ${declaredRange.first}–${declaredRange.last} " +
+                            "по имени файла.",
+                        severity = ImportIssueSeverity.INFO
+                    )
+                    candidates = fallback.mapIndexed { index, doc ->
+                        doc.toCandidate(declaredRange.first + index)
+                    }
+                } else {
+                    issues += ImportIssue(
+                        code = "NUMBERING_INFERRED",
+                        message = "Надёжные номера глав не найдены. " +
+                            "ReaderLB временно использовал порядок файлов; " +
+                            "проверьте диапазон перед импортом.",
+                        severity = ImportIssueSeverity.WARNING
+                    )
+                    candidates = fallback.mapIndexed { index, doc ->
+                        doc.toCandidate(index + 1)
+                    }
                 }
             }
 
@@ -436,20 +452,27 @@ class EpubArchiveParser {
         return zip.getInputStream(entry).use { it.readBytes() }
     }
 
+    private fun sourceRangeFromName(sourceName: String?): IntRange? {
+        if (sourceName.isNullOrBlank()) return null
+        val match = SOURCE_RANGE_REGEX.find(sourceName) ?: return null
+        val start = match.groupValues[1].toIntOrNull() ?: return null
+        val end = match.groupValues[2].toIntOrNull() ?: return null
+        return if (end >= start) start..end else null
+    }
+
     private fun validateExpectedRange(
         sourceName: String?,
         actualNumbers: List<Int>,
         issues: MutableList<ImportIssue>
     ) {
-        if (sourceName.isNullOrBlank() || actualNumbers.isEmpty()) return
-        val match = SOURCE_RANGE_REGEX.find(sourceName) ?: return
-        val start = match.groupValues[1].toIntOrNull() ?: return
-        val end = match.groupValues[2].toIntOrNull() ?: return
-        if (end < start) return
+        if (actualNumbers.isEmpty()) return
+        val expected = sourceRangeFromName(sourceName) ?: return
+        val start = expected.first
+        val end = expected.last
 
         val actual = actualNumbers.toHashSet()
-        val missing = (start..end).filterNot(actual::contains)
-        val outside = actualNumbers.filter { it < start || it > end }
+        val missing = expected.filterNot(actual::contains)
+        val outside = actualNumbers.filter { it !in expected }
 
         if (missing.isNotEmpty() || outside.isNotEmpty()) {
             val details = buildList {
