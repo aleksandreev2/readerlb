@@ -15,7 +15,7 @@ import java.util.zip.ZipFile
  */
 class EpubArchiveParser {
 
-    fun parse(file: File): ParsedBook {
+    fun parse(file: File, sourceName: String? = null): ParsedBook {
         ZipFile(file).use { zip ->
             val issues = mutableListOf<ImportIssue>()
 
@@ -155,6 +155,8 @@ class EpubArchiveParser {
                     )
                 }
             }
+
+            validateExpectedRange(sourceName, numbers, issues)
 
             val chapters = deduplicated.map { candidate ->
                 ParsedChapter(
@@ -371,6 +373,33 @@ class EpubArchiveParser {
     private fun readBytes(zip: ZipFile, path: String): ByteArray {
         val entry = zip.getEntry(path) ?: error("В EPUB отсутствует $path")
         return zip.getInputStream(entry).use { it.readBytes() }
+    }
+
+    private fun validateExpectedRange(
+        sourceName: String?,
+        actualNumbers: List<Int>,
+        issues: MutableList<ImportIssue>
+    ) {
+        if (sourceName.isNullOrBlank() || actualNumbers.isEmpty()) return
+        val match = SOURCE_RANGE_REGEX.find(sourceName) ?: return
+        val start = match.groupValues[1].toIntOrNull() ?: return
+        val end = match.groupValues[2].toIntOrNull() ?: return
+        if (end < start) return
+
+        val actual = actualNumbers.toHashSet()
+        val missing = (start..end).filterNot(actual::contains)
+        val outside = actualNumbers.filter { it < start || it > end }
+
+        if (missing.isNotEmpty() || outside.isNotEmpty()) {
+            val details = buildList {
+                if (missing.isNotEmpty()) add("не найдены: ${formatRanges(missing)}")
+                if (outside.isNotEmpty()) add("вне заявленного диапазона: ${formatRanges(outside)}")
+            }.joinToString("; ")
+            issues += ImportIssue(
+                code = "SOURCE_RANGE_MISMATCH",
+                message = "Имя файла заявляет главы $start–$end, но структура EPUB не совпадает ($details)."
+            )
+        }
     }
 
     private fun formatNumbers(numbers: List<Int>): String =
