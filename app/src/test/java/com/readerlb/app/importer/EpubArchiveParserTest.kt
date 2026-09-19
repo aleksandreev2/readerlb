@@ -25,7 +25,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertEquals(listOf("1", "2"), book.chapters.map { it.number })
         assertEquals("Тестовая книга", book.title)
     }
 
@@ -41,7 +41,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(431, 432, 433), book.chapters.map { it.number })
+        assertEquals(listOf("431", "432", "433"), book.chapters.map { it.number })
     }
 
     @Test
@@ -58,7 +58,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertEquals(listOf("1", "2"), book.chapters.map { it.number })
         assertTrue(book.chapters.none { it.title.contains("Справочник") })
     }
 
@@ -73,7 +73,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertEquals(listOf("1", "2"), book.chapters.map { it.number })
     }
 
     @Test
@@ -87,8 +87,52 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(1, 3), book.chapters.map { it.number })
+        assertEquals(listOf("1", "3"), book.chapters.map { it.number })
         assertTrue(book.issues.any { it.code == "CHAPTER_GAPS" && it.message.contains("2") })
+    }
+
+    @Test
+    fun ncxNavigationOverridesTechnicalFilenameSequence() {
+        val epub = buildEpubWithNcx(
+            docs = listOf(
+                Doc(
+                    "chapter0001",
+                    "Text/chapter0001.xhtml",
+                    "<p>Пролог без номера внутри текста.</p>"
+                ),
+                Doc(
+                    "chapter0002",
+                    "Text/chapter0002.xhtml",
+                    "<p>Первая корейская глава без слова Chapter.</p>"
+                ),
+                Doc(
+                    "chapter0003",
+                    "Text/chapter0003.xhtml",
+                    "<p>Вторая корейская глава без слова Chapter.</p>"
+                )
+            ),
+            labels = listOf(
+                "프롤로그",
+                "1. 야호",
+                "2. 적합도 1.1"
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(
+            listOf("0", "1", "2"),
+            book.chapters.map { it.number }
+        )
+        assertEquals(
+            listOf("프롤로그", "야호", "적합도 1.1"),
+            book.chapters.map { it.title }
+        )
+        assertTrue(
+            book.issues.any {
+                it.code == "TOC_NUMBERING_USED"
+            }
+        )
     }
 
     @Test
@@ -103,7 +147,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertEquals(listOf("1", "2"), book.chapters.map { it.number })
     }
 
     @Test
@@ -117,7 +161,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertEquals(listOf("1", "2"), book.chapters.map { it.number })
         assertTrue(book.issues.any { it.code == "NUMBERING_INFERRED" })
     }
 
@@ -137,7 +181,7 @@ class EpubArchiveParserTest {
         )
 
         assertEquals(
-            listOf(431, 432, 433),
+            listOf("431", "432", "433"),
             book.chapters.map { it.number }
         )
         assertTrue(
@@ -164,7 +208,7 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub, "Тестовая_книга.epub")
 
-        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertEquals(listOf("1", "2"), book.chapters.map { it.number })
         assertTrue(
             book.issues.any {
                 it.code == "NUMBERING_INFERRED" &&
@@ -187,7 +231,7 @@ class EpubArchiveParserTest {
             "Тестовая_книга_главы_431-433.epub"
         )
 
-        assertEquals(listOf(1, 2), book.chapters.map { it.number })
+        assertEquals(listOf("1", "2"), book.chapters.map { it.number })
         assertTrue(book.issues.any { it.code == "NUMBERING_INFERRED" })
         assertTrue(book.issues.any { it.code == "SOURCE_RANGE_MISMATCH" })
     }
@@ -288,6 +332,41 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun preservesDecimalAndZeroPaddedNumbersFromNavigation() {
+        val epub = buildEpubWithNcx(
+            docs = listOf(
+                Doc(
+                    "chapter0001",
+                    "Text/chapter0001.xhtml",
+                    "<p>Спецглава.</p>"
+                ),
+                Doc(
+                    "chapter0002",
+                    "Text/chapter0002.xhtml",
+                    "<p>Глава с ведущими нулями.</p>"
+                ),
+                Doc(
+                    "chapter0003",
+                    "Text/chapter0003.xhtml",
+                    "<p>Обычная глава.</p>"
+                )
+            ),
+            labels = listOf(
+                "0.5 — Special",
+                "001. Zero padded",
+                "1. Normal"
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(
+            listOf("0.5", "001", "1"),
+            book.chapters.map { it.number }
+        )
+    }
+
+    @Test
     fun reportsFilenameAndTextNumberMismatch() {
         val epub = buildEpub(
             docs = listOf(
@@ -297,8 +376,88 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertEquals(10, book.chapters.single().number)
+        assertEquals("10", book.chapters.single().number)
         assertTrue(book.issues.any { it.code == "NUMBER_MISMATCH" })
+    }
+
+    private fun buildEpubWithNcx(
+        docs: List<Doc>,
+        labels: List<String>
+    ): File {
+        require(docs.size == labels.size)
+
+        val file = Files.createTempFile(
+            "readerlb_ncx_test_",
+            ".epub"
+        ).toFile()
+        file.deleteOnExit()
+
+        val container = """<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+        val manifest = buildString {
+            append(
+                """<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>"""
+            )
+            docs.forEach { doc ->
+                append(
+                    """<item id="${doc.id}" href="${doc.href}" media-type="application/xhtml+xml"/>"""
+                )
+            }
+        }
+
+        val spine = docs.joinToString("\n") { doc ->
+            """<itemref idref="${doc.id}"/>"""
+        }
+
+        val opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"
+         version="2.0">
+  <metadata>
+    <dc:title>NCX book</dc:title>
+    <dc:language>ko</dc:language>
+  </metadata>
+  <manifest>$manifest</manifest>
+  <spine toc="ncx">$spine</spine>
+</package>"""
+
+        val navPoints = docs.indices.joinToString("\n") { index ->
+            """<navPoint id="n$index" playOrder="${index + 1}">
+<navLabel><text>${labels[index]}</text></navLabel>
+<content src="${docs[index].href}"/>
+</navPoint>"""
+        }
+
+        val ncx = """<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+<navMap>$navPoints</navMap>
+</ncx>"""
+
+        ZipOutputStream(file.outputStream()).use { zip ->
+            put(zip, "mimetype", "application/epub+zip")
+            put(zip, "META-INF/container.xml", container)
+            put(zip, "OEBPS/content.opf", opf)
+            put(zip, "OEBPS/toc.ncx", ncx)
+
+            docs.forEach { doc ->
+                put(
+                    zip,
+                    "OEBPS/${doc.href}",
+                    """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>${doc.id}</title></head>
+<body>${doc.body}</body>
+</html>"""
+                )
+            }
+        }
+
+        return file
     }
 
     private fun buildEpub(
