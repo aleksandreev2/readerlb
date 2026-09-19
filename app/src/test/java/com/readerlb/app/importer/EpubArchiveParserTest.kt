@@ -184,6 +184,20 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun coverImageDoesNotTriggerChapterImageWarning() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("cover", "text/cover.xhtml", "<h1>Обложка</h1><img src=\"../images/cover.jpg\"/>"),
+                Doc("ch0001", "text/ch0001.xhtml", "<h1>Глава 1</h1><p>Текст главы без встроенных изображений.</p>")
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertTrue(book.issues.none { it.code == "INLINE_IMAGES_OMITTED" })
+    }
+
+    @Test
     fun warnsWhenChapterImagesWouldBeOmitted() {
         val epub = buildEpub(
             docs = listOf(
