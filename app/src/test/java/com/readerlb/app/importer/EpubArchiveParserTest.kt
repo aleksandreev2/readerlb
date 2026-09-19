@@ -92,6 +92,48 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun epub3TocNavigationIsUsedWithoutPageListOverrides() {
+        val epub = buildEpubWithNav(
+            docs = listOf(
+                Doc(
+                    "sec0000",
+                    "text/sec0000.xhtml",
+                    "<h1>Справочник</h1><p>Служебный справочный раздел.</p>"
+                ),
+                Doc(
+                    "sec0001",
+                    "text/sec0001.xhtml",
+                    "<h1>Первое название</h1><p>Содержимое первой главы без номера в тексте.</p>"
+                ),
+                Doc(
+                    "sec0002",
+                    "text/sec0002.xhtml",
+                    "<h1>Второе название</h1><p>Содержимое второй главы без номера в тексте.</p>"
+                )
+            ),
+            tocLabels = listOf(
+                "Справочник. Термины",
+                "Глава 1. Первое название",
+                "Глава 2. Второе название"
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(
+            listOf("1", "2"),
+            book.chapters.map { it.number }
+        )
+        assertEquals(
+            listOf(
+                "Первое название",
+                "Второе название"
+            ),
+            book.chapters.map { it.title }
+        )
+    }
+
+    @Test
     fun ncxNavigationOverridesTechnicalFilenameSequence() {
         val epub = buildEpubWithNcx(
             docs = listOf(
@@ -378,6 +420,94 @@ class EpubArchiveParserTest {
 
         assertEquals("10", book.chapters.single().number)
         assertTrue(book.issues.any { it.code == "NUMBER_MISMATCH" })
+    }
+
+    private fun buildEpubWithNav(
+        docs: List<Doc>,
+        tocLabels: List<String>
+    ): File {
+        require(docs.size == tocLabels.size)
+
+        val file = Files.createTempFile(
+            "readerlb_nav_test_",
+            ".epub"
+        ).toFile()
+        file.deleteOnExit()
+
+        val container = """<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+
+        val manifest = buildString {
+            append(
+                """<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>"""
+            )
+            docs.forEach { doc ->
+                append(
+                    """<item id="${doc.id}" href="${doc.href}" media-type="application/xhtml+xml"/>"""
+                )
+            }
+        }
+
+        val spine = docs.joinToString("\n") { doc ->
+            """<itemref idref="${doc.id}"/>"""
+        }
+
+        val opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"
+         version="3.0">
+  <metadata>
+    <dc:title>EPUB3 nav book</dc:title>
+    <dc:language>ru</dc:language>
+  </metadata>
+  <manifest>$manifest</manifest>
+  <spine>$spine</spine>
+</package>"""
+
+        val tocItems = docs.indices.joinToString("\n") { index ->
+            """<li><a href="${docs[index].href}">${tocLabels[index]}</a></li>"""
+        }
+        val pageListItems = docs.indices.joinToString("\n") { index ->
+            """<li><a href="${docs[index].href}">PAGE-${index + 100}</a></li>"""
+        }
+
+        val nav = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:epub="http://www.idpf.org/2007/ops">
+<body>
+<nav epub:type="toc" id="toc">
+  <ol>$tocItems</ol>
+</nav>
+<nav epub:type="page-list" id="pages">
+  <ol>$pageListItems</ol>
+</nav>
+</body>
+</html>"""
+
+        ZipOutputStream(file.outputStream()).use { zip ->
+            put(zip, "mimetype", "application/epub+zip")
+            put(zip, "META-INF/container.xml", container)
+            put(zip, "OEBPS/content.opf", opf)
+            put(zip, "OEBPS/nav.xhtml", nav)
+
+            docs.forEach { doc ->
+                put(
+                    zip,
+                    "OEBPS/${doc.href}",
+                    """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>${doc.id}</title></head>
+<body>${doc.body}</body>
+</html>"""
+                )
+            }
+        }
+
+        return file
     }
 
     private fun buildEpubWithNcx(
