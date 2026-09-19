@@ -191,18 +191,28 @@ class EpubArchiveParser {
             }
 
             val numberDisagreements = docs.filter { doc ->
-                val toc = doc.tocChapterNumber
-                val text = doc.textChapterNumber
-                toc != null &&
-                    text != null &&
-                    !chapterNumbersEquivalent(toc, text)
+                val preferred = doc.tocChapterNumber
+                    ?: doc.textChapterNumber
+                    ?: doc.hrefChapterNumber
+                    ?: return@filter false
+
+                listOfNotNull(
+                    doc.tocChapterNumber,
+                    doc.textChapterNumber,
+                    doc.hrefChapterNumber
+                ).any {
+                    !chapterNumbersEquivalent(
+                        preferred,
+                        it
+                    )
+                }
             }
             if (numberDisagreements.isNotEmpty()) {
                 issues += ImportIssue(
                     code = "NUMBER_MISMATCH",
-                    message = "В ${numberDisagreements.size} главах номер " +
-                        "в оглавлении не совпадает с номером в тексте. " +
-                        "ReaderLB использовал оглавление."
+                    message = "В ${numberDisagreements.size} главах источники нумерации " +
+                        "не совпадают. ReaderLB использовал приоритет: " +
+                        "оглавление → номер в тексте → техническое имя файла."
                 )
             }
 
