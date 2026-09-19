@@ -86,19 +86,16 @@ class EpubArchiveParser {
                     )
                 }
 
-            val explicitHref = docs
-                .filter { it.hrefChapterNumber != null && !it.serviceDocument }
-                .map { it.toCandidate(it.hrefChapterNumber!!) }
-
-            val textNumbered = docs
-                .filter { it.textChapterNumber != null && !it.serviceDocument }
-                .map { it.toCandidate(it.textChapterNumber!!) }
+            val numbered = docs
+                .filterNot { it.serviceDocument }
+                .mapNotNull { doc ->
+                    val number = doc.hrefChapterNumber ?: doc.textChapterNumber
+                    number?.let(doc::toCandidate)
+                }
 
             val candidates: List<ChapterCandidate>
-            if (explicitHref.isNotEmpty()) {
-                candidates = explicitHref
-            } else if (textNumbered.isNotEmpty()) {
-                candidates = textNumbered
+            if (numbered.isNotEmpty()) {
+                candidates = numbered
             } else {
                 val fallback = docs.filter {
                     !it.serviceDocument && it.plainText.length >= MIN_CHAPTER_TEXT
