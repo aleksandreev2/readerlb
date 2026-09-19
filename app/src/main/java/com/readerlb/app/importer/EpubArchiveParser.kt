@@ -594,6 +594,21 @@ class EpubArchiveParser {
             ?.trim()
             .orEmpty()
 
+        val hrefChapterNumber = chapterNumberFromHref(
+            item.href
+        )
+        val textChapterNumber = chapterNumberFromText(
+            plainText = plainText,
+            heading = heading
+        )
+        val tocChapterNumber = chapterNumberFromLabel(
+            tocLabel
+        )
+        val hasReliableChapterNumber =
+            tocChapterNumber != null ||
+                textChapterNumber != null ||
+                hrefChapterNumber != null
+
         return HtmlDoc(
             item = item,
             spineIndex = spineIndex,
@@ -604,18 +619,17 @@ class EpubArchiveParser {
                 body,
                 heading
             ),
-            hrefChapterNumber = chapterNumberFromHref(
-                item.href
-            ),
-            textChapterNumber = chapterNumberFromText(
-                plainText = plainText,
-                heading = heading
-            ),
-            tocChapterNumber = chapterNumberFromLabel(
-                tocLabel
-            ),
-            serviceDocument = isServiceDocument(item) ||
-                isServiceLabel(tocLabel, heading),
+            hrefChapterNumber = hrefChapterNumber,
+            textChapterNumber = textChapterNumber,
+            tocChapterNumber = tocChapterNumber,
+            // A real chapter number always wins over service-page heuristics.
+            // This prevents titles such as "Глава 10 — Справочник мага"
+            // from being silently discarded.
+            serviceDocument = !hasReliableChapterNumber &&
+                (
+                    isServiceDocument(item) ||
+                        isServiceLabel(tocLabel, heading)
+                    ),
             inlineImageCount = body
                 .getAllElements()
                 .count {
@@ -886,9 +900,33 @@ class EpubArchiveParser {
                         walk(child)
                     }
 
+                    "li", "pre", "td", "th", "figcaption" -> {
+                        val text = child
+                            .wholeText()
+                            .replace('\u00A0', ' ')
+                            .trim()
+                        if (text.isNotBlank()) {
+                            out += ReaderBlock.Paragraph(text)
+                        }
+                    }
+
                     else -> {
                         if (child.children().isNotEmpty()) {
                             walk(child)
+                        } else {
+                            val tag = child
+                                .tagName()
+                                .substringAfterLast(':')
+                                .lowercase()
+                            if (tag !in NON_CONTENT_TAGS) {
+                                val text = child
+                                    .wholeText()
+                                    .replace('\u00A0', ' ')
+                                    .trim()
+                                if (text.isNotBlank()) {
+                                    out += ReaderBlock.Paragraph(text)
+                                }
+                            }
                         }
                     }
                 }
@@ -1341,6 +1379,17 @@ class EpubArchiveParser {
             "translation info",
             "translation information",
             "glossary"
+        )
+
+        val NON_CONTENT_TAGS = setOf(
+            "script",
+            "style",
+            "link",
+            "meta",
+            "img",
+            "svg",
+            "source",
+            "br"
         )
 
         val SERVICE_IDS = setOf(
