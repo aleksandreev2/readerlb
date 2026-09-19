@@ -138,6 +138,25 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun warnsWhenChapterImagesWouldBeOmitted() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "chapter0001",
+                    "text/chapter0001.xhtml",
+                    "<h1>Глава 1</h1><p>Текст главы достаточно длинный.</p><img src=\"../images/ill_001.jpg\"/>"
+                )
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertTrue(book.issues.any {
+            it.code == "INLINE_IMAGES_OMITTED" && it.message.contains("1")
+        })
+    }
+
+    @Test
     fun reportsFilenameAndTextNumberMismatch() {
         val epub = buildEpub(
             docs = listOf(
