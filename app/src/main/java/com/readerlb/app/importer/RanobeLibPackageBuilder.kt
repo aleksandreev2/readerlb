@@ -1,0 +1,602 @@
+package com.readerlb.app.importer
+
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+import kotlin.math.absoluteValue
+
+data class BuiltRanobeLibPackage(
+    val rootDir: File,
+    val titleDir: File,
+    val title: String,
+    val chapterCount: Int,
+    val firstChapter: Int,
+    val lastChapter: Int,
+    val slugUrl: String
+)
+
+data class PackageVerificationReport(
+    val errors: List<String>
+) {
+    val isValid: Boolean get() = errors.isEmpty()
+}
+
+class PackageVerificationException(
+    val report: PackageVerificationReport
+) : IllegalStateException(
+    buildString {
+        append("Проверка пакета RanobeLib не пройдена")
+        if (report.errors.isNotEmpty()) {
+            append(": ")
+            append(report.errors.joinToString("; "))
+        }
+    }
+)
+
+/**
+ * Pure filesystem builder for the local RanobeLib book format.
+ *
+ * Android storage APIs intentionally do not live here. This allows the exact
+ * package generation and verification path to run in ordinary JVM tests.
+ */
+class RanobeLibPackageBuilder(
+    private val nowMillis: () -> Long = System::currentTimeMillis
+) {
+
+    fun build(
+        book: ParsedBook,
+        rootDir: File,
+        titleOverride: String = "",
+        firstChapter: Int? = null,
+        lastChapter: Int? = null
+    ): BuiltRanobeLibPackage {
+        if (firstChapter != null && lastChapter != null) {
+            require(firstChapter <= lastChapter) {
+                "Начальная глава не может быть больше конечной"
+            }
+        }
+
+        val title = titleOverride.trim().ifBlank { book.title.trim() }
+        require(title.isNotBlank()) { "Название новеллы не может быть пустым" }
+
+        val duplicateSourceNumbers = book.chapters
+            .groupingBy { it.number }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
+            .sorted()
+        require(duplicateSourceNumbers.isEmpty()) {
+            "В исходных данных повторяются номера глав: " +
+                duplicateSourceNumbers.take(20).joinToString()
+        }
+
+        val selected = book.chapters
+            .filter { chapter ->
+                (firstChapter == null || chapter.number >= firstChapter) &&
+                    (lastChapter == null || chapter.number <= lastChapter)
+            }
+            .sortedBy { it.number }
+
+        require(selected.isNotEmpty()) {
+            "В выбранный диапазон не попало ни одной главы"
+        }
+
+        val mediaId = stableMediaId(title)
+        val slug = slugify(title).ifBlank { "local-book-$mediaId" }
+        val slugUrl = "$mediaId--$slug"
+
+        val titleDir = File(rootDir, "book/$slugUrl")
+        if (titleDir.exists()) {
+            require(titleDir.deleteRecursively()) {
+                "Не удалось очистить временную папку пакета"
+            }
+        }
+        require(titleDir.mkdirs()) {
+            "Не удалось создать временную папку пакета"
+        }
+
+        val coverName = writeCover(book, titleDir)
+        val coverUri = coverName?.let {
+            "file:///storage/emulated/0/Android/data/ru.libappc/files/book/$slugUrl/$it"
+        }.orEmpty()
+
+        val generatedAt = nowMillis()
+        val chaptersJson = JSONArray()
+
+        selected.forEachIndexed { index, chapter ->
+            val chapterId = chapterId(mediaId, chapter.number)
+            val zipName = chapterZipName(chapter.number, chapterId)
+
+            ZipOutputStream(
+                File(titleDir, zipName).outputStream().buffered()
+            ).use { zip ->
+                zip.putNextEntry(ZipEntry("data.txt"))
+                zip.write(
+                    readerDocument(chapter)
+                        .toString()
+                        .toByteArray(Charsets.UTF_8)
+                )
+                zip.closeEntry()
+            }
+
+            val branch = JSONObject()
+                .put("id", chapterId)
+                .put("branchId", -1)
+                .put("dateMillis", generatedAt + index)
+                .put("teams", JSONArray())
+                .put(
+                    "user",
+                    JSONObject()
+                        .put("id", 0)
+                        .put("username", "ReaderLB")
+                )
+                .put("notify", false)
+
+            chaptersJson.put(
+                JSONObject()
+                    .put("id", chapterId)
+                    .put("volume", "1")
+                    .put("number", chapter.number.toString())
+                    .put("name", chapter.title)
+                    .put("itemNumber", index + 1)
+                    .put("branches", JSONArray().put(branch))
+                    .put("withBranches", false)
+                    .put("totalBranchesSize", 1)
+            )
+        }
+
+        File(titleDir, "chapters.json")
+            .writeText(chaptersJson.toString(), Charsets.UTF_8)
+
+        File(titleDir, "info.json").writeText(
+            infoJson(
+                mediaId = mediaId,
+                slug = slug,
+                slugUrl = slugUrl,
+                title = title,
+                book = book,
+                chapterCount = selected.size,
+                coverUri = coverUri,
+                generatedAt = generatedAt
+            ).toString(),
+            Charsets.UTF_8
+        )
+
+        val built = BuiltRanobeLibPackage(
+            rootDir = rootDir,
+            titleDir = titleDir,
+            title = title,
+            chapterCount = selected.size,
+            firstChapter = selected.first().number,
+            lastChapter = selected.last().number,
+            slugUrl = slugUrl
+        )
+
+        val report = verify(
+            built = built,
+            expectedChapterNumbers = selected.map { it.number }
+        )
+        if (!report.isValid) throw PackageVerificationException(report)
+
+        return built
+    }
+
+    fun verify(
+        built: BuiltRanobeLibPackage,
+        expectedChapterNumbers: List<Int>? = null
+    ): PackageVerificationReport {
+        val errors = mutableListOf<String>()
+        val titleDir = built.titleDir
+
+        if (!titleDir.isDirectory) {
+            return PackageVerificationReport(
+                listOf("Папка тайтла не существует")
+            )
+        }
+
+        val infoFile = File(titleDir, "info.json")
+        val chaptersFile = File(titleDir, "chapters.json")
+
+        if (!infoFile.isFile || infoFile.length() == 0L) {
+            errors += "info.json отсутствует или пуст"
+        }
+        if (!chaptersFile.isFile || chaptersFile.length() == 0L) {
+            errors += "chapters.json отсутствует или пуст"
+        }
+
+        val info = runCatching {
+            JSONObject(infoFile.readText(Charsets.UTF_8))
+        }.getOrElse {
+            errors += "info.json не является валидным JSON"
+            null
+        }
+
+        val chapters = runCatching {
+            JSONArray(chaptersFile.readText(Charsets.UTF_8))
+        }.getOrElse {
+            errors += "chapters.json не является валидным JSON"
+            null
+        }
+
+        if (info != null) {
+            val media = info.optJSONObject("media")
+            if (media == null) {
+                errors += "info.json не содержит media"
+            } else {
+                if (media.optString("slugUrl") != built.slugUrl) {
+                    errors += "slugUrl в info.json не совпадает с папкой"
+                }
+                if (media.optInt("uploadedCount", -1) != built.chapterCount) {
+                    errors += "uploadedCount не совпадает с числом глав"
+                }
+
+                val cover = media.optString("imageUrl")
+                if (cover.isNotBlank()) {
+                    val coverName = cover.substringAfterLast('/')
+                    val coverFile = File(titleDir, coverName)
+                    if (!coverFile.isFile || coverFile.length() == 0L) {
+                        errors += "Обложка указана в info.json, но файл отсутствует"
+                    }
+                }
+            }
+        }
+
+        val actualNumbers = mutableListOf<Int>()
+
+        if (chapters != null) {
+            if (chapters.length() != built.chapterCount) {
+                errors += "chapters.json содержит ${chapters.length()} глав вместо ${built.chapterCount}"
+            }
+
+            val seenNumbers = mutableSetOf<Int>()
+            val seenIds = mutableSetOf<Long>()
+
+            for (index in 0 until chapters.length()) {
+                val chapter = chapters.optJSONObject(index)
+                if (chapter == null) {
+                    errors += "Элемент chapters.json #${index + 1} не является объектом"
+                    continue
+                }
+
+                val number = chapter.optString("number").toIntOrNull()
+                if (number == null) {
+                    errors += "У главы #${index + 1} некорректный номер"
+                    continue
+                }
+                actualNumbers += number
+
+                if (!seenNumbers.add(number)) {
+                    errors += "В chapters.json повторяется глава $number"
+                }
+
+                val id = chapter.optLong("id", Long.MIN_VALUE)
+                if (id == Long.MIN_VALUE) {
+                    errors += "У главы $number отсутствует id"
+                    continue
+                }
+                if (!seenIds.add(id)) {
+                    errors += "В chapters.json повторяется id $id"
+                }
+
+                val zipFile = File(
+                    titleDir,
+                    chapterZipName(number, id)
+                )
+
+                verifyChapterZip(
+                    zipFile = zipFile,
+                    chapterNumber = number,
+                    errors = errors
+                )
+            }
+        }
+
+        if (expectedChapterNumbers != null) {
+            if (actualNumbers != expectedChapterNumbers) {
+                errors += "Список номеров глав после сборки не совпадает с исходным"
+            }
+        }
+
+        val zipFiles = titleDir.listFiles()
+            .orEmpty()
+            .filter { it.isFile && it.extension.equals("zip", true) }
+
+        if (zipFiles.size != built.chapterCount) {
+            errors += "В папке ${zipFiles.size} ZIP глав вместо ${built.chapterCount}"
+        }
+
+        return PackageVerificationReport(errors.distinct())
+    }
+
+    private fun verifyChapterZip(
+        zipFile: File,
+        chapterNumber: Int,
+        errors: MutableList<String>
+    ) {
+        if (!zipFile.isFile || zipFile.length() == 0L) {
+            errors += "ZIP главы $chapterNumber отсутствует или пуст"
+            return
+        }
+
+        runCatching {
+            ZipFile(zipFile).use { zip ->
+                val entries = zip.entries().toList()
+                val dataEntry = entries.firstOrNull { it.name == "data.txt" }
+                if (dataEntry == null) {
+                    errors += "ZIP главы $chapterNumber не содержит data.txt"
+                    return@use
+                }
+
+                val unexpected = entries.filterNot {
+                    it.isDirectory || it.name == "data.txt"
+                }
+                if (unexpected.isNotEmpty()) {
+                    errors += "ZIP главы $chapterNumber содержит лишние файлы"
+                }
+
+                val data = zip.getInputStream(dataEntry).use {
+                    it.readBytes().toString(Charsets.UTF_8)
+                }
+                val document = JSONObject(data)
+
+                if (document.optString("type") != "doc") {
+                    errors += "data.txt главы $chapterNumber имеет неверный корневой type"
+                }
+                if (document.optJSONArray("content") == null) {
+                    errors += "data.txt главы $chapterNumber не содержит content"
+                }
+            }
+        }.onFailure {
+            errors += "ZIP главы $chapterNumber повреждён: ${it.message ?: it.javaClass.simpleName}"
+        }
+    }
+
+    private fun writeCover(
+        book: ParsedBook,
+        titleDir: File
+    ): String? {
+        val bytes = book.coverBytes ?: return null
+        if (bytes.isEmpty()) return null
+
+        val extension = when (book.coverExtension.lowercase()) {
+            "jpeg" -> "jpg"
+            "jpg", "png", "webp" -> book.coverExtension.lowercase()
+            else -> "jpg"
+        }
+
+        val name = "cover.$extension"
+        File(titleDir, name).writeBytes(bytes)
+        return name
+    }
+
+    private fun readerDocument(chapter: ParsedChapter): JSONObject {
+        val content = JSONArray()
+
+        chapter.blocks.forEach { block ->
+            when (block) {
+                is ReaderBlock.Paragraph -> {
+                    val node = JSONObject()
+                        .put("type", "paragraph")
+
+                    if (block.centered) {
+                        node.put(
+                            "attrs",
+                            JSONObject().put("textAlign", "center")
+                        )
+                    }
+
+                    if (block.text.isNotBlank()) {
+                        node.put(
+                            "content",
+                            JSONArray().put(
+                                JSONObject()
+                                    .put("type", "text")
+                                    .put("text", block.text)
+                            )
+                        )
+                    }
+
+                    content.put(node)
+                }
+
+                ReaderBlock.HorizontalRule -> {
+                    content.put(
+                        JSONObject().put("type", "horizontalRule")
+                    )
+                }
+
+                is ReaderBlock.Quote -> {
+                    val quoteContent = JSONArray()
+                    block.lines
+                        .filter(String::isNotBlank)
+                        .forEach { line ->
+                            quoteContent.put(
+                                JSONObject()
+                                    .put("type", "paragraph")
+                                    .put(
+                                        "attrs",
+                                        JSONObject().put(
+                                            "textAlign",
+                                            "center"
+                                        )
+                                    )
+                                    .put(
+                                        "content",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put("type", "text")
+                                                .put("text", line)
+                                        )
+                                    )
+                            )
+                        }
+
+                    if (quoteContent.length() > 0) {
+                        content.put(
+                            JSONObject()
+                                .put("type", "blockquote")
+                                .put("content", quoteContent)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (content.length() == 0) {
+            content.put(
+                JSONObject().put("type", "paragraph")
+            )
+        }
+
+        return JSONObject()
+            .put("type", "doc")
+            .put("content", content)
+    }
+
+    private fun infoJson(
+        mediaId: Int,
+        slug: String,
+        slugUrl: String,
+        title: String,
+        book: ParsedBook,
+        chapterCount: Int,
+        coverUri: String,
+        generatedAt: Long
+    ): JSONObject {
+        val typeTitle = when (book.language.lowercase()) {
+            "zh", "zh-cn", "zh-hans", "cn" -> "Китай"
+            "ko", "kr" -> "Корея"
+            "ja", "jp" -> "Япония"
+            else -> "Другое"
+        }
+
+        val summary = book.description
+            .replace(Regex("<[^>]+>"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(1800)
+            .ifBlank {
+                "Локальный тайтл, импортированный через ReaderLB."
+            }
+
+        val media = JSONObject()
+            .put("id", mediaId)
+            .put("name", title)
+            .put("rusName", title)
+            .put("engName", title)
+            .put("otherNames", JSONArray())
+            .put("slug", slug)
+            .put("slugUrl", slugUrl)
+            .put("imageUrl", coverUri)
+            .put("model", "manga")
+            .put("sourceId", "3")
+            .put("backgroundUrl", coverUri)
+            .put("ageRestriction", tag("6+", "1"))
+            .put("type", tag(typeTitle, "0"))
+            .put("summary", summary)
+            .put("closeView", 0)
+            .put("closeComments", 0)
+            .put("releaseDate", "")
+            .put("views", "0")
+            .put(
+                "rating",
+                JSONObject()
+                    .put("first", "0.00")
+                    .put("second", "0")
+                    .put("third", 0)
+            )
+            .put("genres", JSONArray())
+            .put("tags", JSONArray())
+            .put(
+                "authors",
+                if (book.author.isBlank()) {
+                    JSONArray()
+                } else {
+                    JSONArray().put(
+                        JSONObject().put("name", book.author)
+                    )
+                }
+            )
+            .put("artists", JSONArray())
+            .put("uploadedCount", chapterCount)
+            .put("status", tag("Онгоинг", "1"))
+            .put("scanlateStatus", tag("Онгоинг", "1"))
+            .put("format", JSONArray().put(tag("Веб", "6")))
+
+        return JSONObject()
+            .put("media", media)
+            .put("writeTime", generatedAt)
+            .put("version", 1)
+    }
+
+    private fun tag(title: String, id: String): JSONObject =
+        JSONObject()
+            .put("title", title)
+            .put("id", id)
+            .put("tag", JSONObject.NULL)
+
+    internal fun stableMediaId(title: String): Int {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(
+                title
+                    .lowercase()
+                    .trim()
+                    .toByteArray(Charsets.UTF_8)
+            )
+
+        val raw = (
+            (digest[0].toInt() shl 24) or
+                ((digest[1].toInt() and 0xff) shl 16) or
+                ((digest[2].toInt() and 0xff) shl 8) or
+                (digest[3].toInt() and 0xff)
+            ).absoluteValue
+
+        return 900_000_000 + (raw % 90_000_000)
+    }
+
+    internal fun slugify(value: String): String {
+        val table = mapOf(
+            'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d",
+            'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i",
+            'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n",
+            'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t",
+            'у' to "u", 'ф' to "f", 'х' to "h", 'ц' to "c", 'ч' to "ch",
+            'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "",
+            'э' to "e", 'ю' to "yu", 'я' to "ya"
+        )
+
+        val ascii = buildString {
+            value.lowercase().forEach { char ->
+                when {
+                    char in 'a'..'z' || char in '0'..'9' -> append(char)
+                    table.containsKey(char) -> append(table.getValue(char))
+                    else -> append('-')
+                }
+            }
+        }
+
+        return ascii
+            .replace(Regex("-+"), "-")
+            .trim('-')
+            .take(90)
+    }
+
+    private fun chapterId(mediaId: Int, chapterNumber: Int): Long =
+        mediaId.toLong() + chapterNumber.toLong()
+
+    private fun chapterZipName(
+        chapterNumber: Int,
+        chapterId: Long
+    ): String = "v1-n$chapterNumber-$chapterId.zip"
+}
+
+private fun <T> java.util.Enumeration<T>.toList(): List<T> =
+    buildList {
+        while (hasMoreElements()) {
+            add(nextElement())
+        }
+    }
