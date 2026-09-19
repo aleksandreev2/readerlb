@@ -138,6 +138,23 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun commonServicePagesDoNotTriggerUnnumberedWarning() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc("title", "title.xhtml", "<h1>Название</h1><p>Полное издание и статистика книги.</p>"),
+                Doc("info", "text/info.xhtml", "<h1>Сведения о переводе</h1><p>Информация о команде перевода.</p>"),
+                Doc("fullversion", "text/fullversion.xhtml", "<h1>Полная версия</h1><p>Служебное сообщение о полной версии.</p>"),
+                Doc("ch0001", "text/ch0001.xhtml", "<h1>Глава 1</h1><p>Первая глава с достаточным количеством текста.</p>")
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(listOf(1), book.chapters.map { it.number })
+        assertTrue(book.issues.none { it.code == "UNNUMBERED_CONTENT_OMITTED" })
+    }
+
+    @Test
     fun warnsAboutUnnumberedContentWhenNumberedChaptersExist() {
         val epub = buildEpub(
             docs = listOf(
