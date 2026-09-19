@@ -19,9 +19,9 @@ class ImportRepository(private val context: Context) {
         val name = displayName(uri)
         val ext = name.substringAfterLast('.', "").lowercase()
         return when (ext) {
-            "epub" -> EpubParser(context).parse(uri)
+            "epub" -> EpubParser(context).parse(uri, name)
             "txt" -> PlainTextParser(context).parse(uri, name.substringBeforeLast('.'))
-            "zip" -> runCatching { EpubParser(context).parse(uri) }
+            "zip" -> runCatching { EpubParser(context).parse(uri, name) }
                 .getOrElse { error("ZIP пока поддерживается только если внутри находится EPUB-структура") }
             "docx" -> error("DOCX будет добавлен следующим этапом. Сейчас используйте EPUB или TXT.")
             else -> error("Формат .$ext пока не поддерживается")
