@@ -88,7 +88,17 @@ class RanobeLibExporter(private val context: Context) {
             .listFiles()
             .orEmpty()
             .filter(File::isFile)
-            .sortedBy { it.name }
+            .sortedWith(
+                compareBy<File> { file ->
+                    // info.json is RanobeLib's entry point for a local title.
+                    // Write it last so the app cannot discover a half-copied book.
+                    when (file.name) {
+                        "info.json" -> 2
+                        "chapters.json" -> 1
+                        else -> 0
+                    }
+                }.thenBy { it.name }
+            )
 
         require(sourceFiles.isNotEmpty()) {
             "Подготовленный пакет пуст"
