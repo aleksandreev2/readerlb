@@ -14,8 +14,8 @@ data class BuiltRanobeLibPackage(
     val titleDir: File,
     val title: String,
     val chapterCount: Int,
-    val firstChapter: Int,
-    val lastChapter: Int,
+    val firstChapter: String,
+    val lastChapter: String,
     val slugUrl: String
 )
 
@@ -51,11 +51,28 @@ class RanobeLibPackageBuilder(
         book: ParsedBook,
         rootDir: File,
         titleOverride: String = "",
-        firstChapter: Int? = null,
-        lastChapter: Int? = null
+        firstChapter: String? = null,
+        lastChapter: String? = null
     ): BuiltRanobeLibPackage {
-        if (firstChapter != null && lastChapter != null) {
-            require(firstChapter <= lastChapter) {
+        val firstValue = firstChapter
+            ?.takeIf(String::isNotBlank)
+            ?.let(::chapterNumberDecimal)
+        val lastValue = lastChapter
+            ?.takeIf(String::isNotBlank)
+            ?.let(::chapterNumberDecimal)
+
+        if (firstChapter?.isNotBlank() == true) {
+            require(firstValue != null) {
+                "Некорректный номер начальной главы"
+            }
+        }
+        if (lastChapter?.isNotBlank() == true) {
+            require(lastValue != null) {
+                "Некорректный номер конечной главы"
+            }
+        }
+        if (firstValue != null && lastValue != null) {
+            require(firstValue <= lastValue) {
                 "Начальная глава не может быть больше конечной"
             }
         }
@@ -68,7 +85,7 @@ class RanobeLibPackageBuilder(
             .eachCount()
             .filterValues { it > 1 }
             .keys
-            .sorted()
+            .sortedWith(::compareChapterNumbers)
         require(duplicateSourceNumbers.isEmpty()) {
             "В исходных данных повторяются номера глав: " +
                 duplicateSourceNumbers.take(20).joinToString()
@@ -76,10 +93,18 @@ class RanobeLibPackageBuilder(
 
         val selected = book.chapters
             .filter { chapter ->
-                (firstChapter == null || chapter.number >= firstChapter) &&
-                    (lastChapter == null || chapter.number <= lastChapter)
+                chapterNumberInRange(
+                    value = chapter.number,
+                    first = firstChapter,
+                    last = lastChapter
+                )
             }
-            .sortedBy { it.number }
+            .sortedWith { left, right ->
+                compareChapterNumbers(
+                    left.number,
+                    right.number
+                )
+            }
 
         require(selected.isNotEmpty()) {
             "В выбранный диапазон не попало ни одной главы"
@@ -140,7 +165,7 @@ class RanobeLibPackageBuilder(
                 JSONObject()
                     .put("id", chapterId)
                     .put("volume", "1")
-                    .put("number", chapter.number.toString())
+                    .put("number", chapter.number)
                     .put("name", chapter.title)
                     .put("itemNumber", index + 1)
                     .put("branches", JSONArray().put(branch))
@@ -187,7 +212,7 @@ class RanobeLibPackageBuilder(
 
     fun verify(
         built: BuiltRanobeLibPackage,
-        expectedChapterNumbers: List<Int>? = null
+        expectedChapterNumbers: List<String>? = null
     ): PackageVerificationReport {
         val errors = mutableListOf<String>()
         val titleDir = built.titleDir
@@ -245,14 +270,14 @@ class RanobeLibPackageBuilder(
             }
         }
 
-        val actualNumbers = mutableListOf<Int>()
+        val actualNumbers = mutableListOf<String>()
 
         if (chapters != null) {
             if (chapters.length() != built.chapterCount) {
                 errors += "chapters.json содержит ${chapters.length()} глав вместо ${built.chapterCount}"
             }
 
-            val seenNumbers = mutableSetOf<Int>()
+            val seenNumbers = mutableSetOf<String>()
             val seenIds = mutableSetOf<Long>()
 
             for (index in 0 until chapters.length()) {
@@ -262,9 +287,15 @@ class RanobeLibPackageBuilder(
                     continue
                 }
 
-                val number = chapter.optString("number").toIntOrNull()
-                if (number == null) {
-                    errors += "У главы #${index + 1} некорректный номер"
+                val number = chapter
+                    .optString("number")
+                    .trim()
+                if (number.isBlank()) {
+                    errors += "У главы #${index + 1} отсутствует номер"
+                    continue
+                }
+                if (chapterNumberDecimal(number) == null) {
+                    errors += "У главы #${index + 1} некорректный номер: $number"
                     continue
                 }
                 actualNumbers += number
@@ -314,7 +345,7 @@ class RanobeLibPackageBuilder(
 
     private fun verifyChapterZip(
         zipFile: File,
-        chapterNumber: Int,
+        chapterNumber: String,
         errors: MutableList<String>
     ) {
         if (!zipFile.isFile || zipFile.length() == 0L) {
@@ -585,11 +616,31 @@ class RanobeLibPackageBuilder(
             .take(90)
     }
 
-    private fun chapterId(mediaId: Int, chapterNumber: Int): Long =
-        mediaId.toLong() + chapterNumber.toLong()
+    private fun chapterId(
+        mediaId: Int,
+        chapterNumber: String
+    ): Long {
+        val digest = MessageDigest
+            .getInstance("SHA-256")
+            .digest(
+                "$mediaId:$chapterNumber"
+                    .toByteArray(Charsets.UTF_8)
+            )
+
+        val raw = (
+            ((digest[0].toInt() and 0xff) shl 24) or
+                ((digest[1].toInt() and 0xff) shl 16) or
+                ((digest[2].toInt() and 0xff) shl 8) or
+                (digest[3].toInt() and 0xff)
+            ) and 0x7fffffff
+
+        // Keep IDs inside positive signed Int range because the original
+        // RanobeLib data uses integer chapter IDs.
+        return (if (raw == 0) 1 else raw).toLong()
+    }
 
     private fun chapterZipName(
-        chapterNumber: Int,
+        chapterNumber: String,
         chapterId: Long
     ): String = "v1-n$chapterNumber-$chapterId.zip"
 }
