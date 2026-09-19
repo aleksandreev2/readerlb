@@ -618,7 +618,7 @@ private fun ImportScreen(
                     value = firstChapter,
                     onValueChange = { firstChapter = it.filter(Char::isDigit) },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("1") },
+                    placeholder = { Text(parsed?.chapters?.minOfOrNull { it.number }?.toString() ?: "1") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
@@ -628,7 +628,7 @@ private fun ImportScreen(
                     value = lastChapter,
                     onValueChange = { lastChapter = it.filter(Char::isDigit) },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text(parsed?.chapters?.size?.toString() ?: "100") },
+                    placeholder = { Text(parsed?.chapters?.maxOfOrNull { it.number }?.toString() ?: "100") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
@@ -795,42 +795,69 @@ private fun ParsedPreview(book: ParsedBook) {
         shape = RoundedCornerShape(14.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Line)
     ) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            val bitmap = remember(book.coverBytes) {
-                book.coverBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
-            }
-            if (bitmap != null) {
-                androidx.compose.foundation.Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Brush.linearGradient(listOf(Navy2, Blue))),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.AutoStories, null, tint = Color.White)
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val bitmap = remember(book.coverBytes) {
+                    book.coverBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                }
+                if (bitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Brush.linearGradient(listOf(Navy2, Blue))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.AutoStories, null, tint = Color.White)
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(book.title, fontWeight = FontWeight.Bold, color = Ink, maxLines = 2)
+                    if (book.author.isNotBlank()) {
+                        Text(book.author, color = Muted, fontSize = 12.sp, maxLines = 1)
+                    }
+                    val first = book.chapters.minOfOrNull { it.number } ?: 0
+                    val last = book.chapters.maxOfOrNull { it.number } ?: 0
+                    val range = if (first == last) "глава $first" else "главы $first–$last"
+                    Text(
+                        "${book.chapters.size} найдено · $range",
+                        color = Success,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 5.dp)
+                    )
                 }
             }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(book.title, fontWeight = FontWeight.Bold, color = Ink, maxLines = 2)
-                if (book.author.isNotBlank()) {
-                    Text(book.author, color = Muted, fontSize = 12.sp, maxLines = 1)
+
+            if (book.issues.isNotEmpty()) {
+                Divider(modifier = Modifier.padding(vertical = 12.dp))
+                book.issues.take(4).forEach { issue ->
+                    val warning = issue.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING
+                    Text(
+                        text = (if (warning) "⚠ " else "ℹ ") + issue.message,
+                        color = if (warning) Color(0xFF9A6700) else Muted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.padding(vertical = 3.dp)
+                    )
                 }
-                Text(
-                    "${book.chapters.size} глав найдено",
-                    color = Success,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 5.dp)
-                )
+                if (book.issues.size > 4) {
+                    Text(
+                        "Ещё ${book.issues.size - 4} предупреждений",
+                        color = Muted,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
+                }
             }
         }
     }
@@ -962,7 +989,7 @@ private fun HistoryCard(item: ImportHistoryItem) {
                     maxLines = 2
                 )
                 Text(
-                    "Главы 1–${item.chapters}",
+                    if (item.firstChapter == item.lastChapter) "Глава ${item.firstChapter}" else "Главы ${item.firstChapter}–${item.lastChapter}",
                     color = Muted,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(top = 3.dp)
