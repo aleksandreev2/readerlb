@@ -600,13 +600,17 @@ class EpubArchiveParser {
             tocChapterNumber != null ||
                 textChapterNumber != null
 
-        // Explicit chapter numbering wins over service-page heuristics.
-        // Technical href numbering alone does not, because service pages are
-        // often named secNNNN.xhtml.
+        // Strong service-page identity from the EPUB manifest/path
+        // always wins. A title page can legitimately mention text such as
+        // "Глава 0 и главы 50–89"; treating that sentence as chapter 0 would
+        // otherwise shadow the real chapter_0000.xhtml and drop its images.
+        //
+        // We only let explicit chapter numbering override weak label-based
+        // service heuristics such as "справочник".
         val serviceDocument =
-            !hasExplicitChapterNumber &&
+            isServiceDocument(item) ||
                 (
-                    isServiceDocument(item) ||
+                    !hasExplicitChapterNumber &&
                         isServiceLabel(
                             tocLabel,
                             heading
