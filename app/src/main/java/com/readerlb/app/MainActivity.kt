@@ -98,14 +98,65 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private data class IncomingImportRequest(
+    val uri: Uri,
+    val requestId: Long
+)
+
 class MainActivity : ComponentActivity() {
+    private var requestSequence = 0L
+    private var incomingImport by mutableStateOf<
+        IncomingImportRequest?
+    >(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        acceptImportIntent(intent)
+
         setContent {
             ReaderLBTheme {
-                ReaderLBRoot()
+                ReaderLBRoot(
+                    incomingImport = incomingImport,
+                    onImportConsumed = {
+                        incomingImport = null
+                    }
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        acceptImportIntent(intent)
+    }
+
+    private fun acceptImportIntent(intent: Intent?) {
+        val uri = incomingImportUri(intent)
+            ?: return
+
+        requestSequence += 1
+        incomingImport = IncomingImportRequest(
+            uri = uri,
+            requestId = requestSequence
+        )
+    }
+}
+
+private fun incomingImportUri(
+    intent: Intent?
+): Uri? {
+    if (intent == null) return null
+
+    return when (intent.action) {
+        Intent.ACTION_VIEW -> intent.data
+        Intent.ACTION_SEND -> {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(
+                Intent.EXTRA_STREAM
+            ) as? Uri
+        }
+        else -> null
     }
 }
 
@@ -117,10 +168,15 @@ private val RANOBELIB_BOOK_INITIAL_URI: Uri = Uri.parse(
 )
 
 @Composable
-private fun ReaderLBRoot() {
+private fun ReaderLBRoot(
+    incomingImport: IncomingImportRequest?,
+    onImportConsumed: () -> Unit
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember { Preferences(context) }
-    var onboardingDone by remember { mutableStateOf(preferences.onboardingDone) }
+    var onboardingDone by remember {
+        mutableStateOf(preferences.onboardingDone)
+    }
 
     if (!onboardingDone) {
         Onboarding(
@@ -130,7 +186,10 @@ private fun ReaderLBRoot() {
             }
         )
     } else {
-        MainApp()
+        MainApp(
+            incomingImport = incomingImport,
+            onImportConsumed = onImportConsumed
+        )
     }
 }
 
@@ -359,7 +418,10 @@ private fun OnboardingArtwork(
 }
 
 @Composable
-private fun MainApp() {
+private fun MainApp(
+    incomingImport: IncomingImportRequest?,
+    onImportConsumed: () -> Unit
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember { Preferences(context) }
     val historyStore = remember { HistoryStore(context) }
@@ -387,6 +449,12 @@ private fun MainApp() {
         mutableIntStateOf(0)
     }
     var tab by remember { mutableStateOf(AppTab.HOME) }
+
+    LaunchedEffect(incomingImport?.requestId) {
+        if (incomingImport != null) {
+            tab = AppTab.IMPORT
+        }
+    }
     var folderUri by remember { mutableStateOf(preferences.ranobeLibBookTree) }
     var importHintsDone by remember {
         mutableStateOf(preferences.importHintsDone)
@@ -576,6 +644,9 @@ private fun MainApp() {
             AppTab.IMPORT -> ImportScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
+                initialImport = incomingImport,
+                onInitialImportConsumed =
+                    onImportConsumed,
                 showHints = !importHintsDone,
                 onHintsDone = {
                     preferences.importHintsDone = true
@@ -859,6 +930,8 @@ private fun HomeScreen(
 private fun ImportScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    initialImport: IncomingImportRequest?,
+    onInitialImportConsumed: () -> Unit,
     showHints: Boolean,
     onHintsDone: () -> Unit,
     onBack: () -> Unit,
@@ -883,31 +956,48 @@ private fun ImportScreen(
     var warningsAcknowledged by remember { mutableStateOf(false) }
     var rangeExpanded by remember { mutableStateOf(false) }
 
+    fun analyzeFile(uri: Uri) {
+        fileName = repository.displayName(uri)
+        parsed = null
+        error = null
+        success = null
+        warningsAcknowledged = false
+        busy = true
+
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    repository.parse(uri)
+                }
+            }.onSuccess { book ->
+                parsed = book
+                title = book.title
+                firstChapter = ""
+                lastChapter = ""
+                rangeExpanded = false
+            }.onFailure {
+                error =
+                    it.message
+                        ?: "Не удалось разобрать файл"
+            }
+            busy = false
+        }
+    }
+
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            fileName = repository.displayName(uri)
-            parsed = null
-            error = null
-            success = null
-            warningsAcknowledged = false
-            busy = true
-            scope.launch {
-                runCatching {
-                    withContext(Dispatchers.IO) { repository.parse(uri) }
-                }.onSuccess { book ->
-                    parsed = book
-                    title = book.title
-                    firstChapter = ""
-                    lastChapter = ""
-                    rangeExpanded = false
-                }.onFailure {
-                    error = it.message ?: "Не удалось разобрать файл"
-                }
-                busy = false
-            }
+            analyzeFile(uri)
         }
+    }
+
+    LaunchedEffect(initialImport?.requestId) {
+        val request = initialImport
+            ?: return@LaunchedEffect
+
+        analyzeFile(request.uri)
+        onInitialImportConsumed()
     }
 
     LazyColumn(
