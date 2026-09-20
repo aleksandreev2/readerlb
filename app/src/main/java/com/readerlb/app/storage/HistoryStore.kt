@@ -12,6 +12,8 @@ data class ImportHistoryItem(
     val lastChapter: String,
     val slugUrl: String,
     val installedDirectly: Boolean,
+    val updatedExisting: Boolean,
+    val addedChapterCount: Int,
     val timestamp: Long
 )
 
@@ -57,6 +59,20 @@ class HistoryStore(
                             installedDirectly = item.optBoolean(
                                 "installedDirectly"
                             ),
+                            updatedExisting = item.optBoolean(
+                                "updatedExisting",
+                                false
+                            ),
+                            addedChapterCount = if (
+                                item.has("addedChapterCount")
+                            ) {
+                                item.optInt(
+                                    "addedChapterCount",
+                                    chapters
+                                )
+                            } else {
+                                chapters
+                            },
                             timestamp = item.optLong("timestamp")
                         )
                     )
@@ -83,6 +99,8 @@ class HistoryStore(
                 lastChapter = result.lastChapter,
                 slugUrl = result.slugUrl,
                 installedDirectly = result.installedDirectly,
+                updatedExisting = result.updatedExisting,
+                addedChapterCount = result.addedChapterCount,
                 timestamp = System.currentTimeMillis()
             )
         )
@@ -108,6 +126,14 @@ class HistoryStore(
                         .put(
                             "installedDirectly",
                             item.installedDirectly
+                        )
+                        .put(
+                            "updatedExisting",
+                            item.updatedExisting
+                        )
+                        .put(
+                            "addedChapterCount",
+                            item.addedChapterCount
                         )
                         .put(
                             "timestamp",
