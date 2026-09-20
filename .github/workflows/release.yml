@@ -39,6 +39,15 @@ jobs:
           test -n "$READERLB_KEYSTORE_B64"
           echo "$READERLB_KEYSTORE_B64" | base64 --decode > release.keystore
 
+      - name: Android 10 UI smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: gradle :app:connectedDebugAndroidTest --stacktrace
+
       - name: Test and build release APK
         env:
           READERLB_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
