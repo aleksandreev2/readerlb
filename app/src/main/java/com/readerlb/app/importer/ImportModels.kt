@@ -52,13 +52,15 @@ sealed interface ReaderBlock {
     /**
      * Embedded illustration copied from the source EPUB.
      *
-     * The bytes are kept together with their original raster extension so
-     * RanobeLib can load the file directly from the chapter ZIP.
+     * Small/data-URI images may stay in [bytes]. Large EPUB images can use
+     * [filePath] so Android can spill them to cache instead of keeping every
+     * illustration of the whole book on the Java heap.
      */
     data class Image(
-        val bytes: ByteArray,
+        val bytes: ByteArray = ByteArray(0),
         val extension: String,
-        val description: String? = null
+        val description: String? = null,
+        val filePath: String? = null
     ) : ReaderBlock
 }
 
