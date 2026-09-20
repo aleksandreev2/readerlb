@@ -148,14 +148,14 @@ library rather than a passive list.
 
 Planned work:
 
-- search;
-- sorting/filtering;
-- title detail screen;
-- real cover display with bounded memory use;
-- chapter count/range and last local update;
-- distinguish ReaderLB-created titles from other local titles where possible;
-- refresh/reconnect actions;
-- safe title actions only after their storage semantics are fully tested.
+- [x] search;
+- [x] sorting/filtering;
+- [x] title detail screen;
+- [x] real cover display with bounded memory use;
+- [x] chapter count/range and last local update;
+- [x] distinguish ReaderLB-created titles from other local titles where possible;
+- [x] refresh/reconnect actions;
+- [ ] safe title actions only after their storage semantics are fully tested.
 
 Destructive actions such as deleting a local title must not be introduced
 without an explicit confirmation flow and dedicated tests.
