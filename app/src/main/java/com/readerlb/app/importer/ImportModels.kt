@@ -47,6 +47,18 @@ sealed interface ReaderBlock {
     data class Quote(
         val lines: List<String>
     ) : ReaderBlock
+
+    /**
+     * Embedded illustration copied from the source EPUB.
+     *
+     * The bytes are kept together with their original raster extension so
+     * RanobeLib can load the file directly from the chapter ZIP.
+     */
+    data class Image(
+        val bytes: ByteArray,
+        val extension: String,
+        val description: String? = null
+    ) : ReaderBlock
 }
 
 data class ExportResult(
