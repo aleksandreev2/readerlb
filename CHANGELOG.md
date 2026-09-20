@@ -14,6 +14,7 @@ Usability, lightweight build, branded EPUB easter egg and update foundation.
 - Release builds now enable R8/resource shrinking; the optimized test APK is about 2.3 MiB instead of roughly 55 MiB, with a 6 MiB CI size budget.
 - Import is now a guided mobile flow: settings appear only after file analysis, chapter range is collapsed by default, contextual hints can be replayed, the bottom navigation is hidden during import, and the action shows the selected chapter count.
 - The Library screen now scans the granted RanobeLib `book` directory and shows real local titles, chapter counts/ranges and covers instead of pretending import history is the library.
+- EPUB/TXT files can now be opened or shared directly to ReaderLB from compatible Android file managers; ReaderLB jumps straight to analysis instead of making the user select the same file again.
 - Android 12+ can use the platform's no-extra-confirmation self-update path when all system conditions are met; older/OEM flows still fall back to normal PackageInstaller confirmation.
 
 ## 0.4.2
