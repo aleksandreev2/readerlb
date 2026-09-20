@@ -50,80 +50,10 @@ class UpdateManager(
             val payload = http.inputStream
                 .bufferedReader()
                 .use { it.readText() }
-            val json = JSONObject(payload)
-
-            val tagName = json
-                .optString("tag_name")
-                .trim()
-            val versionName = tagName
-                .removePrefix("v")
-                .removePrefix("V")
-                .trim()
-
-            if (
-                versionName.isBlank() ||
-                !isVersionNewer(
-                    latest = versionName,
-                    current = BuildConfig.VERSION_NAME
-                )
-            ) {
-                return@useConnection null
-            }
-
-            val assets = json.getJSONArray("assets")
-            var selected: JSONObject? = null
-
-            for (index in 0 until assets.length()) {
-                val asset = assets.getJSONObject(index)
-                val name = asset
-                    .optString("name")
-                    .lowercase()
-
-                if (!name.endsWith(".apk")) {
-                    continue
-                }
-
-                if (
-                    selected == null ||
-                    name.contains("readerlb")
-                ) {
-                    selected = asset
-                }
-
-                if (name.contains("readerlb")) {
-                    break
-                }
-            }
-
-            val apk = selected
-                ?: error(
-                    "В релизе нет APK ReaderLB"
-                )
-
-            val downloadUrl = apk
-                .optString("browser_download_url")
-                .takeIf(String::isNotBlank)
-                ?: error(
-                    "В релизе отсутствует ссылка на APK"
-                )
-
-            val digest = apk
-                .optString("digest")
-                .takeIf {
-                    it.startsWith(
-                        "sha256:",
-                        ignoreCase = true
-                    )
-                }
-                ?.substringAfter(':')
-                ?.lowercase()
-
-            UpdateInfo(
-                versionName = versionName,
-                tagName = tagName,
-                downloadUrl = downloadUrl,
-                sha256 = digest,
-                notes = json.optString("body")
+            parseUpdateInfo(
+                payload = payload,
+                currentVersion =
+                    BuildConfig.VERSION_NAME
             )
         }
     }
@@ -497,6 +427,86 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         const val ACTION_INSTALL_RESULT =
             "com.readerlb.app.UPDATE_INSTALL_RESULT"
     }
+}
+
+internal fun parseUpdateInfo(
+    payload: String,
+    currentVersion: String
+): UpdateInfo? {
+    val json = JSONObject(payload)
+
+    val tagName = json
+        .optString("tag_name")
+        .trim()
+    val versionName = tagName
+        .removePrefix("v")
+        .removePrefix("V")
+        .trim()
+
+    if (
+        versionName.isBlank() ||
+        !isVersionNewer(
+            latest = versionName,
+            current = currentVersion
+        )
+    ) {
+        return null
+    }
+
+    val assets = json.optJSONArray("assets")
+        ?: error("В релизе нет списка файлов")
+    var selected: JSONObject? = null
+
+    for (index in 0 until assets.length()) {
+        val asset = assets.getJSONObject(index)
+        val name = asset
+            .optString("name")
+            .lowercase()
+
+        if (!name.endsWith(".apk")) {
+            continue
+        }
+
+        if (
+            selected == null ||
+            name.contains("readerlb")
+        ) {
+            selected = asset
+        }
+
+        if (name.contains("readerlb")) {
+            break
+        }
+    }
+
+    val apk = selected
+        ?: error("В релизе нет APK ReaderLB")
+
+    val downloadUrl = apk
+        .optString("browser_download_url")
+        .takeIf(String::isNotBlank)
+        ?: error(
+            "В релизе отсутствует ссылка на APK"
+        )
+
+    val digest = apk
+        .optString("digest")
+        .takeIf {
+            it.startsWith(
+                "sha256:",
+                ignoreCase = true
+            )
+        }
+        ?.substringAfter(':')
+        ?.lowercase()
+
+    return UpdateInfo(
+        versionName = versionName,
+        tagName = tagName,
+        downloadUrl = downloadUrl,
+        sha256 = digest,
+        notes = json.optString("body")
+    )
 }
 
 internal fun isVersionNewer(
