@@ -60,6 +60,10 @@ class RanobeLibPackageBuilder(
         titleOverride: String = "",
         firstChapter: String? = null,
         lastChapter: String? = null,
+        onChapterPrepared: (
+            completed: Int,
+            total: Int
+        ) -> Unit = { _, _ -> },
         onVerifying: () -> Unit = {}
     ): BuiltRanobeLibPackage {
         val firstValue = firstChapter
@@ -128,6 +132,11 @@ class RanobeLibPackageBuilder(
         require(selected.isNotEmpty()) {
             "В выбранный диапазон не попало ни одной главы"
         }
+
+        onChapterPrepared(
+            0,
+            selected.size
+        )
 
         val mediaId = stableMediaId(title)
         val slug = slugify(title).ifBlank { "local-book-$mediaId" }
@@ -207,6 +216,11 @@ class RanobeLibPackageBuilder(
                     .put("branches", JSONArray().put(branch))
                     .put("withBranches", false)
                     .put("totalBranchesSize", 1)
+            )
+
+            onChapterPrepared(
+                index + 1,
+                selected.size
             )
         }
 
