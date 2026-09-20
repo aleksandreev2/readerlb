@@ -353,11 +353,14 @@ private fun MainApp() {
             now - preferences.lastUpdateCheckMillis >=
                 24L * 60L * 60L * 1000L
         if (due) {
-            preferences.lastUpdateCheckMillis = now
-            latestUpdate = withContext(Dispatchers.IO) {
+            val result = withContext(Dispatchers.IO) {
                 runCatching {
                     updateManager.checkLatest()
-                }.getOrNull()
+                }
+            }
+            result.onSuccess { update ->
+                latestUpdate = update
+                preferences.lastUpdateCheckMillis = now
             }
         }
     }
