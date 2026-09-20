@@ -399,27 +399,13 @@ class RanobeLibUpdateTransaction(
             }
             ?: emptyList()
 
-        val canonicalCommitted =
-            storage.exists(CHAPTERS) &&
-                storage.exists(INFO) &&
-                runCatching {
-                    val chapters = readJsonArray(
-                        storage.readBytes(CHAPTERS)
-                    )
-                    val numbers = (0 until chapters.length())
-                        .map {
-                            chapters.getJSONObject(it)
-                                .getString("number")
-                        }
-                        .toSet()
-
-                    addedNumbers.isNotEmpty() &&
-                        addedNumbers.all(numbers::contains) &&
-                        zipNames.all(storage::exists) &&
-                        readJsonObject(
-                            storage.readBytes(INFO)
-                        ).optJSONObject("media") != null
-                }.getOrDefault(false)
+        val canonicalCommitted = runCatching {
+            isCanonicalCommitted(
+                storage = storage,
+                addedNumbers = addedNumbers,
+                addedZipNames = zipNames
+            )
+        }.getOrDefault(false)
 
         if (canonicalCommitted) {
             // Metadata already crossed the final visibility boundary. The
@@ -465,6 +451,63 @@ class RanobeLibUpdateTransaction(
         require(storage.delete(JOURNAL)) {
             "Не удалось удалить журнал предыдущего обновления"
         }
+    }
+
+    private fun isCanonicalCommitted(
+        storage: RanobeLibMutableStorage,
+        addedNumbers: List<String>,
+        addedZipNames: List<String>
+    ): Boolean {
+        if (
+            !storage.exists(CHAPTERS) ||
+            !storage.exists(INFO) ||
+            addedNumbers.isEmpty()
+        ) {
+            return false
+        }
+
+        val chapters = readJsonArray(
+            storage.readBytes(CHAPTERS)
+        )
+        val info = readJsonObject(
+            storage.readBytes(INFO)
+        )
+        val media = info.optJSONObject("media")
+            ?: return false
+
+        if (
+            media.optString("slugUrl").isBlank() ||
+            media.optInt("uploadedCount", -1) != chapters.length()
+        ) {
+            return false
+        }
+
+        val numbers = mutableSetOf<String>()
+        val ids = mutableSetOf<Long>()
+
+        for (index in 0 until chapters.length()) {
+            val chapter = chapters.optJSONObject(index)
+                ?: return false
+            val number = chapter.optString("number").trim()
+            val id = chapter.optLong("id", Long.MIN_VALUE)
+
+            if (
+                chapterNumberDecimal(number) == null ||
+                id == Long.MIN_VALUE ||
+                !numbers.add(number) ||
+                !ids.add(id)
+            ) {
+                return false
+            }
+
+            val zipName = "v1-n$number-$id.zip"
+            if (!storage.exists(zipName)) {
+                return false
+            }
+        }
+
+        return addedNumbers.all(numbers::contains) &&
+            addedZipNames.all(storage::exists)
     }
 
     private fun restoreBackup(
