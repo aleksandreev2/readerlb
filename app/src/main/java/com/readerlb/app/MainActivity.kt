@@ -1130,8 +1130,26 @@ private fun HistoryCard(item: ImportHistoryItem) {
                         .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        if (item.installedDirectly) "✓ В RanobeLib" else "ZIP подготовлен",
-                        color = if (item.installedDirectly) Color(0xFF168B67) else Blue,
+                        when {
+                            item.updatedExisting &&
+                                item.addedChapterCount > 0 -> {
+                                "✓ Обновлено +${item.addedChapterCount}"
+                            }
+                            item.updatedExisting -> {
+                                "✓ Уже актуально"
+                            }
+                            item.installedDirectly -> {
+                                "✓ В RanobeLib"
+                            }
+                            else -> {
+                                "ZIP подготовлен"
+                            }
+                        },
+                        color = if (item.installedDirectly) {
+                            Color(0xFF168B67)
+                        } else {
+                            Blue
+                        },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
