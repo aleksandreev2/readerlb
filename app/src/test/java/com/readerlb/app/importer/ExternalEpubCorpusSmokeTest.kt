@@ -50,9 +50,16 @@ class ExternalEpubCorpusSmokeTest {
         )
 
         files.forEach { file ->
+            val assetDirectory = Files
+                .createTempDirectory(
+                    "readerlb_corpus_assets_"
+                )
+                .toFile()
             val book = parser.parse(
-                file,
-                file.name
+                file = file,
+                sourceName = file.name,
+                assetDirectory =
+                    assetDirectory
             )
 
             assertTrue(
@@ -168,6 +175,7 @@ class ExternalEpubCorpusSmokeTest {
                 )
             } finally {
                 packageRoot.deleteRecursively()
+                assetDirectory.deleteRecursively()
             }
 
             val warningText = book.issues
