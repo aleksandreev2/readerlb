@@ -20,6 +20,12 @@ class Preferences(context: Context) {
             .putLong("last_update_check_millis", value)
             .apply()
 
+    var autoUpdateChecks: Boolean
+        get() = prefs.getBoolean("auto_update_checks", true)
+        set(value) = prefs.edit()
+            .putBoolean("auto_update_checks", value)
+            .apply()
+
     var importHintsDone: Boolean
         get() = prefs.getBoolean("import_hints_done", false)
         set(value) = prefs.edit()
