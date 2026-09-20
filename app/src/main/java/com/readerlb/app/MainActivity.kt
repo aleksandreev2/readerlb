@@ -171,6 +171,17 @@ private val RANOBELIB_BOOK_INITIAL_URI: Uri = Uri.parse(
         "primary%3AAndroid%2Fdata%2Fru.libappc%2Ffiles%2Fbook"
 )
 
+private fun hasPersistedReadPermission(
+    context: android.content.Context,
+    uri: Uri
+): Boolean =
+    context.contentResolver
+        .persistedUriPermissions
+        .any { permission ->
+            permission.uri == uri &&
+                permission.isReadPermission
+        }
+
 private fun hasPersistedTreePermission(
     context: android.content.Context,
     uri: Uri
@@ -1013,6 +1024,30 @@ private fun ImportScreen(
     val scope = rememberCoroutineScope()
     val repository = remember { ImportRepository(context) }
     val exporter = remember { RanobeLibExporter(context) }
+    val importPreferences = remember {
+        Preferences(context)
+    }
+    var recentDocument by remember {
+        mutableStateOf(
+            importPreferences.lastImportDocument
+                ?.takeIf {
+                    hasPersistedReadPermission(
+                        context,
+                        it
+                    )
+                }
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        if (
+            importPreferences.lastImportDocument != null &&
+            recentDocument == null
+        ) {
+            importPreferences.lastImportDocument =
+                null
+        }
+    }
 
     var parsed by remember {
         mutableStateOf<ParsedBook?>(null)
@@ -1060,12 +1095,22 @@ private fun ImportScreen(
     }
 
     fun queueFile(uri: Uri) {
-        runCatching {
+        val persisted = runCatching {
             context.contentResolver
                 .takePersistableUriPermission(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
+        }.isSuccess ||
+            hasPersistedReadPermission(
+                context,
+                uri
+            )
+
+        if (persisted) {
+            importPreferences.lastImportDocument =
+                uri
+            recentDocument = uri
         }
 
         selectedUri = uri.toString()
@@ -1211,6 +1256,25 @@ private fun ImportScreen(
                     )
                 }
             )
+        }
+
+        if (
+            selectedUri == null &&
+            !busy &&
+            recentDocument != null
+        ) {
+            item {
+                OutlineAction(
+                    "Открыть последний файл",
+                    onClick = {
+                        queueFile(
+                            requireNotNull(
+                                recentDocument
+                            )
+                        )
+                    }
+                )
+            }
         }
 
         if (showHints && parsed == null && !busy) {
