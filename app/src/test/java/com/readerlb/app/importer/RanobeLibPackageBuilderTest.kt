@@ -418,6 +418,44 @@ class RanobeLibPackageBuilderTest {
     }
 
     @Test
+    fun reportsRealChapterPreparationProgress() {
+        val root = Files.createTempDirectory(
+            "readerlb_progress_package_"
+        ).toFile()
+        val progress =
+            mutableListOf<Pair<Int, Int>>()
+        var verificationStarted = false
+
+        builder.build(
+            book = bookWithChapters(
+                "1",
+                "2",
+                "3"
+            ),
+            rootDir = root,
+            onChapterPrepared = {
+                    completed,
+                    total ->
+                progress += completed to total
+            },
+            onVerifying = {
+                verificationStarted = true
+            }
+        )
+
+        assertEquals(
+            listOf(
+                0 to 3,
+                1 to 3,
+                2 to 3,
+                3 to 3
+            ),
+            progress
+        )
+        assertTrue(verificationStarted)
+    }
+
+    @Test
     fun stableIdentityDoesNotChangeBetweenBuilds() {
         val first = builder.stableMediaId("  Культивация Онлайн ")
         val second = builder.stableMediaId("культивация онлайн")
