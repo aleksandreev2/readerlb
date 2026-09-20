@@ -310,6 +310,35 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun detectsDomNekromantaEditionWithoutTurningCreditPageIntoChapter() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "translation",
+                    "text/translation.xhtml",
+                    "<h1>Сведения о переводе</h1>" +
+                        "<p>Перевод выполнен командой «Дом Некроманта».</p>" +
+                        "<p><a href=\"https://ranobelib.me/ru/team/" +
+                        "11969--dom-nekromanta\">Дом Некроманта</a></p>"
+                ),
+                Doc(
+                    "ch1",
+                    "text/chapter_0001.xhtml",
+                    "<h1>Глава 1</h1><p>Обычный текст главы.</p>"
+                )
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertTrue(book.domNekromantaEdition)
+        assertEquals(
+            listOf("1"),
+            book.chapters.map { it.number }
+        )
+    }
+
+    @Test
     fun epub3PrologueMappedToCh0001DoesNotBecomeChapterOne() {
         val epub = buildEpubWithNav(
             docs = listOf(
