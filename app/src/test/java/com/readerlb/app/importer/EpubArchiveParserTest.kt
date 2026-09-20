@@ -2,6 +2,7 @@ package com.readerlb.app.importer
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -11,6 +12,73 @@ import java.util.zip.ZipOutputStream
 class EpubArchiveParserTest {
 
     private val parser = EpubArchiveParser()
+
+    @Test
+    fun rejectsTruncatedEpubInsteadOfGuessing() {
+        val epub = Files.createTempFile(
+            "readerlb_truncated_",
+            ".epub"
+        ).toFile()
+        epub.writeBytes(
+            byteArrayOf(
+                'P'.code.toByte(),
+                'K'.code.toByte(),
+                3,
+                4,
+                1,
+                2,
+                3
+            )
+        )
+
+        try {
+            parser.parse(epub)
+            fail(
+                "Expected truncated EPUB to be rejected"
+            )
+        } catch (_: Exception) {
+            // Any parser/ZIP exception is acceptable here:
+            // the important contract is no guessed book.
+        } finally {
+            epub.delete()
+        }
+    }
+
+    @Test
+    fun rejectsEpubWithoutContainerMetadata() {
+        val epub = Files.createTempFile(
+            "readerlb_missing_container_",
+            ".epub"
+        ).toFile()
+
+        ZipOutputStream(
+            epub.outputStream()
+        ).use { zip ->
+            put(
+                zip,
+                "mimetype",
+                "application/epub+zip"
+            )
+        }
+
+        try {
+            parser.parse(epub)
+            fail(
+                "Expected EPUB without container.xml " +
+                    "to be rejected"
+            )
+        } catch (error: Exception) {
+            assertTrue(
+                error.message
+                    .orEmpty()
+                    .contains(
+                        "META-INF/container.xml"
+                    )
+            )
+        } finally {
+            epub.delete()
+        }
+    }
 
     @Test
     fun parsesNamespacedOpfAndContainer() {
