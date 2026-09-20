@@ -11,6 +11,7 @@ Pre-1.0 interface hardening in progress.
 - Help now includes copyable privacy-safe diagnostics with ReaderLB version, Android/API, device model and access/update state only; it excludes book titles, EPUB paths and library contents.
 - Installer/update failures now explain cancellation, blocked unknown-source permission, storage shortage, signing migration, integrity failures and package conflicts in user-facing language.
 - Failed EPUB analysis and failed local-library scans now expose an explicit retry action instead of leaving the user at a dead end.
+- Real-corpus-derived regressions now cover numbered service sections, translator afterwords and a partial 100–191 source with the real internal gap 119–122; source EPUB contents remain private.
 
 ## Unreleased — 0.8.0
 
