@@ -4,21 +4,92 @@ import android.content.Context
 import android.net.Uri
 import java.io.File
 
-class EpubParser(private val context: Context) {
+class EpubParser(
+    private val context: Context
+) {
 
-    private val archiveParser = EpubArchiveParser()
+    private val archiveParser =
+        EpubArchiveParser()
 
-    fun parse(uri: Uri, sourceName: String? = null): ParsedBook {
-        val temp = File.createTempFile("readerlb_", ".epub", context.cacheDir)
-        context.contentResolver.openInputStream(uri).use { input ->
-            requireNotNull(input) { "Не удалось открыть файл" }
-            temp.outputStream().use(input::copyTo)
+    fun parse(
+        uri: Uri,
+        sourceName: String? = null
+    ): ParsedBook {
+        cleanupStaleAssetDirectories()
+
+        val sourceTemp = File.createTempFile(
+            "readerlb_",
+            ".epub",
+            context.cacheDir
+        )
+        val assetDirectory = File(
+            context.cacheDir,
+            ASSET_DIRECTORY_PREFIX +
+                System.nanoTime()
+        )
+
+        require(assetDirectory.mkdirs()) {
+            "Не удалось создать временную папку EPUB"
         }
 
         return try {
-            archiveParser.parse(temp, sourceName)
+            context.contentResolver
+                .openInputStream(uri)
+                .use { input ->
+                    requireNotNull(input) {
+                        "Не удалось открыть файл"
+                    }
+                    sourceTemp.outputStream()
+                        .buffered()
+                        .use { output ->
+                            input.copyTo(output)
+                        }
+                }
+
+            archiveParser.parse(
+                file = sourceTemp,
+                sourceName = sourceName,
+                assetDirectory =
+                    assetDirectory
+            )
+        } catch (throwable: Throwable) {
+            assetDirectory.deleteRecursively()
+            throw throwable
         } finally {
-            temp.delete()
+            sourceTemp.delete()
         }
+    }
+
+    private fun cleanupStaleAssetDirectories() {
+        val cutoff =
+            System.currentTimeMillis() -
+                STALE_ASSET_MAX_AGE_MILLIS
+
+        context.cacheDir
+            .listFiles()
+            .orEmpty()
+            .asSequence()
+            .filter(File::isDirectory)
+            .filter {
+                it.name.startsWith(
+                    ASSET_DIRECTORY_PREFIX
+                )
+            }
+            .filter {
+                it.lastModified() < cutoff
+            }
+            .forEach {
+                runCatching {
+                    it.deleteRecursively()
+                }
+            }
+    }
+
+    private companion object {
+        const val ASSET_DIRECTORY_PREFIX =
+            "readerlb_epub_assets_"
+
+        const val STALE_ASSET_MAX_AGE_MILLIS =
+            24L * 60L * 60L * 1000L
     }
 }
