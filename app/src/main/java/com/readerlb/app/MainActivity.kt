@@ -1142,35 +1142,83 @@ private fun ImportScreen(
                     )
                 }
             }
-            if (book.issues.any { it.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING }) {
+            val warningCount =
+                book.issues.count {
+                    it.severity ==
+                        com.readerlb.app.importer
+                            .ImportIssueSeverity.WARNING
+                }
+
+            if (warningCount > 0) {
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7E6)),
+                        colors = CardDefaults.cardColors(
+                            containerColor =
+                                if (warningsAcknowledged) {
+                                    Color(0xFFEAF8F1)
+                                } else {
+                                    Color(0xFFFFF7E6)
+                                }
+                        ),
                         shape = RoundedCornerShape(14.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF2C46D))
+                        border =
+                            androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (warningsAcknowledged) {
+                                    Color(0xFFB7DEC9)
+                                } else {
+                                    Color(0xFFF2C46D)
+                                }
+                            )
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement =
+                                Arrangement.spacedBy(9.dp)
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    "Проверьте предупреждения",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF7A4E00)
-                                )
-                                Text(
-                                    "ReaderLB не будет молча продолжать импорт при подозрении на пропущенные или конфликтующие главы.",
-                                    color = Color(0xFF8A641B),
-                                    fontSize = 12.sp,
-                                    lineHeight = 17.sp,
-                                    modifier = Modifier.padding(top = 4.dp)
+                            Text(
+                                if (warningsAcknowledged) {
+                                    "Предупреждения проверены"
+                                } else {
+                                    "Нужно проверить: " +
+                                        warningCount
+                                },
+                                fontWeight = FontWeight.Bold,
+                                color =
+                                    if (warningsAcknowledged) {
+                                        Color(0xFF167054)
+                                    } else {
+                                        Color(0xFF7A4E00)
+                                    }
+                            )
+                            Text(
+                                if (warningsAcknowledged) {
+                                    "ReaderLB разрешит импорт этого файла. " +
+                                        "При выборе другого файла подтверждение " +
+                                        "сбросится."
+                                } else {
+                                    "Посмотрите сообщения в карточке файла. " +
+                                        "Импорт заблокирован, пока вы явно не " +
+                                        "подтвердите, что результат выглядит верно."
+                                },
+                                color =
+                                    if (warningsAcknowledged) {
+                                        Color(0xFF3C765F)
+                                    } else {
+                                        Color(0xFF8A641B)
+                                    },
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
+                            if (!warningsAcknowledged) {
+                                OutlineAction(
+                                    "Я проверил — продолжить",
+                                    onClick = {
+                                        warningsAcknowledged =
+                                            true
+                                    }
                                 )
                             }
-                            Switch(
-                                checked = warningsAcknowledged,
-                                onCheckedChange = { warningsAcknowledged = it }
-                            )
                         }
                     }
                 }
