@@ -191,10 +191,10 @@ Scope:
 - [x] small-screen import layout audit (including full-width chapter-range fields);
 - typography/spacing consistency;
 - empty/error/loading states;
-- update rollback/recovery messaging;
+- [x] update failure/recovery messaging for cancelled, blocked, conflicting, incompatible, invalid, storage, signature and integrity failures;
 - [x] settings cleanup;
 - corpus expansion;
-- final migration documentation;
+- [x] final signing/update migration documentation;
 - [x] copyable diagnostics limited to app/device/access state; no book titles, EPUB paths or reading-library content.
 
 No major new feature should enter 0.9.x.
