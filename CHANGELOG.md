@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0-dev
+
+EPUB illustration milestone.
+
+- Embedded chapter illustrations are extracted from EPUB and preserved in reading order.
+- ReaderLB writes the same local RanobeLib image structure observed in real downloaded chapters: image files live beside `data.txt` inside the chapter ZIP, and the document uses an `image` node whose `attrs.images[].image` value matches the image filename stem.
+- JPEG, PNG, WebP and GIF chapter images are supported.
+- Chapter-package verification checks that every image node has a real non-empty file and that no unreferenced image files are left in the ZIP.
+- Missing/remote/unsupported EPUB images produce explicit warnings instead of being silently dropped.
+- The import preview shows how many illustrations will be transferred.
+
 ## 0.3.1
 
 Small usability patch after device testing.
