@@ -57,6 +57,9 @@ jobs:
       - name: Run unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
 
+      - name: Compile Android runtime tests
+        run: gradle :app:assembleDebugAndroidTest --stacktrace
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
