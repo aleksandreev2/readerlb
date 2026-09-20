@@ -188,7 +188,31 @@ class RanobeLibPackageBuilder(
                             "$id.${image.extension}"
                         )
                     )
-                    zip.write(image.bytes)
+                    val sourcePath = image.filePath
+                    if (sourcePath != null) {
+                        val source = File(sourcePath)
+                        require(
+                            source.isFile &&
+                                source.length() > 0L
+                        ) {
+                            "Временный файл иллюстрации отсутствует"
+                        }
+                        source.inputStream()
+                            .buffered()
+                            .use {
+                                it.copyTo(zip)
+                            }
+                    } else {
+                        val bytes = requireNotNull(
+                            image.bytes
+                        ) {
+                            "У иллюстрации нет данных"
+                        }
+                        require(bytes.isNotEmpty()) {
+                            "Иллюстрация не содержит данных"
+                        }
+                        zip.write(bytes)
+                    }
                     zip.closeEntry()
                 }
             }
@@ -639,15 +663,22 @@ class RanobeLibPackageBuilder(
                         normalizeChapterImageExtension(
                             block.extension
                         )
-                    val id = UUID
-                        .nameUUIDFromBytes(block.bytes)
-                        .toString()
+                    val filePath = block.filePath
+                        ?.takeIf(String::isNotBlank)
+                    val id = imageId(
+                        bytes = block.bytes,
+                        filePath = filePath
+                    )
 
                     imageFiles.putIfAbsent(
                         id,
                         ChapterImageFile(
                             extension = extension,
                             bytes = block.bytes
+                                .takeIf {
+                                    filePath == null
+                                },
+                            filePath = filePath
                         )
                     )
 
@@ -711,8 +742,54 @@ class RanobeLibPackageBuilder(
 
     private data class ChapterImageFile(
         val extension: String,
-        val bytes: ByteArray
+        val bytes: ByteArray? = null,
+        val filePath: String? = null
     )
+
+    private fun imageId(
+        bytes: ByteArray,
+        filePath: String?
+    ): String {
+        if (filePath == null) {
+            require(bytes.isNotEmpty()) {
+                "Иллюстрация не содержит данных"
+            }
+            return UUID
+                .nameUUIDFromBytes(bytes)
+                .toString()
+        }
+
+        val file = File(filePath)
+        require(
+            file.isFile &&
+                file.length() > 0L
+        ) {
+            "Временный файл иллюстрации отсутствует"
+        }
+
+        val digest = MessageDigest
+            .getInstance("SHA-256")
+        file.inputStream()
+            .buffered()
+            .use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(
+                        buffer,
+                        0,
+                        count
+                    )
+                }
+            }
+
+        return UUID
+            .nameUUIDFromBytes(
+                digest.digest()
+            )
+            .toString()
+    }
 
     private fun infoJson(
         mediaId: Int,
