@@ -1335,6 +1335,89 @@ private fun ImportScreen(
             !busy &&
             error == null
 
+    if (emptyImportState) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(
+                    horizontal = 18.dp
+                )
+        ) {
+            ImportHeader(
+                enabled = true,
+                onBack = {
+                    cleanupParsedAssets()
+                    onBack()
+                }
+            )
+
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding =
+                    PaddingValues(
+                        vertical = 18.dp
+                    ),
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        16.dp,
+                        Alignment.CenterVertically
+                    )
+            ) {
+                item {
+                    FileDropCard(
+                        fileName = fileName,
+                        analyzing = false,
+                        enabled = true,
+                        onCancelAnalysis = {},
+                        onPick = {
+                            filePicker.launch(
+                                arrayOf(
+                                    "application/epub+zip",
+                                    "application/zip",
+                                    "text/plain",
+                                    "application/octet-stream"
+                                )
+                            )
+                        }
+                    )
+                }
+
+                if (recentDocument != null) {
+                    item {
+                        OutlineAction(
+                            "Открыть последний файл",
+                            onClick = {
+                                queueFile(
+                                    requireNotNull(
+                                        recentDocument
+                                    )
+                                )
+                            }
+                        )
+                    }
+                }
+
+                if (showHints) {
+                    item {
+                        CoachHintCard(
+                            title =
+                                "Начните с файла",
+                            text =
+                                "Выберите EPUB или TXT. " +
+                                    "ReaderLB сам найдёт главы, " +
+                                    "обложку и иллюстрации — " +
+                                    "ничего вручную заполнять " +
+                                    "до анализа не нужно."
+                        )
+                    }
+                }
+            }
+        }
+        return
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -1345,47 +1428,13 @@ private fun ImportScreen(
             Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                IconButton(
-                    onClick = {
-                        cleanupParsedAssets()
-                        onBack()
-                    },
-                    enabled = !busy,
-                    modifier = Modifier.align(
-                        Alignment.CenterStart
-                    )
-                ) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        contentDescription = "Назад",
-                        tint = Ink
-                    )
+            ImportHeader(
+                enabled = !busy,
+                onBack = {
+                    cleanupParsedAssets()
+                    onBack()
                 }
-
-                Text(
-                    "Импорт файла",
-                    modifier = Modifier.align(
-                        Alignment.Center
-                    ),
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Ink,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        if (emptyImportState) {
-            item {
-                Spacer(
-                    Modifier.height(34.dp)
-                )
-            }
+            )
         }
 
         item {
@@ -2062,6 +2111,43 @@ private fun chapterCountText(
     }
 
     return "$count $word"
+}
+
+@Composable
+private fun ImportHeader(
+    enabled: Boolean,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+    ) {
+        IconButton(
+            onClick = onBack,
+            enabled = enabled,
+            modifier = Modifier.align(
+                Alignment.CenterStart
+            )
+        ) {
+            Icon(
+                Icons.Default.ArrowBack,
+                contentDescription = "Назад",
+                tint = Ink
+            )
+        }
+
+        Text(
+            "Импорт файла",
+            modifier = Modifier.align(
+                Alignment.Center
+            ),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = Ink,
+            textAlign = TextAlign.Center
+        )
+    }
 }
 
 @Composable
