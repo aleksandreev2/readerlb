@@ -391,17 +391,47 @@ class RanobeLibPackageBuilder(
         runCatching {
             ZipFile(zipFile).use { zip ->
                 val entries = zip.entries().toList()
-                val dataEntry = entries.firstOrNull { it.name == "data.txt" }
+                val dataEntry = entries.firstOrNull {
+                    it.name == "data.txt"
+                }
                 if (dataEntry == null) {
                     errors += "ZIP главы $chapterNumber не содержит data.txt"
                     return@use
                 }
 
+                val imageEntries = entries
+                    .filterNot {
+                        it.isDirectory ||
+                            it.name == "data.txt"
+                    }
+                    .filter {
+                        val extension = it.name
+                            .substringAfterLast(
+                                '.',
+                                ""
+                            )
+                            .lowercase()
+
+                        !it.name.contains('/') &&
+                            extension in chapterImageExtensions
+                    }
+
                 val unexpected = entries.filterNot {
-                    it.isDirectory || it.name == "data.txt"
+                    it.isDirectory ||
+                        it.name == "data.txt" ||
+                        it in imageEntries
                 }
                 if (unexpected.isNotEmpty()) {
-                    errors += "ZIP главы $chapterNumber содержит лишние файлы"
+                    errors +=
+                        "ZIP главы $chapterNumber содержит лишние файлы"
+                }
+
+                imageEntries.forEach { entry ->
+                    if (entry.size == 0L) {
+                        errors +=
+                            "Иллюстрация " + entry.name +
+                            " в главе $chapterNumber пуста"
+                    }
                 }
 
                 val data = zip.getInputStream(dataEntry).use {
@@ -410,15 +440,89 @@ class RanobeLibPackageBuilder(
                 val document = JSONObject(data)
 
                 if (document.optString("type") != "doc") {
-                    errors += "data.txt главы $chapterNumber имеет неверный корневой type"
+                    errors +=
+                        "data.txt главы $chapterNumber имеет неверный корневой type"
                 }
                 if (document.optJSONArray("content") == null) {
-                    errors += "data.txt главы $chapterNumber не содержит content"
+                    errors +=
+                        "data.txt главы $chapterNumber не содержит content"
+                }
+
+                val referencedImages =
+                    collectReferencedImageIds(document)
+                val fileIds = imageEntries
+                    .map {
+                        it.name.substringBeforeLast('.')
+                    }
+                    .toSet()
+
+                val missingImages =
+                    referencedImages - fileIds
+                if (missingImages.isNotEmpty()) {
+                    errors +=
+                        "В главе $chapterNumber отсутствуют файлы " +
+                        "иллюстраций: " +
+                        missingImages
+                            .take(5)
+                            .joinToString()
+                }
+
+                val orphanImages =
+                    fileIds - referencedImages
+                if (orphanImages.isNotEmpty()) {
+                    errors +=
+                        "В ZIP главы $chapterNumber есть " +
+                        "неиспользуемые иллюстрации"
                 }
             }
         }.onFailure {
-            errors += "ZIP главы $chapterNumber повреждён: ${it.message ?: it.javaClass.simpleName}"
+            errors +=
+                "ZIP главы $chapterNumber повреждён: " +
+                (it.message ?: it.javaClass.simpleName)
         }
+    }
+
+    private fun collectReferencedImageIds(
+        document: JSONObject
+    ): Set<String> {
+        val result = linkedSetOf<String>()
+
+        fun walkArray(array: JSONArray) {
+            for (index in 0 until array.length()) {
+                val node = array.optJSONObject(index)
+                    ?: continue
+
+                if (node.optString("type") == "image") {
+                    val images = node
+                        .optJSONObject("attrs")
+                        ?.optJSONArray("images")
+
+                    if (images != null) {
+                        for (
+                            imageIndex in 0 until
+                                images.length()
+                        ) {
+                            images
+                                .optJSONObject(imageIndex)
+                                ?.optString("image")
+                                ?.trim()
+                                ?.takeIf(
+                                    String::isNotBlank
+                                )
+                                ?.let(result::add)
+                        }
+                    }
+                }
+
+                node.optJSONArray("content")
+                    ?.let(::walkArray)
+            }
+        }
+
+        document.optJSONArray("content")
+            ?.let(::walkArray)
+
+        return result
     }
 
     private fun writeCover(
