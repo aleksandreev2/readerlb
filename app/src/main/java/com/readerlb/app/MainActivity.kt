@@ -514,7 +514,7 @@ private fun MainApp() {
                 NavigationBarItem(
                     selected = tab == AppTab.IMPORT,
                     onClick = { tab = AppTab.IMPORT },
-                    icon = { Icon(Icons.Default.List, null) },
+                    icon = { Icon(Icons.Default.Add, null) },
                     label = { Text("Импорт") }
                 )
                 NavigationBarItem(
