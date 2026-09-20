@@ -241,22 +241,28 @@ class EpubArchiveParser {
                     "В EPUB не удалось найти главы"
                 }
 
-                val declaredRange = sourceRangeFromName(sourceName)
+                val declaredNumbers =
+                    sourceExpectedIntegersFromName(
+                        sourceName
+                    )
+
                 if (
-                    declaredRange != null &&
-                    declaredRange.count() == fallback.size
+                    declaredNumbers != null &&
+                    declaredNumbers.size == fallback.size
                 ) {
                     issues += ImportIssue(
                         code = "NUMBERING_FROM_FILENAME",
                         message = "Номера глав не найдены внутри EPUB. " +
-                            "ReaderLB восстановил диапазон " +
-                            "${declaredRange.first}–${declaredRange.last} " +
-                            "по имени файла.",
+                            "ReaderLB восстановил нумерацию " +
+                            formatIntegerRanges(
+                                declaredNumbers
+                            ) +
+                            " по имени файла.",
                         severity = ImportIssueSeverity.INFO
                     )
                     candidates = fallback.mapIndexed { index, doc ->
                         doc.toCandidate(
-                            (declaredRange.first + index)
+                            declaredNumbers[index]
                                 .toString()
                         )
                     }
@@ -308,7 +314,21 @@ class EpubArchiveParser {
             val numbers = deduplicated
                 .map { it.number }
 
+            val declaredNumbers =
+                sourceExpectedIntegersFromName(
+                    sourceName
+                )?.toSet()
+
             findIntegerGaps(numbers)
+                .let { gaps ->
+                    if (declaredNumbers == null) {
+                        gaps
+                    } else {
+                        gaps.filter(
+                            declaredNumbers::contains
+                        )
+                    }
+                }
                 .takeIf(List<Int>::isNotEmpty)
                 ?.let { gaps ->
                     issues += ImportIssue(
@@ -1401,8 +1421,10 @@ class EpubArchiveParser {
         actualNumbers: List<String>,
         issues: MutableList<ImportIssue>
     ) {
-        val expected = sourceRangeFromName(sourceName)
-            ?: return
+        val expected = sourceExpectedIntegersFromName(
+            sourceName
+        ) ?: return
+
         if (actualNumbers.isEmpty()) {
             return
         }
@@ -1419,15 +1441,21 @@ class EpubArchiveParser {
             }
             .toSet()
 
+        val expectedSet = expected.toSet()
         val missing = expected
             .filterNot(actualIntegerValues::contains)
 
-        val start = BigDecimal(expected.first)
-        val end = BigDecimal(expected.last)
         val outside = actualNumbers.filter { raw ->
             val value = chapterNumberDecimal(raw)
                 ?: return@filter true
-            value < start || value > end
+
+            if (
+                value.stripTrailingZeros().scale() > 0
+            ) {
+                return@filter true
+            }
+
+            value.toInt() !in expectedSet
         }
 
         if (
@@ -1443,7 +1471,7 @@ class EpubArchiveParser {
                 }
                 if (outside.isNotEmpty()) {
                     add(
-                        "вне заявленного диапазона: " +
+                        "вне заявленного набора: " +
                             formatNumbers(outside)
                     )
                 }
@@ -1452,10 +1480,61 @@ class EpubArchiveParser {
             issues += ImportIssue(
                 code = "SOURCE_RANGE_MISMATCH",
                 message = "Имя файла заявляет главы " +
-                    "${expected.first}–${expected.last}, " +
-                    "но структура EPUB не совпадает ($details)."
+                    formatIntegerRanges(expected) +
+                    ", но структура EPUB не совпадает " +
+                    "($details)."
             )
         }
+    }
+
+    private fun sourceExpectedIntegersFromName(
+        sourceName: String?
+    ): List<Int>? {
+        if (sourceName.isNullOrBlank()) {
+            return null
+        }
+
+        SOURCE_SPLIT_RANGE_REGEX
+            .find(sourceName)
+            ?.let { match ->
+                val standalone = match
+                    .groupValues[1]
+                    .toIntOrNull()
+                    ?: return@let null
+                val rangeStart = match
+                    .groupValues[2]
+                    .toIntOrNull()
+                    ?: return@let null
+                val rangeEnd = match
+                    .groupValues[3]
+                    .toIntOrNull()
+                    ?: return@let null
+
+                if (
+                    rangeEnd >= rangeStart &&
+                    rangeEnd - rangeStart <= MAX_GAP_SCAN
+                ) {
+                    return (
+                        listOf(standalone) +
+                            (rangeStart..rangeEnd)
+                    )
+                        .distinct()
+                        .sorted()
+                }
+            }
+
+        val range = sourceRangeFromName(
+            sourceName
+        ) ?: return null
+
+        if (
+            range.last - range.first >
+            MAX_GAP_SCAN
+        ) {
+            return null
+        }
+
+        return range.toList()
     }
 
     private fun findIntegerGaps(
@@ -1608,6 +1687,11 @@ class EpubArchiveParser {
 
         val SOURCE_RANGE_REGEX = Regex(
             """(?:глав\p{L}*|chapters?)[^\d]{0,24}(\d{1,6})\s*[_–—-]\s*(\d{1,6})""",
+            RegexOption.IGNORE_CASE
+        )
+
+        val SOURCE_SPLIT_RANGE_REGEX = Regex(
+            """(?:глав\p{L}*|chapters?)[^\d]{0,24}(\d{1,6})[_,+;\s]+(\d{1,6})\s*[-–—]\s*(\d{1,6})""",
             RegexOption.IGNORE_CASE
         )
 
