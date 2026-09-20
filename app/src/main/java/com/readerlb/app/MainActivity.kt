@@ -1688,6 +1688,22 @@ private fun ImportScreen(
 
         error?.let { message ->
             item { StatusCard(message, false) }
+
+            if (
+                parsed == null &&
+                selectedUri != null &&
+                !busy
+            ) {
+                item {
+                    OutlineAction(
+                        "Повторить анализ",
+                        onClick = {
+                            error = null
+                            parseGeneration += 1
+                        }
+                    )
+                }
+            }
         }
         success?.let { message ->
             item {
@@ -2454,6 +2470,12 @@ private fun LibraryScreen(
                         "Не удалось обновить библиотеку: " +
                             message,
                         false
+                    )
+                }
+                item {
+                    OutlineAction(
+                        "Повторить сканирование",
+                        onClick = onRefresh
                     )
                 }
             }
