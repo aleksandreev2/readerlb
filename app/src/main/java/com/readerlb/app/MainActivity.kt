@@ -751,8 +751,9 @@ private fun ImportScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Добавить в RanobeLib", fontWeight = FontWeight.Bold, color = Ink)
                         Text(
-                            "После импорта главы появятся в вашей локальной библиотеке RanobeLib.",
+                            "Если тайтл уже существует, ReaderLB добавит только отсутствующие главы. Старые главы и их ID не перезаписываются.",
                             fontSize = 12.sp,
+                            lineHeight = 17.sp,
                             color = Muted
                         )
                     }
@@ -819,10 +820,21 @@ private fun ImportScreen(
                                 )
                             }
                         }.onSuccess { result ->
-                            success = if (result.installedDirectly) {
-                                "Готово: ${result.chapterCount} глав добавлено в RanobeLib."
-                            } else {
-                                "Готово: ZIP сохранён в Downloads/ReaderLB."
+                            success = when {
+                                !result.installedDirectly -> {
+                                    "Готово: ZIP сохранён в Downloads/ReaderLB."
+                                }
+                                result.updatedExisting &&
+                                    result.addedChapterCount == 0 -> {
+                                    "Тайтл уже актуален: новых глав нет."
+                                }
+                                result.updatedExisting -> {
+                                    "Обновлено: добавлено ${result.addedChapterCount} новых глав. " +
+                                        "Всего в локальном тайтле: ${result.chapterCount}."
+                                }
+                                else -> {
+                                    "Готово: ${result.chapterCount} глав добавлено в RanobeLib."
+                                }
                             }
                             onImported(result)
                         }.onFailure {
