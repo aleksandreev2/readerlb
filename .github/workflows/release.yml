@@ -48,6 +48,23 @@ jobs:
         run: |
           gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease --stacktrace
 
+      - name: Verify release signing identity
+        env:
+          READERLB_KEYSTORE_PASSWORD: ${{ secrets.READERLB_KEYSTORE_PASSWORD }}
+          READERLB_KEY_ALIAS: ${{ secrets.READERLB_KEY_ALIAS }}
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk 2>&1)"
+          printf '%s\n' "$CERT_OUTPUT"
+
+          APK_SHA="$(printf '%s\n' "$CERT_OUTPUT" | sed -n 's/.*SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          KEY_SHA="$(keytool -list -v -keystore release.keystore -storepass "$READERLB_KEYSTORE_PASSWORD" -alias "$READERLB_KEY_ALIAS" | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
+
+          test -n "$APK_SHA"
+          test -n "$KEY_SHA"
+          test "$APK_SHA" = "$KEY_SHA"
+
       - name: Prepare release files
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
