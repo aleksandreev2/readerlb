@@ -4,11 +4,10 @@ import android.content.Context
 import android.net.Uri
 import android.util.JsonReader
 import android.util.JsonToken
-import androidx.documentfile.provider.DocumentFile
 import com.readerlb.app.importer.compareChapterNumbers
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.Reader
+import android.provider.DocumentsContract
 import java.io.StringReader
 
 data class LocalLibraryItem(
@@ -27,6 +26,128 @@ data class LocalLibrarySnapshot(
     val skippedTitles: Int
 )
 
+internal fun encodeLocalLibraryCache(
+    items: List<LocalLibraryItem>
+): String {
+    val array = JSONArray()
+
+    items.forEach { item ->
+        array.put(
+            JSONObject()
+                .put("title", item.title)
+                .put("slugUrl", item.slugUrl)
+                .put(
+                    "chapterCount",
+                    item.chapterCount
+                )
+                .put(
+                    "firstChapter",
+                    item.firstChapter
+                )
+                .put(
+                    "lastChapter",
+                    item.lastChapter
+                )
+                .put(
+                    "writeTime",
+                    item.writeTime
+                )
+                .put(
+                    "createdByReaderLB",
+                    item.createdByReaderLB
+                )
+                .apply {
+                    item.coverUri?.let {
+                        put(
+                            "coverUri",
+                            it.toString()
+                        )
+                    }
+                }
+        )
+    }
+
+    return array.toString()
+}
+
+internal fun decodeLocalLibraryCache(
+    json: String?
+): List<LocalLibraryItem> {
+    if (json.isNullOrBlank()) {
+        return emptyList()
+    }
+
+    val array = JSONArray(json)
+
+    return buildList {
+        for (index in 0 until array.length()) {
+            val item = array
+                .optJSONObject(index)
+                ?: continue
+
+            val title = item
+                .optString("title")
+                .trim()
+            val slugUrl = item
+                .optString("slugUrl")
+                .trim()
+            val chapterCount =
+                item.optInt(
+                    "chapterCount",
+                    0
+                )
+            val firstChapter = item
+                .optString("firstChapter")
+                .trim()
+            val lastChapter = item
+                .optString("lastChapter")
+                .trim()
+
+            if (
+                title.isBlank() ||
+                slugUrl.isBlank() ||
+                chapterCount <= 0 ||
+                firstChapter.isBlank() ||
+                lastChapter.isBlank()
+            ) {
+                continue
+            }
+
+            add(
+                LocalLibraryItem(
+                    title = title,
+                    slugUrl = slugUrl,
+                    chapterCount =
+                        chapterCount,
+                    firstChapter =
+                        firstChapter,
+                    lastChapter =
+                        lastChapter,
+                    coverUri = item
+                        .optString(
+                            "coverUri"
+                        )
+                        .trim()
+                        .takeIf(
+                            String::isNotBlank
+                        )
+                        ?.let(Uri::parse),
+                    writeTime =
+                        item.optLong(
+                            "writeTime",
+                            0L
+                        ),
+                    createdByReaderLB =
+                        item.optBoolean(
+                            "createdByReaderLB",
+                            false
+                        )
+                )
+            )
+        }
+    }
+}
+
 class RanobeLibLibraryScanner(
     private val context: Context
 ) {
@@ -37,27 +158,43 @@ class RanobeLibLibraryScanner(
             total: Int
         ) -> Unit = { _, _ -> }
     ): LocalLibrarySnapshot {
-        val root = DocumentFile.fromTreeUri(
-            context,
-            treeUri
-        ) ?: error("Нет доступа к папке RanobeLib")
-
-        val directories = root
-            .listFiles()
-            .filter(DocumentFile::isDirectory)
-
-        var skipped = 0
-        val items = ArrayList<
-            LocalLibraryItem
-        >(directories.size)
-
-        directories.forEachIndexed {
-                index,
-                directory ->
-            val item = runCatching {
-                readTitle(directory)
+        val rootDocumentId =
+            runCatching {
+                DocumentsContract
+                    .getTreeDocumentId(
+                        treeUri
+                    )
             }.getOrElse {
-                skipped++
+                error(
+                    "Не удалось определить папку RanobeLib"
+                )
+            }
+
+        var completed = 0
+        var skipped = 0
+        val items =
+            ArrayList<LocalLibraryItem>()
+
+        forEachChild(
+            treeUri = treeUri,
+            parentDocumentId =
+                rootDocumentId
+        ) { child ->
+            if (
+                child.mimeType !=
+                DocumentsContract.Document
+                    .MIME_TYPE_DIR
+            ) {
+                return@forEachChild
+            }
+
+            val item = runCatching {
+                readTitle(
+                    treeUri = treeUri,
+                    directory = child
+                )
+            }.getOrElse {
+                skipped += 1
                 null
             }
 
@@ -65,9 +202,10 @@ class RanobeLibLibraryScanner(
                 items += item
             }
 
+            completed += 1
             onProgress(
-                index + 1,
-                directories.size
+                completed,
+                0
             )
         }
 
@@ -81,6 +219,11 @@ class RanobeLibLibraryScanner(
             }
         )
 
+        onProgress(
+            completed,
+            completed
+        )
+
         return LocalLibrarySnapshot(
             items = items,
             skippedTitles = skipped
@@ -88,51 +231,82 @@ class RanobeLibLibraryScanner(
     }
 
     private fun readTitle(
-        directory: DocumentFile
+        treeUri: Uri,
+        directory: SafDocument
     ): LocalLibraryItem? {
-        val infoFile = directory.findFile(
-            "info.json"
-        ) ?: return null
-        val chaptersFile = directory.findFile(
-            "chapters.json"
-        ) ?: return null
+        val children =
+            LinkedHashMap<String, SafDocument>()
+
+        forEachChild(
+            treeUri = treeUri,
+            parentDocumentId =
+                directory.documentId
+        ) { child ->
+            if (
+                child.mimeType !=
+                DocumentsContract.Document
+                    .MIME_TYPE_DIR
+            ) {
+                children[
+                    child.name
+                ] = child
+            }
+        }
+
+        val infoFile =
+            children["info.json"]
+                ?: return null
+        val chaptersFile =
+            children["chapters.json"]
+                ?: return null
 
         val info = JSONObject(
-            readText(infoFile)
+            readText(
+                uri = infoFile.uri,
+                displayName =
+                    infoFile.name
+            )
         )
         val media = info.getJSONObject(
             "media"
         )
         val chapters = readChapterSummary(
-            chaptersFile
+            uri = chaptersFile.uri,
+            displayName =
+                chaptersFile.name
         )
 
         val title = sequenceOf(
             media.optString("rusName"),
             media.optString("name"),
             media.optString("engName"),
-            directory.name.orEmpty()
+            directory.name
         )
             .map(String::trim)
-            .firstOrNull(String::isNotBlank)
-            ?: error("У тайтла нет названия")
+            .firstOrNull(
+                String::isNotBlank
+            )
+            ?: error(
+                "У тайтла нет названия"
+            )
 
         val slugUrl = media
             .optString("slugUrl")
             .trim()
             .ifBlank {
-                directory.name.orEmpty()
+                directory.name
             }
 
         val coverName = media
             .optString("imageUrl")
             .trim()
-            .takeIf(String::isNotBlank)
+            .takeIf(
+                String::isNotBlank
+            )
             ?.substringAfterLast('/')
 
         val coverUri = coverName
-            ?.let(directory::findFile)
-            ?.takeIf(DocumentFile::isFile)
+            ?.let(children::get)
             ?.uri
 
         return LocalLibraryItem(
@@ -156,11 +330,14 @@ class RanobeLibLibraryScanner(
     }
 
     private fun readChapterSummary(
-        file: DocumentFile
+        uri: Uri,
+        displayName: String
     ): LocalChapterSummary =
         context.contentResolver
-            .openInputStream(file.uri)
-            ?.bufferedReader(Charsets.UTF_8)
+            .openInputStream(uri)
+            ?.bufferedReader(
+                Charsets.UTF_8
+            )
             ?.use { reader ->
                 readLocalChapterSummary(
                     JsonReader(reader)
@@ -168,20 +345,116 @@ class RanobeLibLibraryScanner(
             }
             ?: error(
                 "Не удалось прочитать " +
-                    file.name
+                    displayName
             )
 
     private fun readText(
-        file: DocumentFile
+        uri: Uri,
+        displayName: String
     ): String =
         context.contentResolver
-            .openInputStream(file.uri)
-            ?.bufferedReader(Charsets.UTF_8)
-            ?.use { it.readText() }
+            .openInputStream(uri)
+            ?.bufferedReader(
+                Charsets.UTF_8
+            )
+            ?.use {
+                it.readText()
+            }
             ?: error(
                 "Не удалось прочитать " +
-                    file.name
+                    displayName
             )
+
+    private fun forEachChild(
+        treeUri: Uri,
+        parentDocumentId: String,
+        block: (SafDocument) -> Unit
+    ) {
+        val childrenUri =
+            DocumentsContract
+                .buildChildDocumentsUriUsingTree(
+                    treeUri,
+                    parentDocumentId
+                )
+
+        val projection = arrayOf(
+            DocumentsContract.Document
+                .COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document
+                .COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document
+                .COLUMN_MIME_TYPE
+        )
+
+        val cursor =
+            context.contentResolver.query(
+                childrenUri,
+                projection,
+                null,
+                null,
+                null
+            ) ?: error(
+                "Android не дал прочитать папку RanobeLib"
+            )
+
+        cursor.use {
+            val idIndex =
+                it.getColumnIndexOrThrow(
+                    DocumentsContract.Document
+                        .COLUMN_DOCUMENT_ID
+                )
+            val nameIndex =
+                it.getColumnIndexOrThrow(
+                    DocumentsContract.Document
+                        .COLUMN_DISPLAY_NAME
+                )
+            val mimeIndex =
+                it.getColumnIndexOrThrow(
+                    DocumentsContract.Document
+                        .COLUMN_MIME_TYPE
+                )
+
+            while (it.moveToNext()) {
+                val documentId =
+                    it.getString(idIndex)
+                val name =
+                    it.getString(nameIndex)
+                        .orEmpty()
+                val mimeType =
+                    it.getString(mimeIndex)
+                        .orEmpty()
+
+                if (
+                    documentId.isBlank()
+                ) {
+                    continue
+                }
+
+                block(
+                    SafDocument(
+                        documentId =
+                            documentId,
+                        name = name,
+                        mimeType =
+                            mimeType,
+                        uri =
+                            DocumentsContract
+                                .buildDocumentUriUsingTree(
+                                    treeUri,
+                                    documentId
+                                )
+                    )
+                )
+            }
+        }
+    }
+
+    private data class SafDocument(
+        val documentId: String,
+        val name: String,
+        val mimeType: String,
+        val uri: Uri
+    )
 }
 
 internal data class LocalChapterSummary(
