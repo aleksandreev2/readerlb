@@ -273,6 +273,71 @@ class UpdateManager(
         ) {
             "Загруженный APK имеет другой package name"
         }
+
+        val currentInfo =
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                flags
+            )
+
+        val currentCertificates =
+            signingCertificateDigests(currentInfo)
+        val incomingCertificates =
+            signingCertificateDigests(
+                requireNotNull(packageInfo)
+            )
+
+        require(
+            currentCertificates.isNotEmpty() &&
+                incomingCertificates.isNotEmpty() &&
+                currentCertificates.any(
+                    incomingCertificates::contains
+                )
+        ) {
+            "Подпись обновления не совпадает с установленной " +
+                "версией ReaderLB. Старые тестовые сборки " +
+                "0.4.x подписывались разными ключами; их " +
+                "нужно удалить один раз перед переходом на " +
+                "стабильную ветку обновлений."
+        }
+    }
+
+    private fun signingCertificateDigests(
+        info: android.content.pm.PackageInfo
+    ): Set<String> {
+        val signatures = if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.P
+        ) {
+            val signingInfo =
+                info.signingInfo
+                    ?: return emptySet()
+
+            if (signingInfo.hasMultipleSigners()) {
+                signingInfo.apkContentsSigners
+                    .orEmpty()
+                    .toList()
+            } else {
+                signingInfo.signingCertificateHistory
+                    .orEmpty()
+                    .toList()
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures
+                .orEmpty()
+                .toList()
+        }
+
+        return signatures.map { signature ->
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(signature.toByteArray())
+                .joinToString("") {
+                    "%02x".format(it)
+                }
+        }.toSet()
     }
 
     private fun open(
