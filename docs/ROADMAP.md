@@ -193,7 +193,7 @@ Scope:
 - [x] empty/error/loading states with retry paths for EPUB analysis and library scanning;
 - [x] update failure/recovery messaging for cancelled, blocked, conflicting, incompatible, invalid, storage, signature and integrity failures;
 - [x] settings cleanup;
-- corpus expansion;
+- [x] corpus expansion with anonymized regressions derived from real large EPUB structures;
 - [x] final signing/update migration documentation;
 - [x] copyable diagnostics limited to app/device/access state; no book titles, EPUB paths or reading-library content.
 
