@@ -420,13 +420,21 @@ class UpdateInstallReceiver : BroadcastReceiver() {
             }
 
             else -> {
-                val message = intent.getStringExtra(
-                    PackageInstaller.EXTRA_STATUS_MESSAGE
-                ) ?: "установка отменена"
+                val status = intent.getIntExtra(
+                    PackageInstaller.EXTRA_STATUS,
+                    PackageInstaller.STATUS_FAILURE
+                )
+                val details =
+                    intent.getStringExtra(
+                        PackageInstaller.EXTRA_STATUS_MESSAGE
+                    )
 
                 Toast.makeText(
                     context,
-                    "Не удалось обновить ReaderLB: $message",
+                    installStatusMessage(
+                        status = status,
+                        details = details
+                    ),
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -436,6 +444,79 @@ class UpdateInstallReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_INSTALL_RESULT =
             "com.readerlb.app.UPDATE_INSTALL_RESULT"
+    }
+}
+
+internal fun installStatusMessage(
+    status: Int,
+    details: String? = null
+): String =
+    when (status) {
+        PackageInstaller.STATUS_FAILURE_ABORTED ->
+            "Установка ReaderLB отменена."
+        PackageInstaller.STATUS_FAILURE_BLOCKED ->
+            "Android заблокировал установку ReaderLB. " +
+                "Проверьте разрешение на установку из этого источника."
+        PackageInstaller.STATUS_FAILURE_CONFLICT ->
+            "ReaderLB не удалось обновить из-за конфликта установленной версии. " +
+                "Если установлена старая тестовая 0.3.1–0.4.2, " +
+                "для перехода на стабильную подпись её нужно удалить один раз."
+        PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
+            "Эта сборка ReaderLB несовместима с устройством."
+        PackageInstaller.STATUS_FAILURE_INVALID ->
+            "Android отклонил APK ReaderLB как некорректный."
+        PackageInstaller.STATUS_FAILURE_STORAGE ->
+            "Недостаточно свободного места для обновления ReaderLB."
+        else -> {
+            val suffix = details
+                ?.trim()
+                ?.takeIf(String::isNotBlank)
+                ?.let { " ($it)" }
+                .orEmpty()
+            "Не удалось установить ReaderLB$suffix"
+        }
+    }
+
+internal fun friendlyUpdateDownloadError(
+    throwable: Throwable
+): String {
+    val raw = throwable.message
+        ?.trim()
+        .orEmpty()
+
+    return when {
+        raw.contains(
+            "Подпись обновления не совпадает",
+            ignoreCase = true
+        ) ->
+            "Подпись обновления отличается от установленной версии. " +
+                "Старые тестовые ReaderLB 0.3.1–0.4.2 требуют один раз " +
+                "удалить приложение и установить стабильную сборку."
+
+        raw.contains(
+            "SHA-256",
+            ignoreCase = true
+        ) ->
+            "Проверка целостности обновления не пройдена. " +
+                "ReaderLB не будет устанавливать этот APK."
+
+        raw.contains(
+            "другой package name",
+            ignoreCase = true
+        ) ->
+            "Скачанный APK не является ReaderLB. Установка остановлена."
+
+        raw.contains(
+            "HTTP",
+            ignoreCase = true
+        ) ->
+            "GitHub не отдал APK обновления. Попробуйте проверить обновления позже."
+
+        raw.isNotBlank() ->
+            "Не удалось загрузить обновление: $raw"
+
+        else ->
+            "Не удалось загрузить обновление. Проверьте интернет и повторите попытку."
     }
 }
 
