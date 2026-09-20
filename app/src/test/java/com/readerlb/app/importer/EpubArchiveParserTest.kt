@@ -248,6 +248,16 @@ class EpubArchiveParserTest {
                 it.code == "DUPLICATE_CHAPTER_NUMBERS"
             }
         )
+        assertTrue(
+            book.issues.none {
+                it.code == "CHAPTER_GAPS"
+            }
+        )
+        assertTrue(
+            book.issues.none {
+                it.code == "SOURCE_RANGE_MISMATCH"
+            }
+        )
     }
 
     @Test
