@@ -121,6 +121,110 @@ class RanobeLibPackageBuilderTest {
     }
 
     @Test
+    fun embedsIllustrationFileAndRanobeLibImageNode() {
+        val imageBytes = byteArrayOf(
+            0x89.toByte(),
+            'P'.code.toByte(),
+            'N'.code.toByte(),
+            'G'.code.toByte(),
+            13,
+            10,
+            26,
+            10,
+            10,
+            20,
+            30
+        )
+
+        val book = ParsedBook(
+            title = "Книга с иллюстрацией",
+            chapters = listOf(
+                ParsedChapter(
+                    number = "1",
+                    title = "Начало",
+                    blocks = listOf(
+                        ReaderBlock.Paragraph(
+                            "До картинки"
+                        ),
+                        ReaderBlock.Image(
+                            bytes = imageBytes,
+                            extension = "png",
+                            description = "Иллюстрация"
+                        ),
+                        ReaderBlock.Paragraph(
+                            "После картинки"
+                        )
+                    )
+                )
+            )
+        )
+
+        val root = Files
+            .createTempDirectory(
+                "readerlb_image_package_"
+            )
+            .toFile()
+
+        val built = builder.build(
+            book = book,
+            rootDir = root
+        )
+
+        val chapterZip = built.titleDir
+            .listFiles()
+            .orEmpty()
+            .single { it.extension == "zip" }
+
+        ZipFile(chapterZip).use { archive ->
+            val data = archive
+                .getInputStream(
+                    archive.getEntry("data.txt")
+                )
+                .use {
+                    it.readBytes()
+                        .toString(Charsets.UTF_8)
+                }
+
+            val nodes = JSONObject(data)
+                .getJSONArray("content")
+            assertEquals(3, nodes.length())
+            assertEquals(
+                "image",
+                nodes.getJSONObject(1)
+                    .getString("type")
+            )
+
+            val attrs = nodes
+                .getJSONObject(1)
+                .getJSONObject("attrs")
+            assertEquals(
+                "Иллюстрация",
+                attrs.getString("description")
+            )
+
+            val imageId = attrs
+                .getJSONArray("images")
+                .getJSONObject(0)
+                .getString("image")
+            val entry = archive.getEntry(
+                "$imageId.png"
+            )
+
+            assertTrue(entry != null)
+            val storedBytes = archive
+                .getInputStream(entry)
+                .use { it.readBytes() }
+            assertTrue(
+                storedBytes.contentEquals(imageBytes)
+            )
+        }
+
+        assertTrue(
+            builder.verify(built).isValid
+        )
+    }
+
+    @Test
     fun infoJsonMatchesGeneratedPackage() {
         val book = ParsedBook(
             title = "Первоклассная удача",
