@@ -40,15 +40,15 @@ When a newer release exists:
    release SHA-256 digest when one is available.
 4. ReaderLB verifies that the downloaded APK has the same application package
    name.
-5. Android's package installer handles the final install.
+5. ReaderLB opens a PackageInstaller session and Android handles the final user-authorized install.
 
 Android 8+ may require the user to allow ReaderLB as an install source. Older
 Android versions and many OEM builds still require an explicit confirmation for
 each sideloaded update, so the universal flow is intentionally semi-automatic.
 
-## Legacy 0.4.x warning
+## Legacy test-build warning
 
-Do not promise an in-place upgrade from the historical 0.4.1/0.4.2 test APKs.
+Do not promise an in-place upgrade from historical 0.3.1–0.4.2 test APKs.
 Their signing certificates differ from each other and from the pinned test
 certificate. See `docs/SIGNING_MIGRATION.md`.
 
