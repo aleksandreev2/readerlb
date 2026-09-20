@@ -56,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -79,7 +80,9 @@ import com.readerlb.app.importer.chapterNumberInRange
 import com.readerlb.app.importer.compareChapterNumbers
 import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
+import com.readerlb.app.storage.LocalLibraryItem
 import com.readerlb.app.storage.Preferences
+import com.readerlb.app.storage.RanobeLibLibraryScanner
 import com.readerlb.app.update.UpdateInfo
 import com.readerlb.app.update.UpdateManager
 import com.readerlb.app.ui.theme.Blue
@@ -335,9 +338,29 @@ private fun MainApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember { Preferences(context) }
     val historyStore = remember { HistoryStore(context) }
+    val libraryScanner = remember {
+        RanobeLibLibraryScanner(context)
+    }
     val updateManager = remember { UpdateManager(context) }
     val scope = rememberCoroutineScope()
-    var history by remember { mutableStateOf(historyStore.load()) }
+    var history by remember {
+        mutableStateOf(historyStore.load())
+    }
+    var localLibrary by remember {
+        mutableStateOf<List<LocalLibraryItem>>(emptyList())
+    }
+    var libraryLoading by remember {
+        mutableStateOf(false)
+    }
+    var librarySkipped by remember {
+        mutableIntStateOf(0)
+    }
+    var libraryError by remember {
+        mutableStateOf<String?>(null)
+    }
+    var libraryRefreshToken by remember {
+        mutableIntStateOf(0)
+    }
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var folderUri by remember { mutableStateOf(preferences.ranobeLibBookTree) }
     var importHintsDone by remember {
@@ -352,6 +375,38 @@ private fun MainApp() {
     var updateBusy by remember { mutableStateOf(false) }
     var updateMessage by remember {
         mutableStateOf<String?>(null)
+    }
+
+    LaunchedEffect(
+        folderUri,
+        libraryRefreshToken
+    ) {
+        val tree = folderUri
+        if (tree == null) {
+            localLibrary = emptyList()
+            librarySkipped = 0
+            libraryError = null
+            libraryLoading = false
+        } else {
+            libraryLoading = true
+            libraryError = null
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    libraryScanner.scan(tree)
+                }
+            }
+            result.onSuccess { snapshot ->
+                localLibrary = snapshot.items
+                librarySkipped = snapshot.skippedTitles
+            }.onFailure {
+                localLibrary = emptyList()
+                librarySkipped = 0
+                libraryError =
+                    it.message
+                        ?: "Не удалось прочитать библиотеку RanobeLib"
+            }
+            libraryLoading = false
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -482,6 +537,9 @@ private fun MainApp() {
             AppTab.HOME -> HomeScreen(
                 modifier = Modifier.padding(padding),
                 history = history,
+                localLibrary = localLibrary,
+                libraryConnected = folderUri != null,
+                libraryLoading = libraryLoading,
                 updateInfo = latestUpdate,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
@@ -507,6 +565,7 @@ private fun MainApp() {
                 onImported = {
                     historyStore.add(it)
                     history = historyStore.load()
+                    libraryRefreshToken++
                 },
                 onOpenLibrary = {
                     tab = AppTab.LIBRARY
@@ -514,7 +573,22 @@ private fun MainApp() {
             )
             AppTab.LIBRARY -> LibraryScreen(
                 modifier = Modifier.padding(padding),
-                history = history
+                items = localLibrary,
+                connected = folderUri != null,
+                loading = libraryLoading,
+                skippedTitles = librarySkipped,
+                error = libraryError,
+                onRefresh = {
+                    libraryRefreshToken++
+                },
+                onPickFolder = {
+                    folderPicker.launch(
+                        RANOBELIB_BOOK_INITIAL_URI
+                    )
+                },
+                onAdd = {
+                    tab = AppTab.IMPORT
+                }
             )
             AppTab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
@@ -552,6 +626,9 @@ private fun MainApp() {
 private fun HomeScreen(
     modifier: Modifier,
     history: List<ImportHistoryItem>,
+    localLibrary: List<LocalLibraryItem>,
+    libraryConnected: Boolean,
+    libraryLoading: Boolean,
     updateInfo: UpdateInfo?,
     updateBusy: Boolean,
     updateMessage: String?,
@@ -560,7 +637,28 @@ private fun HomeScreen(
     onOpenLibrary: () -> Unit,
     onSettings: () -> Unit
 ) {
-    val totalChapters = history.sumOf { it.chapters }
+    val shownTitleCount =
+        if (libraryConnected) {
+            localLibrary.size
+        } else {
+            history.size
+        }
+    val totalChapters =
+        if (libraryConnected) {
+            localLibrary.sumOf {
+                it.chapterCount
+            }
+        } else {
+            history.sumOf { it.chapters }
+        }
+    val installedCount =
+        if (libraryConnected) {
+            localLibrary.size
+        } else {
+            history.count {
+                it.installedDirectly
+            }
+        }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -624,7 +722,7 @@ private fun HomeScreen(
                 StatCard(
                     Modifier.weight(1f),
                     Icons.Default.List,
-                    history.size.toString(),
+                    shownTitleCount.toString(),
                     "Новеллы"
                 )
                 StatCard(
@@ -636,7 +734,7 @@ private fun HomeScreen(
                 StatCard(
                     Modifier.weight(1f),
                     Icons.Default.Check,
-                    history.count { it.installedDirectly }.toString(),
+                    installedCount.toString(),
                     "В RanobeLib"
                 )
             }
@@ -648,7 +746,11 @@ private fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "Импортированные тайтлы",
+                    if (libraryConnected) {
+                        "Локальная библиотека"
+                    } else {
+                        "Последние импорты"
+                    },
                     modifier = Modifier.weight(1f),
                     fontSize = 19.sp,
                     fontWeight = FontWeight.Bold
@@ -664,13 +766,65 @@ private fun HomeScreen(
             }
         }
 
-        if (history.isEmpty()) {
-            item {
-                EmptyLibraryCard(onAdd)
+        when {
+            libraryConnected &&
+                libraryLoading &&
+                localLibrary.isEmpty() -> {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(18.dp),
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = Blue
+                            )
+                            Text(
+                                "Читаю локальную библиотеку RanobeLib…",
+                                color = Muted,
+                                fontSize = 13.sp,
+                                modifier =
+                                    Modifier.padding(
+                                        start = 12.dp
+                                    )
+                            )
+                        }
+                    }
+                }
             }
-        } else {
-            items(history.take(6)) { item ->
-                HistoryCard(item)
+
+            libraryConnected &&
+                localLibrary.isNotEmpty() -> {
+                items(
+                    localLibrary.take(6),
+                    key = { it.slugUrl }
+                ) { item ->
+                    LocalLibraryCard(item)
+                }
+            }
+
+            !libraryConnected &&
+                history.isNotEmpty() -> {
+                items(history.take(6)) { item ->
+                    HistoryCard(item)
+                }
+            }
+
+            else -> {
+                item {
+                    EmptyLibraryCard(onAdd)
+                }
             }
         }
     }
@@ -1376,25 +1530,170 @@ private fun ParsedPreview(book: ParsedBook) {
 @Composable
 private fun LibraryScreen(
     modifier: Modifier,
-    history: List<ImportHistoryItem>
+    items: List<LocalLibraryItem>,
+    connected: Boolean,
+    loading: Boolean,
+    skippedTitles: Int,
+    error: String?,
+    onRefresh: () -> Unit,
+    onPickFolder: () -> Unit,
+    onAdd: () -> Unit
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement =
+            Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Библиотека", fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Ink)
-            Text(
-                "Тайтлы, которые ReaderLB уже подготовил.",
-                color = Muted,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Библиотека",
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Ink
+                    )
+                    Text(
+                        if (connected) {
+                            "Реальные локальные тайтлы RanobeLib."
+                        } else {
+                            "Подключите папку book, чтобы видеть " +
+                                "то, что реально скачано в RanobeLib."
+                        },
+                        color = Muted,
+                        modifier =
+                            Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                if (connected) {
+                    Text(
+                        "Обновить",
+                        color = Blue,
+                        fontWeight =
+                            FontWeight.SemiBold,
+                        modifier = Modifier.clickable(
+                            enabled = !loading,
+                            onClick = onRefresh
+                        )
+                    )
+                }
+            }
         }
-        if (history.isEmpty()) {
-            item { EmptyLibraryCard {} }
+
+        if (!connected) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    border =
+                        androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            Line
+                        )
+                ) {
+                    Column(
+                        Modifier.padding(18.dp),
+                        verticalArrangement =
+                            Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "Нужен доступ к RanobeLib",
+                            color = Ink,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "ReaderLB прочитает только info.json, " +
+                                "chapters.json и обложки. Главы не " +
+                                "изменяются при просмотре библиотеки.",
+                            color = Muted,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                        OutlineAction(
+                            "Выбрать папку book",
+                            onPickFolder
+                        )
+                    }
+                }
+            }
         } else {
-            items(history) { HistoryCard(it) }
+            if (loading && items.isEmpty()) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.size(26.dp),
+                                strokeWidth = 2.dp,
+                                color = Blue
+                            )
+                            Text(
+                                "Сканирую локальные тайтлы…",
+                                color = Muted,
+                                modifier =
+                                    Modifier.padding(
+                                        start = 12.dp
+                                    )
+                            )
+                        }
+                    }
+                }
+            }
+
+            error?.let { message ->
+                item {
+                    StatusCard(
+                        "Не удалось обновить библиотеку: " +
+                            message,
+                        false
+                    )
+                }
+            }
+
+            if (skippedTitles > 0) {
+                item {
+                    Text(
+                        "Не удалось прочитать папок: " +
+                            skippedTitles +
+                            ". Повреждённые или чужие папки " +
+                            "пропущены.",
+                        color = Color(0xFF9A6700),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            if (!loading && items.isEmpty() && error == null) {
+                item {
+                    EmptyLibraryCard(onAdd)
+                }
+            } else {
+                items(
+                    items,
+                    key = { it.slugUrl }
+                ) { item ->
+                    LocalLibraryCard(item)
+                }
+            }
         }
     }
 }
@@ -1645,6 +1944,173 @@ private fun SettingsScreen(
         }
     }
 }
+
+@Composable
+private fun LocalLibraryCard(
+    item: LocalLibraryItem
+) {
+    val cover by rememberLibraryCover(item.coverUri)
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        shape = RoundedCornerShape(15.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            Line
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment =
+                Alignment.CenterVertically
+        ) {
+            if (cover != null) {
+                Image(
+                    bitmap = requireNotNull(cover),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(62.dp)
+                        .clip(
+                            RoundedCornerShape(10.dp)
+                        )
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(62.dp)
+                        .clip(
+                            RoundedCornerShape(10.dp)
+                        )
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    Color(0xFF183753),
+                                    Color(0xFF1996E6)
+                                )
+                            )
+                        ),
+                    contentAlignment =
+                        Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.List,
+                        null,
+                        tint = Color.White
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    item.title,
+                    fontWeight = FontWeight.Bold,
+                    color = Ink,
+                    maxLines = 2
+                )
+                Text(
+                    if (
+                        item.firstChapter ==
+                        item.lastChapter
+                    ) {
+                        "Глава ${item.firstChapter}"
+                    } else {
+                        "Главы ${item.firstChapter}–" +
+                            item.lastChapter
+                    },
+                    color = Muted,
+                    fontSize = 13.sp,
+                    modifier =
+                        Modifier.padding(top = 3.dp)
+                )
+                Text(
+                    chapterCountText(
+                        item.chapterCount
+                    ),
+                    color = Success,
+                    fontSize = 11.sp,
+                    fontWeight =
+                        FontWeight.SemiBold,
+                    modifier =
+                        Modifier.padding(top = 5.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberLibraryCover(
+    uri: Uri?
+): androidx.compose.runtime.State<
+    androidx.compose.ui.graphics.ImageBitmap?
+> {
+    val context =
+        androidx.compose.ui.platform.LocalContext.current
+
+    return produceState(
+        initialValue = null,
+        key1 = uri
+    ) {
+        value = if (uri == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                decodeLibraryCover(
+                    context = context,
+                    uri = uri
+                )?.asImageBitmap()
+            }
+        }
+    }
+}
+
+private fun decodeLibraryCover(
+    context: android.content.Context,
+    uri: Uri
+): android.graphics.Bitmap? =
+    runCatching {
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+
+        context.contentResolver
+            .openInputStream(uri)
+            ?.use {
+                BitmapFactory.decodeStream(
+                    it,
+                    null,
+                    bounds
+                )
+            }
+
+        var sample = 1
+        while (
+            bounds.outWidth / sample > 256 ||
+            bounds.outHeight / sample > 384
+        ) {
+            sample *= 2
+        }
+
+        val options =
+            BitmapFactory.Options().apply {
+                inSampleSize = sample
+            }
+
+        context.contentResolver
+            .openInputStream(uri)
+            ?.use {
+                BitmapFactory.decodeStream(
+                    it,
+                    null,
+                    options
+                )
+            }
+    }.getOrNull()
 
 @Composable
 private fun HistoryCard(item: ImportHistoryItem) {
