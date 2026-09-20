@@ -711,6 +711,123 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun fileBackedModeSpillsIllustrationWithoutKeepingBytes() {
+        val imageBytes = byteArrayOf(
+            0x89.toByte(),
+            'P'.code.toByte(),
+            'N'.code.toByte(),
+            'G'.code.toByte(),
+            13,
+            10,
+            26,
+            10,
+            1,
+            2,
+            3,
+            4
+        )
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "chapter0001",
+                    "text/chapter_0001.xhtml",
+                    "<h1>Глава 1</h1>" +
+                        "<p>До картинки.</p>" +
+                        "<img src=\"../images/one.png\"/>" +
+                        "<p>После картинки.</p>"
+                )
+            ),
+            extraEntries = mapOf(
+                "OEBPS/images/one.png" to
+                    imageBytes
+            )
+        )
+        val assetDirectory = Files
+            .createTempDirectory(
+                "readerlb_assets_"
+            )
+            .toFile()
+        val packageRoot = Files
+            .createTempDirectory(
+                "readerlb_streamed_package_"
+            )
+            .toFile()
+
+        try {
+            val book = parser.parse(
+                file = epub,
+                assetDirectory =
+                    assetDirectory
+            )
+            val image = book.chapters
+                .single()
+                .blocks
+                .filterIsInstance<
+                    ReaderBlock.Image
+                >()
+                .single()
+
+            assertTrue(image.bytes.isEmpty())
+            assertTrue(
+                !image.filePath.isNullOrBlank()
+            )
+            val spilled = File(
+                requireNotNull(
+                    image.filePath
+                )
+            )
+            assertTrue(spilled.isFile)
+            assertTrue(
+                spilled
+                    .readBytes()
+                    .contentEquals(imageBytes)
+            )
+            assertEquals(
+                assetDirectory.absolutePath,
+                book.temporaryAssetDirectory
+            )
+
+            val built =
+                RanobeLibPackageBuilder()
+                    .build(
+                        book = book,
+                        rootDir = packageRoot
+                    )
+            val chapterZip = built.titleDir
+                .listFiles()
+                .orEmpty()
+                .single {
+                    it.extension == "zip"
+                }
+
+            ZipFile(chapterZip).use {
+                    archive ->
+                val imageEntry = archive
+                    .entries()
+                    .asSequence()
+                    .single {
+                        !it.isDirectory &&
+                            it.name != "data.txt"
+                    }
+                val packagedBytes = archive
+                    .getInputStream(imageEntry)
+                    .use { it.readBytes() }
+
+                assertTrue(
+                    packagedBytes
+                        .contentEquals(
+                            imageBytes
+                        )
+                )
+            }
+        } finally {
+            packageRoot.deleteRecursively()
+            assetDirectory.deleteRecursively()
+            epub.delete()
+        }
+    }
+
+    @Test
     fun realCorpusStyleChapterKeepsTwoJpegIllustrationsAndSceneBreak() {
         val firstImage = byteArrayOf(
             0xFF.toByte(),
