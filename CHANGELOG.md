@@ -10,6 +10,7 @@ Pre-1.0 interface hardening in progress.
 - Settings now describe RanobeLib access in user terms instead of exposing a raw Android content URI, and the low-level package-format explanation was removed from the main settings screen.
 - Help now includes copyable privacy-safe diagnostics with ReaderLB version, Android/API, device model and access/update state only; it excludes book titles, EPUB paths and library contents.
 - Installer/update failures now explain cancellation, blocked unknown-source permission, storage shortage, signing migration, integrity failures and package conflicts in user-facing language.
+- Failed EPUB analysis and failed local-library scans now expose an explicit retry action instead of leaving the user at a dead end.
 
 ## Unreleased — 0.8.0
 
