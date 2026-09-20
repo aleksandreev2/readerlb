@@ -54,17 +54,6 @@ jobs:
         run: |
           echo "READERLB_DEBUG_KEYSTORE_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
 
-      - name: Inspect debug signing identity
-        run: |
-          echo "Cached debug keystore certificate:"
-          keytool -list -v \
-            -keystore "$HOME/.android/debug.keystore" \
-            -storepass android \
-            -alias androiddebugkey \
-            | grep -E "SHA256:|Valid from:"
-          echo "Gradle signing configuration:"
-          gradle :app:signingReport --console=plain
-
       - name: Run unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
 
@@ -83,25 +72,12 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Compare update signing certificates
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify stable APK signing certificate
         run: |
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
-          echo "Current APK:"
-          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -E "Signer #1 certificate SHA-256 digest"
-
-          mkdir -p "$RUNNER_TEMP/old041" "$RUNNER_TEMP/old042"
-          gh run download 35521272574 --repo "$GITHUB_REPOSITORY" -n ReaderLB-debug -D "$RUNNER_TEMP/old041"
-          gh run download 35522160103 --repo "$GITHUB_REPOSITORY" -n ReaderLB-debug -D "$RUNNER_TEMP/old042"
-
-          echo "ReaderLB 0.4.1:"
-          "$APKSIGNER" verify --print-certs "$RUNNER_TEMP/old041/app-debug.apk" | grep -E "Signer #1 certificate SHA-256 digest"
-          echo "ReaderLB 0.4.2:"
-          "$APKSIGNER" verify --print-certs "$RUNNER_TEMP/old042/app-debug.apk" | grep -E "Signer #1 certificate SHA-256 digest"
-
           KEY_SHA="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
           APK_SHA="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | awk -F': ' '/Signer #1 certificate SHA-256 digest/{print tolower($2); exit}')"
+          echo "Stable certificate SHA-256: $APK_SHA"
           test -n "$KEY_SHA"
           test -n "$APK_SHA"
           test "$KEY_SHA" = "$APK_SHA"
