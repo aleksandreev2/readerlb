@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — 0.8.0
+
+Large-book and low-memory reliability work in progress.
+
+- EPUB chapter illustrations are streamed into temporary files during Android parsing instead of retaining all archive image payloads in ParsedBook memory.
+- Chapter-package generation streams file-backed illustrations directly into RanobeLib ZIPs while preserving the legacy in-memory path for compatibility.
+- An image-heavy chapter 0 regression fixture enforces zero retained archive-image payload bytes in the parsed book model.
+- Temporary EPUB assets are cleaned when leaving/replacing an import, after parse failures, and by a stale-cache sweep after abandoned process sessions.
+- Added truncated/malformed EPUB rejection coverage and moved the optional private EPUB corpus smoke test onto the same streamed-image path used by Android.
+
 ## Unreleased — 0.7.0
 
 Local-library usability work in progress.
