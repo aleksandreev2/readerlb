@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0-dev
+
+Incremental-update milestone.
+
+- Existing local RanobeLib titles are updated instead of duplicated when the generated title identity matches.
+- Exact overlaps keep the already installed chapter ID, branch metadata and ZIP.
+- Only missing chapter numbers are added; partial ranges such as 431–700 over an existing 1–653 title add only 654–700.
+- Update writes are transactional: new ZIPs are staged and SHA-256 checked, metadata is backed up, and `info.json` is published last.
+- A recovery journal handles process death during an update and either completes cleanup or restores the last known-good metadata.
+- A committed update is accepted only when all newly added chapter ZIPs are present.
+- Corrupt recovery journals stop the update before existing title data is changed.
+- Update-planner regression coverage includes 3000-chapter libraries.
+- Onboarding now uses the supplied three-panel artwork, sliced into three local assets.
+
 ## 0.2.0
 
 Reliability milestone for EPUB → local RanobeLib import.
