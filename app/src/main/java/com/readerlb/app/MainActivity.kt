@@ -346,6 +346,9 @@ private fun MainApp() {
     var latestUpdate by remember {
         mutableStateOf<UpdateInfo?>(null)
     }
+    var autoUpdateChecks by remember {
+        mutableStateOf(preferences.autoUpdateChecks)
+    }
     var updateBusy by remember { mutableStateOf(false) }
     var updateMessage by remember {
         mutableStateOf<String?>(null)
@@ -356,7 +359,7 @@ private fun MainApp() {
         val due =
             now - preferences.lastUpdateCheckMillis >=
                 24L * 60L * 60L * 1000L
-        if (due) {
+        if (due && autoUpdateChecks) {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     updateManager.checkLatest()
@@ -517,8 +520,13 @@ private fun MainApp() {
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
                 updateInfo = latestUpdate,
+                autoUpdateChecks = autoUpdateChecks,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
+                onAutoUpdateChecksChanged = { enabled ->
+                    preferences.autoUpdateChecks = enabled
+                    autoUpdateChecks = enabled
+                },
                 onCheckUpdates = ::checkForUpdates,
                 onInstallUpdate = ::installLatestUpdate,
                 onRepeatHints = {
@@ -1396,8 +1404,10 @@ private fun SettingsScreen(
     modifier: Modifier,
     folderUri: Uri?,
     updateInfo: UpdateInfo?,
+    autoUpdateChecks: Boolean,
     updateBusy: Boolean,
     updateMessage: String?,
+    onAutoUpdateChecksChanged: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit,
     onInstallUpdate: () -> Unit,
     onRepeatHints: () -> Unit,
@@ -1467,13 +1477,32 @@ private fun SettingsScreen(
                         fontWeight = FontWeight.Bold,
                         color = Ink
                     )
-                    Text(
-                        "Обновления проверяются автоматически " +
-                            "не чаще одного раза в сутки.",
-                        color = Muted,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Автопроверка",
+                                color = Ink,
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+                            Text(
+                                "Не чаще одного раза в сутки. " +
+                                    "APK сам не устанавливается.",
+                                color = Muted,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
+                        }
+                        Switch(
+                            checked = autoUpdateChecks,
+                            onCheckedChange =
+                                onAutoUpdateChecksChanged
+                        )
+                    }
                     if (updateInfo != null) {
                         Text(
                             "Доступна версия " +
