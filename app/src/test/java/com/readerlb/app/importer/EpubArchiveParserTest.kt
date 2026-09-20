@@ -161,6 +161,75 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun epub3PrologueMappedToCh0001DoesNotBecomeChapterOne() {
+        val epub = buildEpubWithNav(
+            docs = listOf(
+                Doc(
+                    "ch0001",
+                    "text/ch0001.xhtml",
+                    "<h1>Пролог</h1><p>Содержательный пролог.</p>"
+                ),
+                Doc(
+                    "ch0002",
+                    "text/ch0002.xhtml",
+                    "<h1>Глава 2</h1><p>Вторая глава после пролога.</p>"
+                )
+            ),
+            tocLabels = listOf(
+                "Пролог",
+                "Глава 2. Мидбосс, будущий союзник"
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(
+            listOf("0", "2"),
+            book.chapters.map { it.number }
+        )
+        assertTrue(
+            book.chapters.none { it.number == "1" }
+        )
+    }
+
+    @Test
+    fun translatorAfterwordInSecFileIsOmittedAfterLastNumberedChapter() {
+        val epub = buildEpubWithNav(
+            docs = listOf(
+                Doc(
+                    "sec1192",
+                    "text/sec1192.xhtml",
+                    "<h1>Глава 1192</h1><p>Последняя основная глава.</p>"
+                ),
+                Doc(
+                    "sec1193",
+                    "text/sec1193.xhtml",
+                    "<h1>Послесловие переводчика</h1><p>Служебное послесловие команды перевода.</p>"
+                )
+            ),
+            tocLabels = listOf(
+                "Глава 1192. Верховенство Конечного Истока",
+                "Послесловие переводчика"
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(
+            listOf("1192"),
+            book.chapters.map { it.number }
+        )
+        assertTrue(
+            book.chapters.none {
+                it.title.contains(
+                    "Послесловие переводчика",
+                    ignoreCase = true
+                )
+            }
+        )
+    }
+
+    @Test
     fun ncxNavigationOverridesTechnicalFilenameSequence() {
         val epub = buildEpubWithNcx(
             docs = listOf(
