@@ -187,12 +187,12 @@ Goal: freeze the feature set and remove accumulated rough edges.
 
 Scope:
 
-- accessibility/content descriptions;
-- small-screen layout audit;
+- [x] accessibility/content descriptions;
+- [x] small-screen import layout audit (including full-width chapter-range fields);
 - typography/spacing consistency;
 - empty/error/loading states;
 - update rollback/recovery messaging;
-- settings cleanup;
+- [x] settings cleanup;
 - corpus expansion;
 - final migration documentation;
 - crash/error diagnostics that do not collect personal reading data.
