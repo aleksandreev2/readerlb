@@ -251,6 +251,29 @@ class RanobeLibUpdatePlannerTest {
     }
 
     @Test
+    fun rejectsIdCollisionAcrossDifferentChapterNumbers() {
+        val existing = JSONArray()
+            .put(chapter("1", 101))
+            .put(chapter("2", 202))
+
+        val incoming = JSONArray()
+            .put(chapter("3", 202))
+
+        try {
+            planner.mergeChapters(
+                existingChapters = existing,
+                incomingChapters = incoming
+            )
+            fail("Expected merged ID collision to fail")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(
+                error.message.orEmpty()
+                    .contains("повторяется id 202")
+            )
+        }
+    }
+
+    @Test
     fun itemNumbersAreRebuiltWithoutChangingChapterIds() {
         val existing = JSONArray()
             .put(chapter("1", 101).put("itemNumber", 99))
