@@ -1110,13 +1110,18 @@ private fun ImportScreen(
                     }
 
                 GradientButton(
-                text = if (busy) {
-                    "Подготовка…"
-                } else {
-                    "Импортировать " +
-                        chapterCountText(selectedCount)
+                text = when {
+                    busy -> "Подготовка…"
+                    selectedCount == 0 ->
+                        "Нет глав в диапазоне"
+                    else ->
+                        "Импортировать " +
+                            chapterCountText(
+                                selectedCount
+                            )
                 },
                 enabled = !busy &&
+                    selectedCount > 0 &&
                     parsed != null &&
                     (!direct || folderUri != null) &&
                     (parsed?.issues?.none {
