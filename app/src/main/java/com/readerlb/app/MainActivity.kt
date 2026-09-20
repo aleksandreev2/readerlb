@@ -1105,7 +1105,7 @@ private fun ImportScreen(
     ) {
         book?.temporaryAssetDirectory
             ?.takeIf(String::isNotBlank)
-            ?.let(::java.io.File)
+            ?.let { path -> java.io.File(path) }
             ?.let { directory ->
                 runCatching {
                     directory.deleteRecursively()
@@ -2144,7 +2144,6 @@ private fun ParsedPreview(book: ParsedBook) {
     }
 }
 
-@Composable
 private enum class LibrarySortMode {
     RECENT,
     TITLE,
