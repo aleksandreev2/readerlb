@@ -512,6 +512,51 @@ class RanobeLibPackageBuilder(
                         )
                     }
                 }
+
+                is ReaderBlock.Image -> {
+                    val extension =
+                        normalizeChapterImageExtension(
+                            block.extension
+                        )
+                    val id = UUID
+                        .nameUUIDFromBytes(block.bytes)
+                        .toString()
+
+                    imageFiles.putIfAbsent(
+                        id,
+                        ChapterImageFile(
+                            extension = extension,
+                            bytes = block.bytes
+                        )
+                    )
+
+                    content.put(
+                        JSONObject()
+                            .put("type", "image")
+                            .put(
+                                "attrs",
+                                JSONObject()
+                                    .put(
+                                        "description",
+                                        block.description
+                                            ?.takeIf(
+                                                String::isNotBlank
+                                            )
+                                            ?: JSONObject.NULL
+                                    )
+                                    .put(
+                                        "images",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put(
+                                                    "image",
+                                                    id
+                                                )
+                                        )
+                                    )
+                            )
+                    )
+                }
             }
         }
 
