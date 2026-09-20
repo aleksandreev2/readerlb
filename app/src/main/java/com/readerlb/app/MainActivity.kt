@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,6 +52,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -79,7 +81,9 @@ import com.readerlb.app.importer.ExportProgress
 import com.readerlb.app.importer.ExportStage
 import com.readerlb.app.importer.ImportRepository
 import com.readerlb.app.importer.ParsedBook
+import com.readerlb.app.importer.PortableTitleInfo
 import com.readerlb.app.importer.RanobeLibExporter
+import com.readerlb.app.importer.ReaderLbTransferManager
 import com.readerlb.app.importer.ReaderBlock
 import com.readerlb.app.importer.chapterNumberInRange
 import com.readerlb.app.importer.compareChapterNumbers
@@ -563,6 +567,21 @@ private fun MainApp(
         mutableStateOf<String?>(null)
     }
 
+    fun removeLocalTitleFromUi(
+        slugUrl: String
+    ) {
+        localLibrary =
+            localLibrary.filterNot {
+                it.slugUrl == slugUrl
+            }
+        preferences.localLibraryCacheJson =
+            encodeLocalLibraryCache(
+                localLibrary
+            )
+        libraryStatus =
+            "Новелла удалена"
+    }
+
     fun refreshLocalLibrary() {
         val tree = folderUri
 
@@ -861,13 +880,15 @@ private fun MainApp(
                 libraryLoading = libraryLoading,
                 libraryScanned = libraryScanned,
                 libraryScanTotal = libraryScanTotal,
+                treeUri = folderUri,
                 updateInfo = latestUpdate,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
                 onUpdate = ::installLatestUpdate,
                 onAdd = { tab = AppTab.IMPORT },
                 onOpenLibrary = { tab = AppTab.LIBRARY },
-                onSettings = { tab = AppTab.SETTINGS }
+                onSettings = { tab = AppTab.SETTINGS },
+                onTitleDeleted = ::removeLocalTitleFromUi
             )
             AppTab.IMPORT -> ImportScreen(
                 modifier = Modifier.padding(padding),
@@ -913,6 +934,7 @@ private fun MainApp(
                 status = libraryStatus,
                 skippedTitles = librarySkipped,
                 error = libraryError,
+                treeUri = folderUri,
                 onRefresh = ::refreshLocalLibrary,
                 onPickFolder = {
                     folderPicker.launch(
@@ -921,7 +943,8 @@ private fun MainApp(
                 },
                 onAdd = {
                     tab = AppTab.IMPORT
-                }
+                },
+                onTitleDeleted = ::removeLocalTitleFromUi
             )
             AppTab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
@@ -967,13 +990,15 @@ private fun HomeScreen(
     libraryLoading: Boolean,
     libraryScanned: Int,
     libraryScanTotal: Int,
+    treeUri: Uri?,
     updateInfo: UpdateInfo?,
     updateBusy: Boolean,
     updateMessage: String?,
     onUpdate: () -> Unit,
     onAdd: () -> Unit,
     onOpenLibrary: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onTitleDeleted: (String) -> Unit
 ) {
     var selectedSlug by rememberSaveable {
         mutableStateOf<String?>(null)
@@ -987,9 +1012,11 @@ private fun HomeScreen(
         LibraryTitleDetail(
             modifier = modifier,
             item = selectedItem,
+            treeUri = treeUri,
             onBack = {
                 selectedSlug = null
-            }
+            },
+            onDeleted = onTitleDeleted
         )
         return
     }
@@ -1228,6 +1255,9 @@ private fun ImportScreen(
     val scope = rememberCoroutineScope()
     val repository = remember { ImportRepository(context) }
     val exporter = remember { RanobeLibExporter(context) }
+    val transferManager = remember {
+        ReaderLbTransferManager(context)
+    }
     val importPreferences = remember {
         Preferences(context)
     }
@@ -1255,6 +1285,9 @@ private fun ImportScreen(
 
     var parsed by remember {
         mutableStateOf<ParsedBook?>(null)
+    }
+    var portablePackage by remember {
+        mutableStateOf<PortableTitleInfo?>(null)
     }
     var selectedUri by rememberSaveable {
         mutableStateOf<String?>(null)
@@ -1349,6 +1382,7 @@ private fun ImportScreen(
         selectedUri = uri.toString()
         fileName = repository.displayName(uri)
         parsed = null
+        portablePackage = null
         title = ""
         firstChapter = ""
         lastChapter = ""
@@ -1389,18 +1423,50 @@ private fun ImportScreen(
 
         val uri = Uri.parse(rawUri)
         parsed = null
+        portablePackage = null
         error = null
         success = null
         busy = true
 
         try {
-            val book = withContext(Dispatchers.IO) {
-                repository.parse(uri)
-            }
+            val transfer =
+                if (
+                    fileName.endsWith(
+                        ".readerlb.zip",
+                        ignoreCase = true
+                    )
+                ) {
+                    withContext(
+                        Dispatchers.IO
+                    ) {
+                        transferManager
+                            .inspect(uri)
+                            ?: error(
+                                "Пакет ReaderLB повреждён или имеет неизвестную версию"
+                            )
+                    }
+                } else {
+                    null
+                }
 
-            parsed = book
-            if (title.isBlank()) {
-                title = book.title
+            if (transfer != null) {
+                portablePackage =
+                    transfer
+                title = transfer.title
+            } else {
+                val book =
+                    withContext(
+                        Dispatchers.IO
+                    ) {
+                        repository.parse(
+                            uri
+                        )
+                    }
+
+                parsed = book
+                if (title.isBlank()) {
+                    title = book.title
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -1424,6 +1490,7 @@ private fun ImportScreen(
         ) {
             selectedUri = null
             fileName = ""
+            portablePackage = null
             title = ""
             firstChapter = ""
             lastChapter = ""
@@ -1435,6 +1502,7 @@ private fun ImportScreen(
 
     val emptyImportState =
         parsed == null &&
+            portablePackage == null &&
             selectedUri == null &&
             !busy &&
             error == null
@@ -1545,7 +1613,9 @@ private fun ImportScreen(
             FileDropCard(
                 fileName = fileName,
                 analyzing =
-                    busy && parsed == null,
+                    busy &&
+                        parsed == null &&
+                        portablePackage == null,
                 enabled = !busy,
                 onCancelAnalysis =
                     ::cancelAnalysis,
@@ -1581,7 +1651,12 @@ private fun ImportScreen(
             }
         }
 
-        if (showHints && parsed == null && !busy) {
+        if (
+            showHints &&
+            parsed == null &&
+            portablePackage == null &&
+            !busy
+        ) {
             item {
                 CoachHintCard(
                     title = "Начните с файла",
@@ -1985,6 +2060,68 @@ private fun ImportScreen(
                         }
                     )
                 }
+            }
+        }
+
+        portablePackage?.let {
+                transfer ->
+            item {
+                GradientButton(
+                    text =
+                        if (busy) {
+                            "Устанавливаю пакет…"
+                        } else {
+                            "Установить в RanobeLib"
+                        },
+                    enabled =
+                        !busy &&
+                            folderUri != null &&
+                            selectedUri != null,
+                    onClick = {
+                        val rawUri =
+                            selectedUri
+                                ?: return@GradientButton
+                        val tree =
+                            folderUri
+                                ?: return@GradientButton
+
+                        busy = true
+                        error = null
+                        success = null
+
+                        scope.launch {
+                            runCatching {
+                                withContext(
+                                    Dispatchers.IO
+                                ) {
+                                    transferManager
+                                        .install(
+                                            uri =
+                                                Uri.parse(
+                                                    rawUri
+                                                ),
+                                            treeUri =
+                                                tree
+                                        )
+                                }
+                            }.onSuccess {
+                                    result ->
+                                success =
+                                    "Готово: " +
+                                        transfer.title +
+                                        " установлен в RanobeLib."
+                                onImported(
+                                    result
+                                )
+                            }.onFailure {
+                                error =
+                                    it.message
+                                        ?: "Не удалось установить пакет ReaderLB"
+                            }
+                            busy = false
+                        }
+                    }
+                )
             }
         }
 
@@ -2479,9 +2616,11 @@ private fun LibraryScreen(
     status: String?,
     skippedTitles: Int,
     error: String?,
+    treeUri: Uri?,
     onRefresh: () -> Unit,
     onPickFolder: () -> Unit,
-    onAdd: () -> Unit
+    onAdd: () -> Unit,
+    onTitleDeleted: (String) -> Unit
 ) {
     var query by rememberSaveable {
         mutableStateOf("")
@@ -2501,9 +2640,11 @@ private fun LibraryScreen(
         LibraryTitleDetail(
             modifier = modifier,
             item = selectedItem,
+            treeUri = treeUri,
             onBack = {
                 selectedSlug = null
-            }
+            },
+            onDeleted = onTitleDeleted
         )
         return
     }
@@ -3329,23 +3470,127 @@ private fun buildReaderLbDiagnostics(
 private fun LibraryTitleDetail(
     modifier: Modifier,
     item: LocalLibraryItem,
-    onBack: () -> Unit
+    treeUri: Uri?,
+    onBack: () -> Unit,
+    onDeleted: (String) -> Unit
 ) {
+    val context =
+        androidx.compose.ui.platform
+            .LocalContext.current
+    val scope = rememberCoroutineScope()
+    val transferManager = remember {
+        ReaderLbTransferManager(context)
+    }
     val cover by rememberLibraryCover(
         item.coverUri
     )
+    var busy by remember {
+        mutableStateOf(false)
+    }
+    var error by remember {
+        mutableStateOf<String?>(null)
+    }
+    var confirmDelete by remember {
+        mutableStateOf(false)
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!busy) {
+                    confirmDelete = false
+                }
+            },
+            title = {
+                Text("Удалить новеллу?")
+            },
+            text = {
+                Text(
+                    "ReaderLB удалит локальную копию «" +
+                        item.title +
+                        "» из папки RanobeLib вместе со всеми главами и иллюстрациями. Это действие нельзя отменить."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        val tree =
+                            treeUri
+                                ?: return@TextButton
+                        busy = true
+                        error = null
+
+                        scope.launch {
+                            runCatching {
+                                withContext(
+                                    Dispatchers.IO
+                                ) {
+                                    transferManager
+                                        .deleteTitle(
+                                            treeUri =
+                                                tree,
+                                            slugUrl =
+                                                item.slugUrl
+                                        )
+                                }
+                            }.onSuccess {
+                                confirmDelete =
+                                    false
+                                onDeleted(
+                                    item.slugUrl
+                                )
+                            }.onFailure {
+                                error =
+                                    it.message
+                                        ?: "Не удалось удалить новеллу"
+                            }
+                            busy = false
+                        }
+                    }
+                ) {
+                    Text(
+                        if (busy) {
+                            "Удаляю…"
+                        } else {
+                            "Удалить"
+                        },
+                        color =
+                            Color(
+                                0xFFE4777D
+                            )
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        confirmDelete = false
+                    }
+                ) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            bottom = 24.dp
-        )
+        contentPadding =
+            PaddingValues(
+                bottom = 28.dp
+            ),
+        verticalArrangement =
+            Arrangement.spacedBy(
+                14.dp
+            )
     ) {
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(470.dp)
+                    .height(365.dp)
                     .background(
                         MaterialTheme
                             .colorScheme
@@ -3355,30 +3600,15 @@ private fun LibraryTitleDetail(
                 if (cover != null) {
                     Image(
                         bitmap =
-                            requireNotNull(cover),
+                            requireNotNull(
+                                cover
+                            ),
                         contentDescription = null,
                         contentScale =
                             ContentScale.Crop,
-                        alpha = 0.34f,
+                        alpha = 0.28f,
                         modifier =
                             Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        Color(
-                                            0xFF24394A
-                                        ),
-                                        Color(
-                                            0xFF101216
-                                        )
-                                    )
-                                )
-                            )
                     )
                 }
 
@@ -3389,10 +3619,10 @@ private fun LibraryTitleDetail(
                             Brush.verticalGradient(
                                 listOf(
                                     Color(
-                                        0x33101216
+                                        0x44101216
                                     ),
                                     Color(
-                                        0x99101216
+                                        0xCC101216
                                     ),
                                     Color(
                                         0xFF101216
@@ -3408,14 +3638,12 @@ private fun LibraryTitleDetail(
                         .align(
                             Alignment.TopStart
                         )
-                        .padding(
-                            start = 10.dp,
-                            top = 8.dp
-                        )
+                        .padding(8.dp)
                 ) {
                     Icon(
                         Icons.Default.ArrowBack,
-                        contentDescription = "Назад",
+                        contentDescription =
+                            "Назад",
                         tint = Ink
                     )
                 }
@@ -3424,7 +3652,7 @@ private fun LibraryTitleDetail(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(
-                            horizontal = 18.dp,
+                            horizontal = 20.dp,
                             vertical = 18.dp
                         ),
                     horizontalAlignment =
@@ -3435,25 +3663,18 @@ private fun LibraryTitleDetail(
                     if (cover != null) {
                         Image(
                             bitmap =
-                                requireNotNull(cover),
+                                requireNotNull(
+                                    cover
+                                ),
                             contentDescription =
                                 "Обложка " +
                                     item.title,
                             contentScale =
                                 ContentScale.Crop,
                             modifier = Modifier
-                                .width(174.dp)
-                                .height(244.dp)
+                                .width(132.dp)
+                                .height(186.dp)
                                 .clip(
-                                    RoundedCornerShape(
-                                        10.dp
-                                    )
-                                )
-                                .border(
-                                    1.dp,
-                                    Color(
-                                        0x665F6B78
-                                    ),
                                     RoundedCornerShape(
                                         10.dp
                                     )
@@ -3462,8 +3683,8 @@ private fun LibraryTitleDetail(
                     } else {
                         Box(
                             modifier = Modifier
-                                .width(174.dp)
-                                .height(244.dp)
+                                .width(132.dp)
+                                .height(186.dp)
                                 .clip(
                                     RoundedCornerShape(
                                         10.dp
@@ -3482,11 +3703,12 @@ private fun LibraryTitleDetail(
                         ) {
                             Icon(
                                 Icons.Default.List,
-                                contentDescription = null,
+                                contentDescription =
+                                    null,
                                 tint = Color.White,
                                 modifier =
                                     Modifier.size(
-                                        48.dp
+                                        42.dp
                                     )
                             )
                         }
@@ -3495,8 +3717,8 @@ private fun LibraryTitleDetail(
                     Text(
                         item.title,
                         color = Ink,
-                        fontSize = 22.sp,
-                        lineHeight = 27.sp,
+                        fontSize = 21.sp,
+                        lineHeight = 26.sp,
                         fontWeight =
                             FontWeight.Bold,
                         textAlign =
@@ -3504,112 +3726,101 @@ private fun LibraryTitleDetail(
                         maxLines = 2,
                         modifier =
                             Modifier.padding(
-                                top = 15.dp
+                                top = 14.dp
                             )
                     )
 
                     Text(
-                        item.title,
+                        "Локальный тайтл",
                         color = Muted,
-                        fontSize = 14.sp,
-                        textAlign =
-                            TextAlign.Center,
-                        maxLines = 1,
+                        fontSize = 13.sp,
                         modifier =
                             Modifier.padding(
                                 top = 5.dp
                             )
                     )
+                }
+            }
+        }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 18.dp),
-                        horizontalArrangement =
-                            Arrangement.spacedBy(
-                                12.dp
-                            )
-                    ) {
-                        Card(
-                            modifier =
-                                Modifier.weight(1f),
-                            colors =
-                                CardDefaults
-                                    .cardColors(
-                                        containerColor =
-                                            Color(
-                                                0xFF2A2B30
-                                            )
-                                    ),
-                            shape =
-                                RoundedCornerShape(
-                                    7.dp
-                                )
-                        ) {
-                            Text(
-                                "☁  Локальный",
-                                color = Ink,
-                                fontSize = 14.sp,
-                                textAlign =
-                                    TextAlign.Center,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        vertical =
-                                            13.dp
-                                    )
-                            )
-                        }
+        item {
+            Card(
+                modifier = Modifier
+                    .padding(
+                        horizontal = 18.dp
+                    ),
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            MaterialTheme
+                                .colorScheme
+                                .surface
+                    ),
+                shape =
+                    RoundedCornerShape(
+                        16.dp
+                    ),
+                border =
+                    androidx.compose.foundation
+                        .BorderStroke(
+                            1.dp,
+                            Line
+                        )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(
+                            14.dp
+                        )
+                ) {
+                    Text(
+                        "Информация",
+                        color = Ink,
+                        fontSize = 17.sp,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
 
-                        Card(
-                            modifier =
-                                Modifier.weight(1f),
-                            colors =
-                                CardDefaults
-                                    .cardColors(
-                                        containerColor =
-                                            Color(
-                                                0xFF1678D2
-                                            )
-                                    ),
-                            shape =
-                                RoundedCornerShape(
-                                    7.dp
-                                )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        vertical =
-                                            10.dp
-                                    ),
-                                horizontalAlignment =
-                                    Alignment
-                                        .CenterHorizontally
+                    TitleInfoRow(
+                        label = "Главы",
+                        value =
+                            item.chapterCount
+                                .toString()
+                    )
+                    TitleInfoRow(
+                        label = "Диапазон",
+                        value =
+                            localChapterRangeText(
+                                item
+                            )
+                    )
+                    TitleInfoRow(
+                        label = "Источник",
+                        value =
+                            if (
+                                item.createdByReaderLB
                             ) {
-                                Text(
-                                    "▣  Главы",
-                                    color =
-                                        Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight =
-                                        FontWeight
-                                            .SemiBold
-                                )
-                                Text(
-                                    item.firstChapter +
-                                        "–" +
-                                        item.lastChapter,
-                                    color =
-                                        Color(
-                                            0xFFBBD9F4
-                                        ),
-                                    fontSize = 10.sp
-                                )
+                                "Импортировано ReaderLB"
+                            } else {
+                                "Локальная библиотека RanobeLib"
                             }
-                        }
-                    }
+                    )
+                    TitleInfoRow(
+                        label = "Обновлено",
+                        value =
+                            formatLocalLibraryTime(
+                                item.writeTime
+                            )
+                    )
+
+                    Text(
+                        "ID: " + item.slugUrl,
+                        color = Muted,
+                        fontSize = 10.sp
+                    )
                 }
             }
         }
@@ -3617,218 +3828,130 @@ private fun LibraryTitleDetail(
         item {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        MaterialTheme
-                            .colorScheme
-                            .surface
+                    .padding(
+                        horizontal = 18.dp
+                    ),
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp
                     )
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = 14.dp,
-                            vertical = 12.dp
-                        ),
-                    horizontalArrangement =
-                        Arrangement.SpaceEvenly
-                ) {
-                    RanobeTitleTab(
-                        text = "О тайтле",
-                        selected = true
-                    )
-                    RanobeTitleTab(
-                        text =
-                            "Главы " +
-                                item.chapterCount,
-                        selected = false
-                    )
-                    RanobeTitleTab(
-                        text = "Комментарии",
-                        selected = false
-                    )
-                    RanobeTitleTab(
-                        text = "Отзывы",
-                        selected = false
-                    )
-                }
-
-                Divider(
-                    color = Line,
-                    thickness = 1.dp
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = 18.dp,
-                            vertical = 22.dp
-                        ),
-                    horizontalArrangement =
-                        Arrangement.SpaceBetween
-                ) {
-                    RanobeMetaItem(
-                        label = "Тип",
-                        value = "Другое"
-                    )
-                    RanobeMetaItem(
-                        label = "Статус / перевод",
-                        value = "Локальный"
-                    )
-                    RanobeMetaItem(
-                        label = "Формат",
-                        value = "Веб"
-                    )
-                    RanobeMetaItem(
-                        label = "Главы",
-                        value =
-                            item.chapterCount
-                                .toString()
-                    )
-                }
-
-                Divider(
-                    color = Line,
-                    thickness = 1.dp
-                )
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(22.dp)
-                ) {
-                    Text(
+                OutlineAction(
+                    if (busy) {
+                        "Подготавливаю пакет…"
+                    } else {
+                        "Поделиться новеллой"
+                    },
+                    onClick = {
+                        val tree =
+                            treeUri
                         if (
-                            item.createdByReaderLB
+                            tree == null
                         ) {
-                            "Локальный тайтл, импортированный через ReaderLB."
-                        } else {
-                            "Локальный тайтл из библиотеки RanobeLib."
-                        },
-                        color = Ink,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
+                            error =
+                                "Сначала подключите папку RanobeLib."
+                            return@OutlineAction
+                        }
+                        if (busy) {
+                            return@OutlineAction
+                        }
 
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 18.dp)
-                            .border(
-                                1.dp,
-                                Color(
-                                    0xFFDB6A70
-                                ),
-                                RoundedCornerShape(
-                                    6.dp
+                        busy = true
+                        error = null
+                        scope.launch {
+                            runCatching {
+                                withContext(
+                                    Dispatchers.IO
+                                ) {
+                                    transferManager
+                                        .createShareUri(
+                                            treeUri =
+                                                tree,
+                                            item =
+                                                item
+                                        )
+                                }
+                            }.onSuccess {
+                                    shareUri ->
+                                val share =
+                                    transferManager
+                                        .shareIntent(
+                                            uri =
+                                                shareUri,
+                                            title =
+                                                item.title
+                                        )
+                                context.startActivity(
+                                    Intent.createChooser(
+                                        share,
+                                        "Поделиться новеллой"
+                                    )
                                 )
-                            )
-                            .padding(
-                                horizontal = 10.dp,
-                                vertical = 6.dp
-                            )
-                    ) {
-                        Text(
-                            "ReaderLB",
-                            color =
-                                Color(
-                                    0xFFE77A80
-                                ),
-                            fontSize = 12.sp,
-                            fontWeight =
-                                FontWeight.SemiBold
-                        )
+                            }.onFailure {
+                                error =
+                                    it.message
+                                        ?: "Не удалось подготовить пакет ReaderLB"
+                            }
+                            busy = false
+                        }
                     }
+                )
 
-                    Text(
-                        "Локально обновлено: " +
-                            formatLocalLibraryTime(
-                                item.writeTime
-                            ),
-                        color = Muted,
-                        fontSize = 12.sp,
-                        modifier =
-                            Modifier.padding(
-                                top = 22.dp
-                            )
-                    )
+                DangerAction(
+                    text =
+                        "Удалить новеллу",
+                    enabled =
+                        !busy &&
+                            treeUri != null,
+                    onClick = {
+                        confirmDelete = true
+                    }
+                )
 
-                    Text(
-                        item.slugUrl,
-                        color = Muted,
-                        fontSize = 11.sp,
-                        modifier =
-                            Modifier.padding(
-                                top = 5.dp
-                            )
+                error?.let {
+                    StatusCard(
+                        message = it,
+                        success = false
                     )
                 }
+
+                Text(
+                    "При отправке ReaderLB создаёт переносимый .readerlb.zip с локальными главами, обложкой и иллюстрациями. На другом телефоне его можно открыть прямо через ReaderLB.",
+                    color = Muted,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
             }
         }
     }
 }
 
 @Composable
-private fun RanobeTitleTab(
-    text: String,
-    selected: Boolean
-) {
-    Column(
-        horizontalAlignment =
-            Alignment.CenterHorizontally
-    ) {
-        Text(
-            text,
-            color =
-                if (selected) {
-                    Ink
-                } else {
-                    Muted
-                },
-            fontSize = 12.sp,
-            maxLines = 1
-        )
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .width(42.dp)
-                    .height(2.dp)
-                    .background(Blue)
-            )
-        } else {
-            Spacer(
-                Modifier.height(10.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun RanobeMetaItem(
+private fun TitleInfoRow(
     label: String,
     value: String
 ) {
-    Column(
-        horizontalAlignment =
-            Alignment.CenterHorizontally
+    Row(
+        modifier =
+            Modifier.fillMaxWidth(),
+        verticalAlignment =
+            Alignment.CenterVertically
     ) {
         Text(
             label,
             color = Muted,
-            fontSize = 10.sp,
-            textAlign = TextAlign.Center,
-            maxLines = 1
+            fontSize = 12.sp,
+            modifier =
+                Modifier.weight(1f)
         )
         Text(
             value,
             color = Ink,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            modifier =
-                Modifier.padding(top = 4.dp)
+            fontSize = 13.sp,
+            fontWeight =
+                FontWeight.SemiBold,
+            textAlign =
+                TextAlign.End
         )
     }
 }
@@ -4383,6 +4506,53 @@ private fun OutlineAction(text: String, onClick: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Text(text, color = Blue, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun DangerAction(
+    text: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                1.dp,
+                Color(0xFFD8656D),
+                RoundedCornerShape(
+                    12.dp
+                )
+            )
+            .clip(
+                RoundedCornerShape(
+                    12.dp
+                )
+            )
+            .clickable(
+                enabled = enabled,
+                onClick = onClick
+            )
+            .padding(
+                vertical = 12.dp
+            ),
+        contentAlignment =
+            Alignment.Center
+    ) {
+        Text(
+            text,
+            color =
+                if (enabled) {
+                    Color(
+                        0xFFE4777D
+                    )
+                } else {
+                    Muted
+                },
+            fontWeight =
+                FontWeight.Bold
+        )
     }
 }
 
