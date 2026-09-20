@@ -3,6 +3,7 @@ package com.readerlb.app.importer
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.security.MessageDigest
 
 data class RanobeLibUpdateResult(
     val addedNumbers: List<String>,
@@ -137,7 +138,13 @@ class RanobeLibUpdateTransaction(
                 require(
                     existing.length(staged) == source.length()
                 ) {
-                    "Проверка временной копии ${source.name} не пройдена"
+                    "Проверка размера временной копии ${source.name} не пройдена"
+                }
+                require(
+                    sha256(existing.readBytes(staged)) ==
+                        sha256(source.readBytes())
+                ) {
+                    "Контрольная сумма временной копии ${source.name} не совпадает"
                 }
                 stagedZipNames += staged
             }
@@ -405,6 +412,7 @@ class RanobeLibUpdateTransaction(
 
                     addedNumbers.isNotEmpty() &&
                         addedNumbers.all(numbers::contains) &&
+                        zipNames.all(storage::exists) &&
                         readJsonObject(
                             storage.readBytes(INFO)
                         ).optJSONObject("media") != null
@@ -573,6 +581,16 @@ class RanobeLibUpdateTransaction(
             storage.readBytes(name)
         )
     }
+
+    private fun sha256(
+        bytes: ByteArray
+    ): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") {
+                "%02x".format(it)
+            }
 
     private fun readJsonArray(
         bytes: ByteArray
