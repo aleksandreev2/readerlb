@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.2
+
+Title-detail and import-layout polish.
+
+- Local title cards on the Home screen are now fully tappable and open the same title-detail screen as cards in Library.
+- Rebuilt the title-detail screen around the RanobeLib local-title composition: cover hero/background, large cover, local status/action row, title tabs, metadata strip and local ReaderLB information block.
+- Restored true symmetric centering for the empty import body instead of the previous asymmetric top/bottom padding that pulled the card upward.
+
 ## 0.9.1
 
 Local-library scan hotfix for Android/MIUI devices.
