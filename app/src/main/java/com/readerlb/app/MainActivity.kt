@@ -72,6 +72,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.readerlb.app.importer.ExportStage
 import com.readerlb.app.importer.ImportRepository
 import com.readerlb.app.importer.ParsedBook
 import com.readerlb.app.importer.RanobeLibExporter
@@ -972,6 +973,9 @@ private fun ImportScreen(
     var busy by remember {
         mutableStateOf(false)
     }
+    var exportStage by remember {
+        mutableStateOf<ExportStage?>(null)
+    }
     var error by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -1412,6 +1416,21 @@ private fun ImportScreen(
             }
         }
 
+        if (
+            busy &&
+            parsed != null &&
+            exportStage != null
+        ) {
+            item {
+                ImportProgressCard(
+                    stage = requireNotNull(
+                        exportStage
+                    ),
+                    direct = direct
+                )
+            }
+        }
+
         error?.let { message ->
             item { StatusCard(message, false) }
         }
@@ -1445,7 +1464,11 @@ private fun ImportScreen(
 
                 GradientButton(
                 text = when {
-                    busy -> "Подготовка…"
+                    busy ->
+                        exportStageButtonText(
+                            exportStage,
+                            direct
+                        )
                     selectedCount == 0 ->
                         "Нет глав в диапазоне"
                     else ->
@@ -1463,6 +1486,8 @@ private fun ImportScreen(
                     } != false || warningsAcknowledged),
                 onClick = {
                     busy = true
+                    exportStage =
+                        ExportStage.PREPARING
                     error = null
                     success = null
                     scope.launch {
@@ -1473,7 +1498,18 @@ private fun ImportScreen(
                                     titleOverride = title,
                                     firstChapter = firstChapter.ifBlank { null },
                                     lastChapter = lastChapter.ifBlank { null },
-                                    ranobeLibBookTree = if (direct) folderUri else null
+                                    ranobeLibBookTree =
+                                        if (direct) {
+                                            folderUri
+                                        } else {
+                                            null
+                                        },
+                                    onStage = { stage ->
+                                        scope.launch {
+                                            exportStage =
+                                                stage
+                                        }
+                                    }
                                 )
                             }
                         }.onSuccess { result ->
@@ -1506,9 +1542,100 @@ private fun ImportScreen(
                         }.onFailure {
                             error = it.message ?: "Ошибка импорта"
                         }
+                        exportStage = null
                         busy = false
                     }
                 }
+                )
+            }
+        }
+    }
+}
+
+private fun exportStageButtonText(
+    stage: ExportStage?,
+    direct: Boolean
+): String =
+    when (stage) {
+        ExportStage.PREPARING ->
+            "Подготовка пакета…"
+        ExportStage.VERIFYING ->
+            "Проверка глав…"
+        ExportStage.WRITING ->
+            if (direct) {
+                "Запись в RanobeLib…"
+            } else {
+                "Сохранение ZIP…"
+            }
+        ExportStage.FINALIZING ->
+            "Завершение…"
+        null ->
+            "Подготовка…"
+    }
+
+@Composable
+private fun ImportProgressCard(
+    stage: ExportStage,
+    direct: Boolean
+) {
+    val title = when (stage) {
+        ExportStage.PREPARING ->
+            "Подготавливаю главы"
+        ExportStage.VERIFYING ->
+            "Проверяю пакет"
+        ExportStage.WRITING ->
+            if (direct) {
+                "Записываю в RanobeLib"
+            } else {
+                "Сохраняю ZIP"
+            }
+        ExportStage.FINALIZING ->
+            "Завершаю импорт"
+    }
+
+    val description = when (stage) {
+        ExportStage.PREPARING ->
+            "Собираю главы, иллюстрации и метаданные."
+        ExportStage.VERIFYING ->
+            "Проверяю структуру и файлы перед записью."
+        ExportStage.WRITING ->
+            "Не закрывайте ReaderLB до завершения записи."
+        ExportStage.FINALIZING ->
+            "Фиксирую результат и очищаю временные файлы."
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFEAF5FF)
+        ),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment =
+                Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 2.dp,
+                color = Blue
+            )
+            Column(
+                modifier =
+                    Modifier.padding(start = 12.dp)
+            ) {
+                Text(
+                    title,
+                    color = Ink,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    description,
+                    color = Muted,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    modifier =
+                        Modifier.padding(top = 3.dp)
                 )
             }
         }
