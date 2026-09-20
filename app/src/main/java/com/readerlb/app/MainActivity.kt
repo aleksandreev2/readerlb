@@ -101,6 +101,7 @@ import com.readerlb.app.ui.theme.ReaderLBTheme
 import com.readerlb.app.ui.theme.Success
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -474,8 +475,20 @@ private fun MainApp(
     var libraryError by remember {
         mutableStateOf<String?>(null)
     }
-    var libraryRefreshToken by remember {
+    var libraryScanned by remember {
         mutableIntStateOf(0)
+    }
+    var libraryScanTotal by remember {
+        mutableIntStateOf(0)
+    }
+    var libraryStatus by remember {
+        mutableStateOf<String?>(null)
+    }
+    var libraryScanJob by remember {
+        mutableStateOf<Job?>(null)
+    }
+    var libraryRefreshPending by remember {
+        mutableStateOf(false)
     }
     var tab by rememberSaveable {
         mutableStateOf(AppTab.HOME)
@@ -528,36 +541,104 @@ private fun MainApp(
         mutableStateOf<String?>(null)
     }
 
-    LaunchedEffect(
-        folderUri,
-        libraryRefreshToken
-    ) {
+    fun refreshLocalLibrary() {
         val tree = folderUri
+
         if (tree == null) {
+            libraryScanJob?.cancel()
+            libraryScanJob = null
             localLibrary = emptyList()
             librarySkipped = 0
             libraryError = null
+            libraryStatus = null
+            libraryScanned = 0
+            libraryScanTotal = 0
             libraryLoading = false
-        } else {
-            libraryLoading = true
-            libraryError = null
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    libraryScanner.scan(tree)
-                }
-            }
-            result.onSuccess { snapshot ->
-                localLibrary = snapshot.items
-                librarySkipped = snapshot.skippedTitles
-            }.onFailure {
-                localLibrary = emptyList()
-                librarySkipped = 0
-                libraryError =
-                    it.message
-                        ?: "Не удалось прочитать библиотеку RanobeLib"
-            }
-            libraryLoading = false
+            return
         }
+
+        if (
+            libraryScanJob?.isActive == true
+        ) {
+            libraryRefreshPending = true
+            return
+        }
+
+        libraryScanJob = scope.launch {
+            do {
+                libraryRefreshPending = false
+                val previous = localLibrary
+
+                libraryLoading = true
+                libraryError = null
+                libraryStatus = null
+                libraryScanned = 0
+                libraryScanTotal = 0
+
+                val result =
+                    withContext(
+                        Dispatchers.IO
+                    ) {
+                        runCatching {
+                            libraryScanner.scan(
+                                tree
+                            ) {
+                                    completed,
+                                    total ->
+                                scope.launch {
+                                    libraryScanned =
+                                        completed
+                                    libraryScanTotal =
+                                        total
+                                }
+                            }
+                        }
+                    }
+
+                result.onSuccess {
+                        snapshot ->
+                    localLibrary =
+                        snapshot.items
+                    librarySkipped =
+                        snapshot.skippedTitles
+                    libraryScanned =
+                        snapshot.items.size +
+                            snapshot.skippedTitles
+                    libraryScanTotal =
+                        maxOf(
+                            libraryScanTotal,
+                            libraryScanned
+                        )
+                    libraryStatus =
+                        if (
+                            previous ==
+                            snapshot.items
+                        ) {
+                            "Локальные тайтлы уже актуальны"
+                        } else {
+                            "Обновлено: " +
+                                snapshot.items.size +
+                                " тайтлов"
+                        }
+                }.onFailure {
+                    libraryError =
+                        it.message
+                            ?: "Не удалось прочитать библиотеку RanobeLib"
+                }
+
+                libraryLoading = false
+            } while (
+                libraryRefreshPending &&
+                folderUri == tree
+            )
+        }
+    }
+
+    LaunchedEffect(folderUri) {
+        libraryScanJob?.cancel()
+        libraryScanJob = null
+        libraryRefreshPending = false
+        refreshLocalLibrary()
     }
 
     LaunchedEffect(Unit) {
@@ -706,6 +787,8 @@ private fun MainApp(
                 localLibrary = localLibrary,
                 libraryConnected = folderUri != null,
                 libraryLoading = libraryLoading,
+                libraryScanned = libraryScanned,
+                libraryScanTotal = libraryScanTotal,
                 updateInfo = latestUpdate,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
@@ -742,7 +825,7 @@ private fun MainApp(
                 onImported = {
                     historyStore.add(it)
                     history = historyStore.load()
-                    libraryRefreshToken++
+                    refreshLocalLibrary()
                 },
                 onOpenLibrary = {
                     tab = AppTab.LIBRARY
@@ -753,11 +836,12 @@ private fun MainApp(
                 items = localLibrary,
                 connected = folderUri != null,
                 loading = libraryLoading,
+                scanned = libraryScanned,
+                scanTotal = libraryScanTotal,
+                status = libraryStatus,
                 skippedTitles = librarySkipped,
                 error = libraryError,
-                onRefresh = {
-                    libraryRefreshToken++
-                },
+                onRefresh = ::refreshLocalLibrary,
                 onPickFolder = {
                     folderPicker.launch(
                         RANOBELIB_BOOK_INITIAL_URI
@@ -806,6 +890,8 @@ private fun HomeScreen(
     localLibrary: List<LocalLibraryItem>,
     libraryConnected: Boolean,
     libraryLoading: Boolean,
+    libraryScanned: Int,
+    libraryScanTotal: Int,
     updateInfo: UpdateInfo?,
     updateBusy: Boolean,
     updateMessage: String?,
@@ -972,7 +1058,14 @@ private fun HomeScreen(
                                 color = Blue
                             )
                             Text(
-                                "Читаю локальную библиотеку RanobeLib…",
+                                if (libraryScanTotal > 0) {
+                                    "Читаю локальную библиотеку: " +
+                                        libraryScanned +
+                                        " из " +
+                                        libraryScanTotal
+                                } else {
+                                    "Читаю локальную библиотеку RanobeLib…"
+                                },
                                 color = Muted,
                                 fontSize = 13.sp,
                                 modifier =
@@ -2172,6 +2265,9 @@ private fun LibraryScreen(
     items: List<LocalLibraryItem>,
     connected: Boolean,
     loading: Boolean,
+    scanned: Int,
+    scanTotal: Int,
+    status: String?,
     skippedTitles: Int,
     error: String?,
     onRefresh: () -> Unit,
@@ -2292,7 +2388,11 @@ private fun LibraryScreen(
 
                 if (connected) {
                     Text(
-                        "Обновить",
+                        if (loading) {
+                            "Обновление…"
+                        } else {
+                            "Обновить"
+                        },
                         color = Blue,
                         fontWeight =
                             FontWeight.SemiBold,
@@ -2366,7 +2466,14 @@ private fun LibraryScreen(
                                 color = Blue
                             )
                             Text(
-                                "Сканирую локальные тайтлы…",
+                                if (scanTotal > 0) {
+                                    "Сканирую: " +
+                                        scanned +
+                                        " из " +
+                                        scanTotal
+                                } else {
+                                    "Сканирую локальные тайтлы…"
+                                },
                                 color = Muted,
                                 modifier =
                                     Modifier.padding(
@@ -2375,6 +2482,38 @@ private fun LibraryScreen(
                             )
                         }
                     }
+                }
+            }
+
+            if (
+                loading &&
+                items.isNotEmpty()
+            ) {
+                item {
+                    Text(
+                        if (scanTotal > 0) {
+                            "Обновление библиотеки: " +
+                                scanned +
+                                " / " +
+                                scanTotal
+                        } else {
+                            "Обновление библиотеки…"
+                        },
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                }
+            } else if (
+                status != null
+            ) {
+                item {
+                    Text(
+                        status,
+                        color = Success,
+                        fontSize = 12.sp,
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
                 }
             }
 
