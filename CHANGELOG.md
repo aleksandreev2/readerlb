@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.3
+
+Local-title actions and portable ReaderLB packages.
+
+- Simplified the title-detail screen back to useful local information instead of mirroring unrelated RanobeLib tabs and metadata.
+- Added «Поделиться новеллой»: ReaderLB creates a streamed `.readerlb.zip` containing the exact local title files, chapters, cover and illustrations.
+- A shared `.readerlb.zip` can be opened on another phone in ReaderLB and installed directly into that phone's RanobeLib library without reparsing an EPUB.
+- Portable packages include a versioned manifest, strict path validation, package verification and a 2 GB extraction ceiling.
+- Added «Удалить новеллу» with an explicit destructive confirmation; successful deletion immediately removes the title from ReaderLB's cached library view.
+- FileProvider sharing is limited to ReaderLB's dedicated cache/share directory and stale share packages are cleaned automatically.
+
 ## 0.9.2
 
 Title-detail and import-layout polish.
