@@ -131,7 +131,7 @@ Planned work:
 - [x] clearer warning actions instead of a generic acknowledgement switch;
 - [x] better recovery when the RanobeLib folder grant was revoked;
 - [x] preserve in-progress import UI state across Activity recreation;
-- [ ] remember sensible user defaults without remembering dangerous overrides.
+- [x] remember sensible user defaults without remembering dangerous overrides (currently the direct-import destination choice only).
 
 Acceptance criteria:
 
