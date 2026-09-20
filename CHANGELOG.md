@@ -7,6 +7,7 @@ Import UX work in progress.
 - Android file managers can open or share EPUB/TXT/compatible ZIP files directly to ReaderLB.
 - The selected file, edited title, chapter range, destination choice and current tab survive Activity recreation; persisted document grants are reused where Android allows it.
 - Pre-write file analysis can be cancelled without exposing a dangerous cancel action during RanobeLib writes.
+- ReaderLB offers a one-tap shortcut to the last persistently granted document without copying the source EPUB into app storage.
 - Import now reports real stages: preparation, verification, writing and finalization.
 - Long imports report real chapter preparation progress instead of an indeterminate spinner only.
 - Warning acknowledgement is an explicit «Я проверил — продолжить» action instead of an ambiguous switch.
