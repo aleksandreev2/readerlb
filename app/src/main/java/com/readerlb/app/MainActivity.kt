@@ -169,6 +169,18 @@ private val RANOBELIB_BOOK_INITIAL_URI: Uri = Uri.parse(
         "primary%3AAndroid%2Fdata%2Fru.libappc%2Ffiles%2Fbook"
 )
 
+private fun hasPersistedTreePermission(
+    context: android.content.Context,
+    uri: Uri
+): Boolean =
+    context.contentResolver
+        .persistedUriPermissions
+        .any { permission ->
+            permission.uri == uri &&
+                permission.isReadPermission &&
+                permission.isWritePermission
+        }
+
 @Composable
 private fun ReaderLBRoot(
     incomingImport: IncomingImportRequest?,
@@ -457,7 +469,29 @@ private fun MainApp(
             tab = AppTab.IMPORT
         }
     }
-    var folderUri by remember { mutableStateOf(preferences.ranobeLibBookTree) }
+    val savedFolderUri =
+        remember {
+            preferences.ranobeLibBookTree
+        }
+    var folderUri by remember {
+        mutableStateOf(
+            savedFolderUri?.takeIf {
+                hasPersistedTreePermission(
+                    context,
+                    it
+                )
+            }
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        if (
+            savedFolderUri != null &&
+            folderUri == null
+        ) {
+            preferences.ranobeLibBookTree = null
+        }
+    }
     var importHintsDone by remember {
         mutableStateOf(preferences.importHintsDone)
     }
@@ -588,10 +622,25 @@ private fun MainApp(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
-            preferences.ranobeLibBookTree = uri
+            val flags =
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+
+            val persisted = runCatching {
+                context.contentResolver
+                    .takePersistableUriPermission(
+                        uri,
+                        flags
+                    )
+            }.isSuccess
+
             folderUri = uri
+            preferences.ranobeLibBookTree =
+                if (persisted) {
+                    uri
+                } else {
+                    null
+                }
         }
     }
 
