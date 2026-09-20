@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+Usability, lightweight build, branded EPUB easter egg and update foundation.
+
+- ReaderLB detects EPUB editions carrying the official «Дом Некроманта» translation credit/team link and unlocks a small post-import easter egg.
+- Settings now credit developer dollar and link to https://t.me/domnekromanta.
+- Added a lightweight GitHub Releases update checker: automatic daily checks, manual checks in Settings, APK download and Android installer handoff.
+- Replaced the huge Material Icons Extended dependency with Material Icons Core.
+- Release builds now enable R8/resource shrinking and can use a dedicated persistent signing key supplied by CI secrets.
+- Added FileProvider/unknown-source update plumbing without adding a networking framework or background worker.
+
 ## 0.4.2
 
 Filename-range and import-completion patch.
