@@ -1,5 +1,6 @@
 package com.readerlb.app.update
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,6 +56,48 @@ class UpdateManagerTest {
         )
 
         assertFalse(update != null)
+    }
+
+    @Test
+    fun updateErrorsExplainSigningMigrationAndIntegrityFailures() {
+        assertTrue(
+            friendlyUpdateDownloadError(
+                IllegalArgumentException(
+                    "Подпись обновления не совпадает с установленной версией ReaderLB"
+                )
+            ).contains("0.3.1–0.4.2")
+        )
+
+        assertTrue(
+            friendlyUpdateDownloadError(
+                IllegalArgumentException(
+                    "SHA-256 обновления не совпадает"
+                )
+            ).contains("целостности")
+        )
+    }
+
+    @Test
+    fun installerStatusesHaveActionableMessages() {
+        assertEquals(
+            "Установка ReaderLB отменена.",
+            installStatusMessage(
+                android.content.pm.PackageInstaller
+                    .STATUS_FAILURE_ABORTED
+            )
+        )
+        assertTrue(
+            installStatusMessage(
+                android.content.pm.PackageInstaller
+                    .STATUS_FAILURE_STORAGE
+            ).contains("места")
+        )
+        assertTrue(
+            installStatusMessage(
+                android.content.pm.PackageInstaller
+                    .STATUS_FAILURE_CONFLICT
+            ).contains("0.3.1–0.4.2")
+        )
     }
 
     @Test
