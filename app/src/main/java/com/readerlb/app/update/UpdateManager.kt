@@ -188,6 +188,16 @@ class UpdateManager(
             ).apply {
                 setAppPackageName(context.packageName)
                 setSize(apk.length())
+
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.S
+                ) {
+                    setRequireUserAction(
+                        PackageInstaller.SessionParams
+                            .USER_ACTION_NOT_REQUIRED
+                    )
+                }
             }
 
         val sessionId =
