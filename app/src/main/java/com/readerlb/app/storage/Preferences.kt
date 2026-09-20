@@ -22,6 +22,30 @@ class Preferences(context: Context) {
             )
             .apply()
 
+    var localLibraryCacheJson: String?
+        get() = prefs.getString(
+            "local_library_cache_json",
+            null
+        )
+        set(value) = prefs.edit()
+            .putString(
+                "local_library_cache_json",
+                value
+            )
+            .apply()
+
+    var localLibraryCacheTree: Uri?
+        get() = prefs.getString(
+            "local_library_cache_tree",
+            null
+        )?.let(Uri::parse)
+        set(value) = prefs.edit()
+            .putString(
+                "local_library_cache_tree",
+                value?.toString()
+            )
+            .apply()
+
     var lastImportDocument: Uri?
         get() = prefs.getString(
             "last_import_document",
