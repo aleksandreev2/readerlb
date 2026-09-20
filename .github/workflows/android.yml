@@ -50,6 +50,10 @@ jobs:
             -validity 10000 \
             -dname "CN=ReaderLB Debug,O=ReaderLB,C=AM"
 
+      - name: Pin Gradle to cached debug signing key
+        run: |
+          echo "READERLB_DEBUG_KEYSTORE_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+
       - name: Inspect debug signing identity
         run: |
           echo "Cached debug keystore certificate:"
@@ -95,6 +99,12 @@ jobs:
           "$APKSIGNER" verify --print-certs "$RUNNER_TEMP/old041/app-debug.apk" | grep -E "Signer #1 certificate SHA-256 digest"
           echo "ReaderLB 0.4.2:"
           "$APKSIGNER" verify --print-certs "$RUNNER_TEMP/old042/app-debug.apk" | grep -E "Signer #1 certificate SHA-256 digest"
+
+          KEY_SHA="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
+          APK_SHA="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | awk -F': ' '/Signer #1 certificate SHA-256 digest/{print tolower($2); exit}')"
+          test -n "$KEY_SHA"
+          test -n "$APK_SHA"
+          test "$KEY_SHA" = "$APK_SHA"
 
       - name: Upload APK
         if: success()
