@@ -10,6 +10,14 @@ import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
+internal data class DirectWriteResult(
+    val chapterCount: Int,
+    val firstChapter: String,
+    val lastChapter: String,
+    val updatedExisting: Boolean,
+    val addedChapterCount: Int
+)
+
 class RanobeLibExporter(private val context: Context) {
 
     private val packageBuilder = RanobeLibPackageBuilder()
@@ -113,7 +121,7 @@ class RanobeLibExporter(private val context: Context) {
         }
     }
 
-    private fun copyToRanobeLibTree(
+    internal fun copyToRanobeLibTree(
         treeUri: Uri,
         source: File,
         slugUrl: String
@@ -330,11 +338,4 @@ class RanobeLibExporter(private val context: Context) {
             throw throwable
         }
     }
-    private data class DirectWriteResult(
-        val chapterCount: Int,
-        val firstChapter: String,
-        val lastChapter: String,
-        val updatedExisting: Boolean,
-        val addedChapterCount: Int
-    )
 }
