@@ -86,6 +86,7 @@ import com.readerlb.app.importer.RanobeLibExporter
 import com.readerlb.app.importer.ReaderLbTransferManager
 import com.readerlb.app.importer.ReaderBlock
 import com.readerlb.app.importer.chapterNumberInRange
+import com.readerlb.app.importer.shouldInspectReaderLbTransferFile
 import com.readerlb.app.importer.compareChapterNumbers
 import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
@@ -1429,11 +1430,19 @@ private fun ImportScreen(
         busy = true
 
         try {
+            val looksLikeReaderLbPackage =
+                fileName.endsWith(
+                    ".readerlb.zip",
+                    ignoreCase = true
+                ) ||
+                    fileName.endsWith(
+                        "_readerlb.zip",
+                        ignoreCase = true
+                    )
             val transfer =
                 if (
-                    fileName.endsWith(
-                        ".readerlb.zip",
-                        ignoreCase = true
+                    shouldInspectReaderLbTransferFile(
+                        fileName
                     )
                 ) {
                     withContext(
@@ -1441,9 +1450,15 @@ private fun ImportScreen(
                     ) {
                         transferManager
                             .inspect(uri)
-                            ?: error(
-                                "Пакет ReaderLB повреждён или имеет неизвестную версию"
-                            )
+                            ?: if (
+                                looksLikeReaderLbPackage
+                            ) {
+                                error(
+                                    "Пакет ReaderLB повреждён или имеет неизвестную версию"
+                                )
+                            } else {
+                                null
+                            }
                     }
                 } else {
                     null
@@ -2477,7 +2492,7 @@ private fun FileDropCard(
                 }
             }
             Text(
-                "Поддерживаются: EPUB, TXT · ZIP с EPUB-структурой",
+                "Поддерживаются: EPUB, TXT, пакеты ReaderLB · ZIP с EPUB-структурой",
                 color = Muted,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 12.dp)
