@@ -508,6 +508,95 @@ class RanobeLibUpdateTransactionTest {
     }
 
     @Test
+    fun interruptedCommitWithWrongUploadedCountRollsBackBeforeRetry() {
+        val root = Files.createTempDirectory("readerlb_update_bad_count_").toFile()
+        val oldBuilt = builder.build(
+            book = book("Bad count recovery", 1..3),
+            rootDir = File(root, "old")
+        )
+        val committedBuilt = builder.build(
+            book = book("Bad count recovery", 1..4),
+            rootDir = File(root, "committed")
+        )
+        val incomingBuilt = builder.build(
+            book = book("Bad count recovery", 1..4),
+            rootDir = File(root, "incoming")
+        )
+
+        val storage = FileRanobeLibStorage(
+            committedBuilt.titleDir
+        )
+        val oldStorage = FileRanobeLibStorage(
+            oldBuilt.titleDir
+        )
+
+        storage.writeBytes(
+            ".readerlb-chapters.bak",
+            oldStorage.readBytes("chapters.json")
+        )
+        storage.writeBytes(
+            ".readerlb-info.bak",
+            oldStorage.readBytes("info.json")
+        )
+
+        val committedChapters = JSONArray(
+            storage.readBytes("chapters.json")
+                .toString(Charsets.UTF_8)
+        )
+        val zip4 = RanobeLibUpdatePlanner()
+            .chapterNumberToZip(committedChapters)
+            .getValue("4")
+
+        val badInfo = JSONObject(
+            storage.readBytes("info.json")
+                .toString(Charsets.UTF_8)
+        )
+        badInfo.getJSONObject("media")
+            .put("uploadedCount", 999)
+        storage.writeBytes(
+            "info.json",
+            badInfo.toString()
+                .toByteArray(Charsets.UTF_8)
+        )
+
+        storage.writeBytes(
+            ".readerlb-update.json",
+            JSONObject()
+                .put(
+                    "addedZipNames",
+                    JSONArray().put(zip4)
+                )
+                .put(
+                    "addedNumbers",
+                    JSONArray().put("4")
+                )
+                .toString()
+                .toByteArray()
+        )
+
+        val result = transaction.apply(
+            existing = storage,
+            incomingTitleDir = incomingBuilt.titleDir
+        )
+
+        assertTrue(result.changed)
+        assertEquals(listOf("4"), result.addedNumbers)
+
+        val finalInfo = JSONObject(
+            storage.readBytes("info.json")
+                .toString(Charsets.UTF_8)
+        )
+        assertEquals(
+            4,
+            finalInfo.getJSONObject("media")
+                .getInt("uploadedCount")
+        )
+        assertFalse(
+            storage.exists(".readerlb-update.json")
+        )
+    }
+
+    @Test
     fun corruptJournalStopsBeforeChangingExistingTitle() {
         val root = Files.createTempDirectory("readerlb_update_bad_journal_").toFile()
         val existingBuilt = builder.build(
