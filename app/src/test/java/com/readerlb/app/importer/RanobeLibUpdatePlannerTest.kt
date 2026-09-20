@@ -218,6 +218,21 @@ class RanobeLibUpdatePlannerTest {
     }
 
     @Test
+    fun plansThreeThousandChapterUpdateWithoutRenumberingExistingRange() {
+        val existing = chapters(1..3000)
+        val incoming = chapters(2501..3050, idOffset = 100_000)
+
+        val plan = planner.plan(existing, incoming)
+
+        assertEquals(50, plan.addedCount)
+        assertEquals("3001", plan.addedNumbers.first())
+        assertEquals("3050", plan.addedNumbers.last())
+        assertEquals(3050, plan.mergedNumbers.size)
+        assertEquals("1", plan.mergedNumbers.first())
+        assertEquals("3050", plan.mergedNumbers.last())
+    }
+
+    @Test
     fun itemNumbersAreRebuiltWithoutChangingChapterIds() {
         val existing = JSONArray()
             .put(chapter("1", 101).put("itemNumber", 99))
