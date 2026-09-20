@@ -828,6 +828,107 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun imageHeavyChapterZeroDoesNotRetainArchiveImageBytes() {
+        val imageCount = 48
+        val imageSize = 128 * 1024
+        val imageEntries = linkedMapOf<String, ByteArray>()
+        val imageTags = buildString {
+            repeat(imageCount) { index ->
+                val bytes = ByteArray(imageSize) {
+                    position ->
+                    when (position) {
+                        0 -> 0x89.toByte()
+                        1 -> 'P'.code.toByte()
+                        2 -> 'N'.code.toByte()
+                        3 -> 'G'.code.toByte()
+                        4 -> 13
+                        5 -> 10
+                        6 -> 26
+                        7 -> 10
+                        else ->
+                            ((index + position) and 0xff)
+                                .toByte()
+                    }
+                }
+                val name =
+                    "OEBPS/images/ch0_" +
+                        index.toString()
+                            .padStart(2, '0') +
+                        ".png"
+                imageEntries[name] = bytes
+                append(
+                    "<img src=\"../images/" +
+                        name.substringAfterLast('/') +
+                        "\"/>"
+                )
+            }
+        }
+
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "ch0",
+                    "text/chapter_0000.xhtml",
+                    "<h1>Глава 0</h1>" +
+                        imageTags
+                )
+            ),
+            extraEntries = imageEntries
+        )
+        val assetDirectory = Files
+            .createTempDirectory(
+                "readerlb_many_images_"
+            )
+            .toFile()
+
+        try {
+            val book = parser.parse(
+                file = epub,
+                assetDirectory =
+                    assetDirectory
+            )
+            val images = book.chapters
+                .single()
+                .blocks
+                .filterIsInstance<
+                    ReaderBlock.Image
+                >()
+
+            assertEquals(
+                imageCount,
+                images.size
+            )
+            assertEquals(
+                0,
+                images.sumOf {
+                    it.bytes.size
+                }
+            )
+            assertTrue(
+                images.all {
+                    it.filePath
+                        ?.let(::File)
+                        ?.isFile == true
+                }
+            )
+            assertEquals(
+                imageCount.toLong() *
+                    imageSize.toLong(),
+                images.sumOf {
+                    File(
+                        requireNotNull(
+                            it.filePath
+                        )
+                    ).length()
+                }
+            )
+        } finally {
+            assetDirectory.deleteRecursively()
+            epub.delete()
+        }
+    }
+
+    @Test
     fun realCorpusStyleChapterKeepsTwoJpegIllustrationsAndSceneBreak() {
         val firstImage = byteArrayOf(
             0xFF.toByte(),
