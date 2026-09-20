@@ -2082,16 +2082,20 @@ private fun rememberLibraryCover(
         initialValue = null,
         key1 = uri
     ) {
-        value = if (uri == null) {
-            null
-        } else {
+        if (uri == null) {
+            value = null
+            return@produceState
+        }
+
+        val decoded =
             withContext(Dispatchers.IO) {
                 decodeLibraryCover(
                     context = context,
                     uri = uri
                 )?.asImageBitmap()
             }
-        }
+
+        value = decoded
     }
 }
 
