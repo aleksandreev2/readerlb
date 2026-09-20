@@ -4,6 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -45,6 +46,13 @@ class PackageVerificationException(
 class RanobeLibPackageBuilder(
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
+    private val chapterImageExtensions = setOf(
+        "jpg",
+        "png",
+        "webp",
+        "gif"
+    )
+
 
     fun build(
         book: ParsedBook,
@@ -146,16 +154,33 @@ class RanobeLibPackageBuilder(
             val chapterId = chapterId(mediaId, chapter.number)
             val zipName = chapterZipName(chapter.number, chapterId)
 
+            val imageFiles =
+                linkedMapOf<String, ChapterImageFile>()
+            val document = readerDocument(
+                chapter = chapter,
+                imageFiles = imageFiles
+            )
+
             ZipOutputStream(
                 File(titleDir, zipName).outputStream().buffered()
             ).use { zip ->
                 zip.putNextEntry(ZipEntry("data.txt"))
                 zip.write(
-                    readerDocument(chapter)
+                    document
                         .toString()
                         .toByteArray(Charsets.UTF_8)
                 )
                 zip.closeEntry()
+
+                imageFiles.forEach { (id, image) ->
+                    zip.putNextEntry(
+                        ZipEntry(
+                            "$id.${image.extension}"
+                        )
+                    )
+                    zip.write(image.bytes)
+                    zip.closeEntry()
+                }
             }
 
             val branch = JSONObject()
@@ -414,7 +439,10 @@ class RanobeLibPackageBuilder(
         return name
     }
 
-    private fun readerDocument(chapter: ParsedChapter): JSONObject {
+    private fun readerDocument(
+        chapter: ParsedChapter,
+        imageFiles: MutableMap<String, ChapterImageFile>
+    ): JSONObject {
         val content = JSONArray()
 
         chapter.blocks.forEach { block ->
@@ -497,6 +525,28 @@ class RanobeLibPackageBuilder(
             .put("type", "doc")
             .put("content", content)
     }
+
+    private fun normalizeChapterImageExtension(
+        raw: String
+    ): String {
+        val extension = when (raw.lowercase()) {
+            "jpeg" -> "jpg"
+            else -> raw.lowercase()
+        }
+
+        require(
+            extension in chapterImageExtensions
+        ) {
+            "Неподдерживаемый формат иллюстрации: $raw"
+        }
+
+        return extension
+    }
+
+    private data class ChapterImageFile(
+        val extension: String,
+        val bytes: ByteArray
+    )
 
     private fun infoJson(
         mediaId: Int,
