@@ -708,6 +708,118 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun serviceSecFilesAroundRealChapterRangeStayOutOfBook() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "title",
+                    "text/title.xhtml",
+                    "<h1>Полное издание</h1>" +
+                        "<p>1192 главы · справочник · " +
+                        "послесловие переводчика</p>"
+                ),
+                Doc(
+                    "sec0000",
+                    "text/sec0000.xhtml",
+                    "<h1>Справочник</h1>" +
+                        "<p>Служебный материал без номера главы.</p>"
+                ),
+                Doc(
+                    "sec0001",
+                    "text/sec0001.xhtml",
+                    "<h1>Глава 1</h1>" +
+                        "<p>Содержимое первой главы достаточно длинное.</p>"
+                ),
+                Doc(
+                    "sec0002",
+                    "text/sec0002.xhtml",
+                    "<h1>Глава 2</h1>" +
+                        "<p>Содержимое второй главы достаточно длинное.</p>"
+                ),
+                Doc(
+                    "sec0003",
+                    "text/sec0003.xhtml",
+                    "<h1>Послесловие переводчика</h1>" +
+                        "<p>Служебный финальный раздел без номера главы.</p>"
+                )
+            )
+        )
+
+        val book = parser.parse(epub)
+
+        assertEquals(
+            listOf("1", "2"),
+            book.chapters.map { it.number }
+        )
+        assertTrue(
+            book.chapters.none {
+                it.title.contains(
+                    "Справочник",
+                    ignoreCase = true
+                ) ||
+                    it.title.contains(
+                        "Послесловие",
+                        ignoreCase = true
+                    )
+            }
+        )
+    }
+
+    @Test
+    fun realStylePartialRangeReportsOnlyActualMissingChapters() {
+        val docs = buildList {
+            for (number in 100..118) {
+                add(
+                    Doc(
+                        "ch$number",
+                        "text/ch$number.xhtml",
+                        "<h1>Глава $number</h1>" +
+                            "<p>Содержимое главы $number достаточно длинное.</p>"
+                    )
+                )
+            }
+            for (number in 123..191) {
+                add(
+                    Doc(
+                        "ch$number",
+                        "text/ch$number.xhtml",
+                        "<h1>Глава $number</h1>" +
+                            "<p>Содержимое главы $number достаточно длинное.</p>"
+                    )
+                )
+            }
+        }
+        val epub = buildEpub(docs = docs)
+
+        val book = parser.parse(
+            epub,
+            "Тайтл_главы_100-191.epub"
+        )
+
+        assertEquals(88, book.chapters.size)
+        assertEquals(
+            "100",
+            book.chapters.first().number
+        )
+        assertEquals(
+            "191",
+            book.chapters.last().number
+        )
+
+        val gap = book.issues.single {
+            it.code == "CHAPTER_GAPS"
+        }
+        assertTrue(gap.message.contains("119"))
+        assertTrue(gap.message.contains("122"))
+        assertTrue(
+            !gap.message.contains("99")
+        )
+        assertTrue(
+            !gap.message.contains("192")
+        )
+    }
+
+    @Test
     fun filenameRangeSupportsUnderscoreSeparator() {
         val epub = buildEpub(
             docs = listOf(
