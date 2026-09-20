@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2
+
+Filename-range and import-completion patch.
+
+- Underscore-only split filenames such as `главы_0_50_89.epub` are now interpreted as chapter 0 plus chapters 50–89, matching the real filename produced for the tested book.
+- The intentional 1–49 gap no longer produces `CHAPTER_GAPS` or `SOURCE_RANGE_MISMATCH` warnings for that filename form.
+- Successful imports now stay on the import screen so the completion result remains visible instead of immediately navigating away.
+- Added an explicit "Открыть библиотеку" action after a successful import.
+- Added a regression test for the exact `главы_0_50_89.epub` naming pattern.
+
 ## 0.4.1
 
 Chapter-zero regression fix.
