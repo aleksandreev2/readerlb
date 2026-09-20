@@ -257,6 +257,7 @@ class UpdateManager(
                 PackageInstaller.SessionParams.MODE_FULL_INSTALL
             ).apply {
                 setAppPackageName(context.packageName)
+                setSize(apk.length())
             }
 
         val sessionId =
@@ -293,6 +294,11 @@ class UpdateManager(
                 )
 
             session.commit(pendingIntent.intentSender)
+        } catch (throwable: Throwable) {
+            runCatching {
+                installer.abandonSession(sessionId)
+            }
+            throw throwable
         } finally {
             session.close()
         }
