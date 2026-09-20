@@ -148,6 +148,9 @@ class EpubArchiveParser {
                     )
                 }
 
+            val domNekromantaEdition =
+                docs.any { it.domNekromantaMarker }
+
             val emptyDocuments = docs.filter {
                 !it.serviceDocument &&
                     it.plainText.isBlank() &&
@@ -380,7 +383,9 @@ class EpubArchiveParser {
                 coverExtension = coverExtension,
                 issues = issues.distinctBy {
                     it.code to it.message
-                }
+                },
+                domNekromantaEdition =
+                    domNekromantaEdition
             )
         }
     }
@@ -637,6 +642,21 @@ class EpubArchiveParser {
                         )
                     )
 
+        val normalizedText = plainText.lowercase()
+        val domNekromantaMarker =
+            raw.contains(
+                DOM_NEKROMANTA_TEAM_URL,
+                ignoreCase = true
+            ) ||
+                (
+                    normalizedText.contains(
+                        "перевод выполнен командой"
+                    ) &&
+                        normalizedText.contains(
+                            "дом некроманта"
+                        )
+                    )
+
         val blocks = if (serviceDocument) {
             emptyList()
         } else {
@@ -660,6 +680,8 @@ class EpubArchiveParser {
             textChapterNumber = textChapterNumber,
             tocChapterNumber = tocChapterNumber,
             serviceDocument = serviceDocument,
+            domNekromantaMarker =
+                domNekromantaMarker,
             inlineImageCount = body
                 .getAllElements()
                 .count {
@@ -1641,6 +1663,7 @@ class EpubArchiveParser {
         val textChapterNumber: String?,
         val tocChapterNumber: String?,
         val serviceDocument: Boolean,
+        val domNekromantaMarker: Boolean,
         val inlineImageCount: Int
     ) {
         fun toCandidate(
@@ -1662,6 +1685,8 @@ class EpubArchiveParser {
     private companion object {
         const val MIN_CHAPTER_TEXT = 20
         const val MAX_GAP_SCAN = 10_000
+        const val DOM_NEKROMANTA_TEAM_URL =
+            "https://ranobelib.me/ru/team/11969--dom-nekromanta"
 
         val CHAPTER_FILE_REGEX = Regex(
             """(?:^|/)(?:ch|chapter)[-_ ]?0*(\d+(?:[.,]\d+)?)\.(?:xhtml|html?)$""",
