@@ -72,6 +72,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.readerlb.app.importer.ExportProgress
 import com.readerlb.app.importer.ExportStage
 import com.readerlb.app.importer.ImportRepository
 import com.readerlb.app.importer.ParsedBook
@@ -1022,8 +1023,8 @@ private fun ImportScreen(
     var busy by remember {
         mutableStateOf(false)
     }
-    var exportStage by remember {
-        mutableStateOf<ExportStage?>(null)
+    var exportProgress by remember {
+        mutableStateOf<ExportProgress?>(null)
     }
     var error by rememberSaveable {
         mutableStateOf<String?>(null)
@@ -1516,12 +1517,12 @@ private fun ImportScreen(
         if (
             busy &&
             parsed != null &&
-            exportStage != null
+            exportProgress != null
         ) {
             item {
                 ImportProgressCard(
-                    stage = requireNotNull(
-                        exportStage
+                    progress = requireNotNull(
+                        exportProgress
                     ),
                     direct = direct
                 )
@@ -1563,7 +1564,7 @@ private fun ImportScreen(
                 text = when {
                     busy ->
                         exportStageButtonText(
-                            exportStage,
+                            exportProgress,
                             direct
                         )
                     selectedCount == 0 ->
@@ -1583,8 +1584,11 @@ private fun ImportScreen(
                     } != false || warningsAcknowledged),
                 onClick = {
                     busy = true
-                    exportStage =
-                        ExportStage.PREPARING
+                    exportProgress =
+                        ExportProgress(
+                            stage =
+                                ExportStage.PREPARING
+                        )
                     error = null
                     success = null
                     scope.launch {
@@ -1601,10 +1605,11 @@ private fun ImportScreen(
                                         } else {
                                             null
                                         },
-                                    onStage = { stage ->
+                                    onProgress = {
+                                            progress ->
                                         scope.launch {
-                                            exportStage =
-                                                stage
+                                            exportProgress =
+                                                progress
                                         }
                                     }
                                 )
@@ -1639,7 +1644,7 @@ private fun ImportScreen(
                         }.onFailure {
                             error = it.message ?: "Ошибка импорта"
                         }
-                        exportStage = null
+                        exportProgress = null
                         busy = false
                     }
                 }
@@ -1650,10 +1655,10 @@ private fun ImportScreen(
 }
 
 private fun exportStageButtonText(
-    stage: ExportStage?,
+    progress: ExportProgress?,
     direct: Boolean
 ): String =
-    when (stage) {
+    when (progress?.stage) {
         ExportStage.PREPARING ->
             "Подготовка пакета…"
         ExportStage.VERIFYING ->
@@ -1672,9 +1677,10 @@ private fun exportStageButtonText(
 
 @Composable
 private fun ImportProgressCard(
-    stage: ExportStage,
+    progress: ExportProgress,
     direct: Boolean
 ) {
+    val stage = progress.stage
     val title = when (stage) {
         ExportStage.PREPARING ->
             "Подготавливаю главы"
@@ -1726,6 +1732,22 @@ private fun ImportProgressCard(
                     color = Ink,
                     fontWeight = FontWeight.Bold
                 )
+                if (
+                    progress.hasCount &&
+                    stage == ExportStage.PREPARING
+                ) {
+                    Text(
+                        progress.completed.toString() +
+                            " / " +
+                            progress.total.toString(),
+                        color = Blue,
+                        fontSize = 12.sp,
+                        fontWeight =
+                            FontWeight.SemiBold,
+                        modifier =
+                            Modifier.padding(top = 3.dp)
+                    )
+                }
                 Text(
                     description,
                     color = Muted,
