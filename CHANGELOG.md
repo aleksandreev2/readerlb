@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1
+
+Chapter-zero regression fix.
+
+- A title page that merely mentions "Глава 0" can no longer replace the real chapter 0.
+- Illustrated chapter 0 now keeps all of its embedded images instead of importing the title page as chapter 0.
+- Split filenames such as `главы_0_50-89.epub` are understood as chapter 0 plus chapters 50–89, so ReaderLB no longer reports the intentional 1–49 gap as corruption.
+- Added a regression test matching the real EPUB structure that exposed the bug.
+
 ## 0.4.0
 
 EPUB illustration milestone.
