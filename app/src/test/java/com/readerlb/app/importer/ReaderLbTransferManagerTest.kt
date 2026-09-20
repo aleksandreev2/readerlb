@@ -1,8 +1,10 @@
 package com.readerlb.app.importer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -69,6 +71,30 @@ class ReaderLbTransferManagerTest {
                 ByteArrayInputStream(
                     bytes
                 )
+            )
+        )
+    }
+
+    @Test
+    fun portablePackageDetectionDoesNotDependOnExactSuffix() {
+        assertTrue(
+            shouldInspectReaderLbTransferFile(
+                "title.readerlb.zip"
+            )
+        )
+        assertTrue(
+            shouldInspectReaderLbTransferFile(
+                "title_1789939295639_readerlb.zip"
+            )
+        )
+        assertTrue(
+            shouldInspectReaderLbTransferFile(
+                "renamed-package.zip"
+            )
+        )
+        assertFalse(
+            shouldInspectReaderLbTransferFile(
+                "book.epub"
             )
         )
     }
