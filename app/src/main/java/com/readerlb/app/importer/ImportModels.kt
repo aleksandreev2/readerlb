@@ -62,6 +62,13 @@ sealed interface ReaderBlock {
     ) : ReaderBlock
 }
 
+enum class ExportStage {
+    PREPARING,
+    VERIFYING,
+    WRITING,
+    FINALIZING
+}
+
 data class ExportResult(
     val title: String,
     val chapterCount: Int,
