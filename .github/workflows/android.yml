@@ -50,6 +50,17 @@ jobs:
             -validity 10000 \
             -dname "CN=ReaderLB Debug,O=ReaderLB,C=AM"
 
+      - name: Inspect debug signing identity
+        run: |
+          echo "Cached debug keystore certificate:"
+          keytool -list -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            | grep -E "SHA256:|Valid from:"
+          echo "Gradle signing configuration:"
+          gradle :app:signingReport --console=plain
+
       - name: Run unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
 
