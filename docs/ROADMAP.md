@@ -123,15 +123,15 @@ Android storage internals.
 
 Planned work:
 
-- Android "Open with ReaderLB" / share-to-ReaderLB entry point for EPUB/TXT;
-- recent-file shortcut where Android permits it;
-- explicit import stages: analysis -> preparation -> writing -> verification;
-- progress by chapter for long imports;
-- cancellable pre-write analysis;
-- clearer warning actions instead of a generic acknowledgement switch;
-- better recovery when the RanobeLib folder grant was revoked;
-- preserve in-progress import UI state across Activity recreation;
-- remember sensible user defaults without remembering dangerous overrides.
+- [x] Android "Open with ReaderLB" / share-to-ReaderLB entry point for EPUB/TXT;
+- [ ] recent-file shortcut where Android permits it;
+- [x] explicit import stages: analysis -> preparation -> verification -> writing -> finalization;
+- [x] progress by chapter for long preparation work;
+- [x] cancellable pre-write analysis;
+- [x] clearer warning actions instead of a generic acknowledgement switch;
+- [x] better recovery when the RanobeLib folder grant was revoked;
+- [x] preserve in-progress import UI state across Activity recreation;
+- [ ] remember sensible user defaults without remembering dangerous overrides.
 
 Acceptance criteria:
 
