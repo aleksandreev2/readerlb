@@ -1,6 +1,5 @@
 package com.readerlb.app
 
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -23,7 +22,7 @@ class MainActivitySmokeTest {
             .onNodeWithContentDescription(
                 "Экран знакомства ReaderLB 1"
             )
-            .assertExists()
+            .fetchSemanticsNode()
 
         composeRule
             .onNodeWithText("Пропустить")
@@ -33,13 +32,13 @@ class MainActivitySmokeTest {
             .onNodeWithText(
                 "Импортер глав для"
             )
-            .assertExists()
+            .fetchSemanticsNode()
 
         composeRule
             .onNodeWithText(
                 "Добавить новеллу",
                 substring = true
             )
-            .assertExists()
+            .fetchSemanticsNode()
     }
 }
