@@ -4,6 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -45,6 +46,13 @@ class PackageVerificationException(
 class RanobeLibPackageBuilder(
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
+    private val chapterImageExtensions = setOf(
+        "jpg",
+        "png",
+        "webp",
+        "gif"
+    )
+
 
     fun build(
         book: ParsedBook,
@@ -146,16 +154,33 @@ class RanobeLibPackageBuilder(
             val chapterId = chapterId(mediaId, chapter.number)
             val zipName = chapterZipName(chapter.number, chapterId)
 
+            val imageFiles =
+                linkedMapOf<String, ChapterImageFile>()
+            val document = readerDocument(
+                chapter = chapter,
+                imageFiles = imageFiles
+            )
+
             ZipOutputStream(
                 File(titleDir, zipName).outputStream().buffered()
             ).use { zip ->
                 zip.putNextEntry(ZipEntry("data.txt"))
                 zip.write(
-                    readerDocument(chapter)
+                    document
                         .toString()
                         .toByteArray(Charsets.UTF_8)
                 )
                 zip.closeEntry()
+
+                imageFiles.forEach { (id, image) ->
+                    zip.putNextEntry(
+                        ZipEntry(
+                            "$id.${image.extension}"
+                        )
+                    )
+                    zip.write(image.bytes)
+                    zip.closeEntry()
+                }
             }
 
             val branch = JSONObject()
@@ -366,17 +391,47 @@ class RanobeLibPackageBuilder(
         runCatching {
             ZipFile(zipFile).use { zip ->
                 val entries = zip.entries().toList()
-                val dataEntry = entries.firstOrNull { it.name == "data.txt" }
+                val dataEntry = entries.firstOrNull {
+                    it.name == "data.txt"
+                }
                 if (dataEntry == null) {
                     errors += "ZIP главы $chapterNumber не содержит data.txt"
                     return@use
                 }
 
+                val imageEntries = entries
+                    .filterNot {
+                        it.isDirectory ||
+                            it.name == "data.txt"
+                    }
+                    .filter {
+                        val extension = it.name
+                            .substringAfterLast(
+                                '.',
+                                ""
+                            )
+                            .lowercase()
+
+                        !it.name.contains('/') &&
+                            extension in chapterImageExtensions
+                    }
+
                 val unexpected = entries.filterNot {
-                    it.isDirectory || it.name == "data.txt"
+                    it.isDirectory ||
+                        it.name == "data.txt" ||
+                        it in imageEntries
                 }
                 if (unexpected.isNotEmpty()) {
-                    errors += "ZIP главы $chapterNumber содержит лишние файлы"
+                    errors +=
+                        "ZIP главы $chapterNumber содержит лишние файлы"
+                }
+
+                imageEntries.forEach { entry ->
+                    if (entry.size == 0L) {
+                        errors +=
+                            "Иллюстрация " + entry.name +
+                            " в главе $chapterNumber пуста"
+                    }
                 }
 
                 val data = zip.getInputStream(dataEntry).use {
@@ -385,15 +440,89 @@ class RanobeLibPackageBuilder(
                 val document = JSONObject(data)
 
                 if (document.optString("type") != "doc") {
-                    errors += "data.txt главы $chapterNumber имеет неверный корневой type"
+                    errors +=
+                        "data.txt главы $chapterNumber имеет неверный корневой type"
                 }
                 if (document.optJSONArray("content") == null) {
-                    errors += "data.txt главы $chapterNumber не содержит content"
+                    errors +=
+                        "data.txt главы $chapterNumber не содержит content"
+                }
+
+                val referencedImages =
+                    collectReferencedImageIds(document)
+                val fileIds = imageEntries
+                    .map {
+                        it.name.substringBeforeLast('.')
+                    }
+                    .toSet()
+
+                val missingImages =
+                    referencedImages - fileIds
+                if (missingImages.isNotEmpty()) {
+                    errors +=
+                        "В главе $chapterNumber отсутствуют файлы " +
+                        "иллюстраций: " +
+                        missingImages
+                            .take(5)
+                            .joinToString()
+                }
+
+                val orphanImages =
+                    fileIds - referencedImages
+                if (orphanImages.isNotEmpty()) {
+                    errors +=
+                        "В ZIP главы $chapterNumber есть " +
+                        "неиспользуемые иллюстрации"
                 }
             }
         }.onFailure {
-            errors += "ZIP главы $chapterNumber повреждён: ${it.message ?: it.javaClass.simpleName}"
+            errors +=
+                "ZIP главы $chapterNumber повреждён: " +
+                (it.message ?: it.javaClass.simpleName)
         }
+    }
+
+    private fun collectReferencedImageIds(
+        document: JSONObject
+    ): Set<String> {
+        val result = linkedSetOf<String>()
+
+        fun walkArray(array: JSONArray) {
+            for (index in 0 until array.length()) {
+                val node = array.optJSONObject(index)
+                    ?: continue
+
+                if (node.optString("type") == "image") {
+                    val images = node
+                        .optJSONObject("attrs")
+                        ?.optJSONArray("images")
+
+                    if (images != null) {
+                        for (
+                            imageIndex in 0 until
+                                images.length()
+                        ) {
+                            images
+                                .optJSONObject(imageIndex)
+                                ?.optString("image")
+                                ?.trim()
+                                ?.takeIf(
+                                    String::isNotBlank
+                                )
+                                ?.let(result::add)
+                        }
+                    }
+                }
+
+                node.optJSONArray("content")
+                    ?.let(::walkArray)
+            }
+        }
+
+        document.optJSONArray("content")
+            ?.let(::walkArray)
+
+        return result
     }
 
     private fun writeCover(
@@ -414,7 +543,10 @@ class RanobeLibPackageBuilder(
         return name
     }
 
-    private fun readerDocument(chapter: ParsedChapter): JSONObject {
+    private fun readerDocument(
+        chapter: ParsedChapter,
+        imageFiles: MutableMap<String, ChapterImageFile>
+    ): JSONObject {
         val content = JSONArray()
 
         chapter.blocks.forEach { block ->
@@ -484,6 +616,51 @@ class RanobeLibPackageBuilder(
                         )
                     }
                 }
+
+                is ReaderBlock.Image -> {
+                    val extension =
+                        normalizeChapterImageExtension(
+                            block.extension
+                        )
+                    val id = UUID
+                        .nameUUIDFromBytes(block.bytes)
+                        .toString()
+
+                    imageFiles.putIfAbsent(
+                        id,
+                        ChapterImageFile(
+                            extension = extension,
+                            bytes = block.bytes
+                        )
+                    )
+
+                    content.put(
+                        JSONObject()
+                            .put("type", "image")
+                            .put(
+                                "attrs",
+                                JSONObject()
+                                    .put(
+                                        "description",
+                                        block.description
+                                            ?.takeIf(
+                                                String::isNotBlank
+                                            )
+                                            ?: JSONObject.NULL
+                                    )
+                                    .put(
+                                        "images",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put(
+                                                    "image",
+                                                    id
+                                                )
+                                        )
+                                    )
+                            )
+                    )
+                }
             }
         }
 
@@ -497,6 +674,28 @@ class RanobeLibPackageBuilder(
             .put("type", "doc")
             .put("content", content)
     }
+
+    private fun normalizeChapterImageExtension(
+        raw: String
+    ): String {
+        val extension = when (raw.lowercase()) {
+            "jpeg" -> "jpg"
+            else -> raw.lowercase()
+        }
+
+        require(
+            extension in chapterImageExtensions
+        ) {
+            "Неподдерживаемый формат иллюстрации: $raw"
+        }
+
+        return extension
+    }
+
+    private data class ChapterImageFile(
+        val extension: String,
+        val bytes: ByteArray
+    )
 
     private fun infoJson(
         mediaId: Int,

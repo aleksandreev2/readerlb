@@ -8,6 +8,7 @@ import java.io.File
 import java.math.BigDecimal
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.Base64
 import java.util.zip.ZipFile
 
 /**
@@ -146,19 +147,6 @@ class EpubArchiveParser {
                         issues = issues
                     )
                 }
-
-            val inlineImages = docs
-                .filterNot { it.serviceDocument }
-                .sumOf { it.inlineImageCount }
-
-            if (inlineImages > 0) {
-                issues += ImportIssue(
-                    code = "INLINE_IMAGES_OMITTED",
-                    message = "В главах найдено изображений: $inlineImages. " +
-                        "Текущая версия ReaderLB переносит текст, " +
-                        "но пока не переносит эти иллюстрации."
-                )
-            }
 
             val emptyDocuments = docs.filter {
                 !it.serviceDocument &&
@@ -612,27 +600,42 @@ class EpubArchiveParser {
             tocChapterNumber != null ||
                 textChapterNumber != null
 
+        // Explicit chapter numbering wins over service-page heuristics.
+        // Technical href numbering alone does not, because service pages are
+        // often named secNNNN.xhtml.
+        val serviceDocument =
+            !hasExplicitChapterNumber &&
+                (
+                    isServiceDocument(item) ||
+                        isServiceLabel(
+                            tocLabel,
+                            heading
+                        )
+                    )
+
+        val blocks = if (serviceDocument) {
+            emptyList()
+        } else {
+            extractBlocks(
+                zip = zip,
+                contentPath = contentPath,
+                root = body,
+                firstHeading = heading,
+                issues = issues
+            )
+        }
+
         return HtmlDoc(
             item = item,
             spineIndex = spineIndex,
             heading = heading,
             tocLabel = tocLabel,
             plainText = plainText,
-            blocks = extractBlocks(
-                body,
-                heading
-            ),
+            blocks = blocks,
             hrefChapterNumber = hrefChapterNumber,
             textChapterNumber = textChapterNumber,
             tocChapterNumber = tocChapterNumber,
-            // Explicit chapter numbering wins over service-page heuristics.
-            // Technical href numbering alone does not, because service pages
-            // are often named secNNNN.xhtml.
-            serviceDocument = !hasExplicitChapterNumber &&
-                (
-                    isServiceDocument(item) ||
-                        isServiceLabel(tocLabel, heading)
-                    ),
+            serviceDocument = serviceDocument,
             inlineImageCount = body
                 .getAllElements()
                 .count {
@@ -805,10 +808,22 @@ class EpubArchiveParser {
     }
 
     private fun extractBlocks(
+        zip: ZipFile,
+        contentPath: String,
         root: Element,
-        firstHeading: String
+        firstHeading: String,
+        issues: MutableList<ImportIssue>
     ): List<ReaderBlock> {
         val out = mutableListOf<ReaderBlock>()
+
+        fun appendImage(element: Element) {
+            readImageBlock(
+                zip = zip,
+                contentPath = contentPath,
+                element = element,
+                issues = issues
+            )?.let(out::add)
+        }
 
         fun walk(element: Element) {
             element.children().forEach { child ->
@@ -830,27 +845,56 @@ class EpubArchiveParser {
                     }
 
                     "p" -> {
-                        val text = child
-                            .wholeText()
-                            .replace('\u00A0', ' ')
-                            .trim()
+                        val images = child
+                            .getAllElements()
+                            .filter {
+                                it !== child &&
+                                    it.tagName()
+                                        .substringAfterLast(':')
+                                        .equals(
+                                            "img",
+                                            ignoreCase = true
+                                        )
+                            }
 
-                        if (text.isNotBlank()) {
-                            val classes = child
-                                .classNames()
-                                .map(String::lowercase)
+                        if (images.isNotEmpty()) {
+                            val ownText = child
+                                .ownText()
+                                .replace('\u00A0', ' ')
+                                .trim()
+                            if (ownText.isNotBlank()) {
+                                out += ReaderBlock.Paragraph(
+                                    ownText
+                                )
+                            }
+                            images.forEach(::appendImage)
+                        } else {
+                            val text = child
+                                .wholeText()
+                                .replace('\u00A0', ' ')
+                                .trim()
 
-                            if (
-                                classes.any {
-                                    it.contains("scene") ||
-                                        it.contains("separator")
+                            if (text.isNotBlank()) {
+                                val classes = child
+                                    .classNames()
+                                    .map(String::lowercase)
+
+                                if (
+                                    classes.any {
+                                        it.contains("scene") ||
+                                            it.contains("separator")
+                                    }
+                                ) {
+                                    out += ReaderBlock.HorizontalRule
+                                } else {
+                                    out += ReaderBlock.Paragraph(text)
                                 }
-                            ) {
-                                out += ReaderBlock.HorizontalRule
-                            } else {
-                                out += ReaderBlock.Paragraph(text)
                             }
                         }
+                    }
+
+                    "img" -> {
+                        appendImage(child)
                     }
 
                     "hr" -> {
@@ -858,15 +902,21 @@ class EpubArchiveParser {
                     }
 
                     "blockquote" -> {
-                        val lines = child
-                            .select("p")
-                            .map {
-                                it.text().trim()
-                            }
-                            .filter(String::isNotBlank)
+                        val images = child
+                            .select("img")
+                        if (images.isNotEmpty()) {
+                            walk(child)
+                        } else {
+                            val lines = child
+                                .select("p")
+                                .map {
+                                    it.text().trim()
+                                }
+                                .filter(String::isNotBlank)
 
-                        if (lines.isNotEmpty()) {
-                            out += ReaderBlock.Quote(lines)
+                            if (lines.isNotEmpty()) {
+                                out += ReaderBlock.Quote(lines)
+                            }
                         }
                     }
 
@@ -875,7 +925,9 @@ class EpubArchiveParser {
                             .classNames()
                             .map(String::lowercase)
 
-                        if (
+                        if (child.select("img").isNotEmpty()) {
+                            walk(child)
+                        } else if (
                             classes.any {
                                 it.contains("system") ||
                                     it.contains("quote") ||
@@ -899,7 +951,7 @@ class EpubArchiveParser {
                         }
                     }
 
-                    "section", "article", "main" -> {
+                    "section", "article", "main", "figure" -> {
                         walk(child)
                     }
 
@@ -938,6 +990,198 @@ class EpubArchiveParser {
 
         walk(root)
         return out
+    }
+
+    private fun readImageBlock(
+        zip: ZipFile,
+        contentPath: String,
+        element: Element,
+        issues: MutableList<ImportIssue>
+    ): ReaderBlock.Image? {
+        val src = sequenceOf(
+            element.attr("src"),
+            element.attr("xlink:href"),
+            element.attr("href")
+        )
+            .firstOrNull(String::isNotBlank)
+            ?.trim()
+            .orEmpty()
+
+        if (src.isBlank()) {
+            issues += ImportIssue(
+                code = "INLINE_IMAGE_MISSING_SOURCE",
+                message = "В EPUB найдено изображение без src."
+            )
+            return null
+        }
+
+        val description = sequenceOf(
+            element.attr("alt"),
+            element.attr("title")
+        )
+            .firstOrNull(String::isNotBlank)
+            ?.trim()
+
+        if (
+            src.startsWith("http://", true) ||
+            src.startsWith("https://", true)
+        ) {
+            issues += ImportIssue(
+                code = "INLINE_IMAGE_REMOTE_UNSUPPORTED",
+                message = "В EPUB есть внешнее изображение $src. " +
+                    "ReaderLB не скачивает сетевые иллюстрации."
+            )
+            return null
+        }
+
+        val bytes: ByteArray
+        val extensionHint: String
+
+        if (src.startsWith("data:image/", true)) {
+            val metadata = src.substringBefore(',', "")
+            val payload = src.substringAfter(',', "")
+            if (
+                metadata.isBlank() ||
+                payload.isBlank() ||
+                !metadata.contains(
+                    ";base64",
+                    ignoreCase = true
+                )
+            ) {
+                issues += ImportIssue(
+                    code = "INLINE_IMAGE_DATA_INVALID",
+                    message = "В EPUB найдено неподдерживаемое встроенное изображение data:."
+                )
+                return null
+            }
+
+            extensionHint = metadata
+                .substringAfter(
+                    "data:image/",
+                    ""
+                )
+                .substringBefore(';')
+                .trim()
+
+            bytes = runCatching {
+                Base64.getDecoder().decode(
+                    payload.filterNot(Char::isWhitespace)
+                )
+            }.getOrElse {
+                issues += ImportIssue(
+                    code = "INLINE_IMAGE_DATA_INVALID",
+                    message = "Не удалось декодировать встроенную иллюстрацию EPUB."
+                )
+                return null
+            }
+        } else {
+            val cleanSrc = src
+                .substringBefore('?')
+                .substringBefore('#')
+            val base = contentPath
+                .substringBeforeLast('/', "")
+            val imagePath = resolve(
+                base,
+                cleanSrc
+            )
+
+            bytes = runCatching {
+                readBytes(
+                    zip,
+                    imagePath
+                )
+            }.getOrElse {
+                issues += ImportIssue(
+                    code = "INLINE_IMAGE_FILE_MISSING",
+                    message = "В EPUB не найден файл иллюстрации: $cleanSrc"
+                )
+                return null
+            }
+
+            extensionHint = imagePath
+                .substringAfterLast('.', "")
+        }
+
+        if (bytes.isEmpty()) {
+            issues += ImportIssue(
+                code = "INLINE_IMAGE_EMPTY",
+                message = "В EPUB найдена пустая иллюстрация."
+            )
+            return null
+        }
+
+        val extension = imageExtension(
+            hint = extensionHint,
+            bytes = bytes
+        )
+
+        if (extension == null) {
+            issues += ImportIssue(
+                code = "INLINE_IMAGE_FORMAT_UNSUPPORTED",
+                message = "Формат одной из иллюстраций EPUB не поддерживается."
+            )
+            return null
+        }
+
+        return ReaderBlock.Image(
+            bytes = bytes,
+            extension = extension,
+            description = description
+        )
+    }
+
+    private fun imageExtension(
+        hint: String,
+        bytes: ByteArray
+    ): String? {
+        when (hint.lowercase()) {
+            "jpg", "jpeg" -> return "jpg"
+            "png" -> return "png"
+            "webp" -> return "webp"
+            "gif" -> return "gif"
+        }
+
+        if (
+            bytes.size >= 3 &&
+            bytes[0] == 0xFF.toByte() &&
+            bytes[1] == 0xD8.toByte() &&
+            bytes[2] == 0xFF.toByte()
+        ) {
+            return "jpg"
+        }
+
+        if (
+            bytes.size >= 8 &&
+            bytes[0] == 0x89.toByte() &&
+            bytes[1] == 'P'.code.toByte() &&
+            bytes[2] == 'N'.code.toByte() &&
+            bytes[3] == 'G'.code.toByte()
+        ) {
+            return "png"
+        }
+
+        if (
+            bytes.size >= 6 &&
+            bytes
+                .copyOfRange(0, 3)
+                .toString(Charsets.US_ASCII) == "GIF"
+        ) {
+            return "gif"
+        }
+
+        if (
+            bytes.size >= 12 &&
+            bytes
+                .copyOfRange(0, 4)
+                .toString(Charsets.US_ASCII) == "RIFF" &&
+            bytes
+                .copyOfRange(8, 12)
+                .toString(Charsets.US_ASCII) == "WEBP"
+        ) {
+            return "webp"
+        }
+
+        return null
     }
 
     private fun cleanChapterTitle(
