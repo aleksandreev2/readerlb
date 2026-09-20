@@ -2126,6 +2126,24 @@ private fun LibraryScreen(
     var sortIndex by rememberSaveable {
         mutableIntStateOf(0)
     }
+    var selectedSlug by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
+
+    val selectedItem = items.firstOrNull {
+        it.slugUrl == selectedSlug
+    }
+
+    if (selectedItem != null) {
+        LibraryTitleDetail(
+            modifier = modifier,
+            item = selectedItem,
+            onBack = {
+                selectedSlug = null
+            }
+        )
+        return
+    }
 
     val sortMode =
         LibrarySortMode.entries[
@@ -2477,7 +2495,13 @@ private fun LibraryScreen(
                         visibleItems,
                         key = { it.slugUrl }
                     ) { item ->
-                        LocalLibraryCard(item)
+                        LocalLibraryCard(
+                            item = item,
+                            onClick = {
+                                selectedSlug =
+                                    item.slugUrl
+                            }
+                        )
                     }
                 }
             }
@@ -2789,12 +2813,317 @@ private fun SettingsScreen(
 }
 
 @Composable
-private fun LocalLibraryCard(
+private fun LibraryTitleDetail(
+    modifier: Modifier,
+    item: LocalLibraryItem,
+    onBack: () -> Unit
+) {
+    val cover by rememberLibraryCover(
+        item.coverUri
+    )
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement =
+            Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.Default.ArrowBack,
+                        contentDescription = "Назад",
+                        tint = Ink
+                    )
+                }
+                Text(
+                    "О тайтле",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Ink,
+                    modifier =
+                        Modifier.padding(start = 4.dp)
+                )
+            }
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                ),
+                shape = RoundedCornerShape(18.dp),
+                border =
+                    androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Line
+                    )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment =
+                        Alignment.Top
+                ) {
+                    if (cover != null) {
+                        Image(
+                            bitmap =
+                                requireNotNull(cover),
+                            contentDescription = null,
+                            contentScale =
+                                ContentScale.Crop,
+                            modifier = Modifier
+                                .width(92.dp)
+                                .height(132.dp)
+                                .clip(
+                                    RoundedCornerShape(
+                                        12.dp
+                                    )
+                                )
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .width(92.dp)
+                                .height(132.dp)
+                                .clip(
+                                    RoundedCornerShape(
+                                        12.dp
+                                    )
+                                )
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(
+                                            Navy2,
+                                            Blue
+                                        )
+                                    )
+                                ),
+                            contentAlignment =
+                                Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.List,
+                                null,
+                                tint = Color.White,
+                                modifier =
+                                    Modifier.size(
+                                        32.dp
+                                    )
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier =
+                            Modifier.padding(
+                                start = 14.dp
+                            )
+                    ) {
+                        Text(
+                            item.title,
+                            color = Ink,
+                            fontSize = 19.sp,
+                            lineHeight = 24.sp,
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+
+                        if (
+                            item.createdByReaderLB
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 8.dp)
+                                    .clip(
+                                        RoundedCornerShape(
+                                            99.dp
+                                        )
+                                    )
+                                    .background(
+                                        Color(
+                                            0xFFEAF5FF
+                                        )
+                                    )
+                                    .padding(
+                                        horizontal = 9.dp,
+                                        vertical = 4.dp
+                                    )
+                            ) {
+                                Text(
+                                    "Импортировано ReaderLB",
+                                    color = Blue,
+                                    fontSize = 11.sp,
+                                    fontWeight =
+                                        FontWeight.SemiBold
+                                )
+                            }
+                        }
+
+                        Text(
+                            chapterCountText(
+                                item.chapterCount
+                            ),
+                            color = Success,
+                            fontWeight =
+                                FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            modifier =
+                                Modifier.padding(
+                                    top = 10.dp
+                                )
+                        )
+                        Text(
+                            localChapterRangeText(
+                                item
+                            ),
+                            color = Muted,
+                            fontSize = 13.sp,
+                            modifier =
+                                Modifier.padding(
+                                    top = 4.dp
+                                )
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            LibraryDetailRow(
+                label = "Локально обновлено",
+                value = formatLocalLibraryTime(
+                    item.writeTime
+                )
+            )
+        }
+
+        item {
+            LibraryDetailRow(
+                label = "Источник",
+                value =
+                    if (item.createdByReaderLB) {
+                        "ReaderLB"
+                    } else {
+                        "Локальная библиотека RanobeLib"
+                    }
+            )
+        }
+
+        item {
+            LibraryDetailRow(
+                label = "Локальный идентификатор",
+                value = item.slugUrl
+            )
+        }
+
+        item {
+            Text(
+                "ReaderLB показывает метаданные локальной копии. " +
+                    "Этот экран ничего не изменяет и не удаляет.",
+                color = Muted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibraryDetailRow(
+    label: String,
+    value: String
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        shape = RoundedCornerShape(14.dp),
+        border =
+            androidx.compose.foundation.BorderStroke(
+                1.dp,
+                Line
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(15.dp)
+        ) {
+            Text(
+                label,
+                color = Muted,
+                fontSize = 11.sp
+            )
+            Text(
+                value,
+                color = Ink,
+                fontSize = 14.sp,
+                lineHeight = 19.sp,
+                fontWeight =
+                    FontWeight.SemiBold,
+                modifier =
+                    Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+private fun localChapterRangeText(
     item: LocalLibraryItem
+): String =
+    if (
+        item.firstChapter ==
+        item.lastChapter
+    ) {
+        "Глава " + item.firstChapter
+    } else {
+        "Главы " +
+            item.firstChapter +
+            "–" +
+            item.lastChapter
+    }
+
+private fun formatLocalLibraryTime(
+    millis: Long
+): String {
+    if (millis <= 0L) {
+        return "Неизвестно"
+    }
+
+    return runCatching {
+        java.text.DateFormat
+            .getDateTimeInstance(
+                java.text.DateFormat.MEDIUM,
+                java.text.DateFormat.SHORT
+            )
+            .format(
+                java.util.Date(millis)
+            )
+    }.getOrDefault("Неизвестно")
+}
+
+@Composable
+private fun LocalLibraryCard(
+    item: LocalLibraryItem,
+    onClick: (() -> Unit)? = null
 ) {
     val cover by rememberLibraryCover(item.coverUri)
+    val cardModifier =
+        if (onClick == null) {
+            Modifier.fillMaxWidth()
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+        }
 
     Card(
+        modifier = cardModifier,
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         ),
