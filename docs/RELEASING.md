@@ -42,9 +42,11 @@ When a newer release exists:
    name.
 5. ReaderLB opens a PackageInstaller session and Android handles the final user-authorized install.
 
-Android 8+ may require the user to allow ReaderLB as an install source. Older
-Android versions and many OEM builds still require an explicit confirmation for
-each sideloaded update, so the universal flow is intentionally semi-automatic.
+Android 8+ may require the user to allow ReaderLB as an install source. On
+Android 12+ ReaderLB requests the platform's no-extra-user-action update path
+when the system's documented conditions are satisfied. ReaderLB must still
+handle STATUS_PENDING_USER_ACTION because Android/OEM policy can require a
+confirmation. Android 11 and older therefore remain a semi-automatic flow.
 
 ## Legacy test-build warning
 
