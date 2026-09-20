@@ -69,6 +69,15 @@ enum class ExportStage {
     FINALIZING
 }
 
+data class ExportProgress(
+    val stage: ExportStage,
+    val completed: Int = 0,
+    val total: Int = 0
+) {
+    val hasCount: Boolean
+        get() = total > 0
+}
+
 data class ExportResult(
     val title: String,
     val chapterCount: Int,
