@@ -93,4 +93,35 @@ class RanobeLibLibraryScannerTest {
             parsed.createdByReaderLB
         )
     }
+
+    @Test
+    fun localLibraryCacheRoundTripsWithoutLosingCounts() {
+        val original = listOf(
+            LocalLibraryItem(
+                title = "Тест",
+                slugUrl = "123--test",
+                chapterCount = 41,
+                firstChapter = "0",
+                lastChapter = "89",
+                coverUri = android.net.Uri.parse(
+                    "content://example/cover"
+                ),
+                writeTime = 42L,
+                createdByReaderLB = true
+            )
+        )
+
+        val restored =
+            decodeLocalLibraryCache(
+                encodeLocalLibraryCache(
+                    original
+                )
+            )
+
+        assertEquals(
+            original,
+            restored
+        )
+    }
+
 }
