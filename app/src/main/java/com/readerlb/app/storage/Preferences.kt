@@ -19,4 +19,10 @@ class Preferences(context: Context) {
         set(value) = prefs.edit()
             .putLong("last_update_check_millis", value)
             .apply()
+
+    var importHintsDone: Boolean
+        get() = prefs.getBoolean("import_hints_done", false)
+        set(value) = prefs.edit()
+            .putBoolean("import_hints_done", value)
+            .apply()
 }
