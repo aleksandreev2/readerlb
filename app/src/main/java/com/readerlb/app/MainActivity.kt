@@ -109,6 +109,11 @@ class MainActivity : ComponentActivity() {
 
 private enum class AppTab { HOME, IMPORT, LIBRARY, SETTINGS }
 
+private val RANOBELIB_BOOK_INITIAL_URI: Uri = Uri.parse(
+    "content://com.android.externalstorage.documents/document/" +
+        "primary%3AAndroid%2Fdata%2Fru.libappc%2Ffiles%2Fbook"
+)
+
 @Composable
 private fun ReaderLBRoot() {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -386,7 +391,12 @@ private fun MainApp() {
             AppTab.IMPORT -> ImportScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
-                onPickFolder = { folderPicker.launch(null) },
+                onBack = { tab = AppTab.HOME },
+                onPickFolder = {
+                    folderPicker.launch(
+                        RANOBELIB_BOOK_INITIAL_URI
+                    )
+                },
                 onImported = {
                     historyStore.add(it)
                     history = historyStore.load()
@@ -400,7 +410,11 @@ private fun MainApp() {
             AppTab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
-                onPickFolder = { folderPicker.launch(null) },
+                onPickFolder = {
+                    folderPicker.launch(
+                        RANOBELIB_BOOK_INITIAL_URI
+                    )
+                },
                 onForgetFolder = {
                     preferences.ranobeLibBookTree = null
                     folderUri = null
@@ -514,6 +528,7 @@ private fun HomeScreen(
 private fun ImportScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    onBack: () -> Unit,
     onPickFolder: () -> Unit,
     onImported: (com.readerlb.app.importer.ExportResult) -> Unit
 ) {
@@ -565,14 +580,33 @@ private fun ImportScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.ArrowBack, null, tint = Ink)
-                Spacer(Modifier.width(14.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.align(
+                        Alignment.CenterStart
+                    )
+                ) {
+                    Icon(
+                        Icons.Default.ArrowBack,
+                        contentDescription = "Назад",
+                        tint = Ink
+                    )
+                }
+
                 Text(
                     "Импорт файла",
+                    modifier = Modifier.align(
+                        Alignment.Center
+                    ),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Ink
+                    color = Ink,
+                    textAlign = TextAlign.Center
                 )
             }
         }
