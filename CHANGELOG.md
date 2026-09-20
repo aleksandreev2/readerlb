@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — 0.9.0
+
+Pre-1.0 interface hardening in progress.
+
+- Expanded chapter-range controls now use full-width «С главы / По главу» fields instead of two cramped side-by-side inputs on narrow phones.
+- Removed the non-functional overflow glyph from import-history cards.
+- Added meaningful accessibility descriptions to actionable settings controls and real book covers.
+- Settings now describe RanobeLib access in user terms instead of exposing a raw Android content URI, and the low-level package-format explanation was removed from the main settings screen.
+
 ## Unreleased — 0.8.0
 
 Large-book and low-memory reliability work in progress.
