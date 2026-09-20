@@ -26,6 +26,12 @@ class Preferences(context: Context) {
             .putBoolean("auto_update_checks", value)
             .apply()
 
+    var directImportEnabled: Boolean
+        get() = prefs.getBoolean("direct_import_enabled", true)
+        set(value) = prefs.edit()
+            .putBoolean("direct_import_enabled", value)
+            .apply()
+
     var importHintsDone: Boolean
         get() = prefs.getBoolean("import_hints_done", false)
         set(value) = prefs.edit()
