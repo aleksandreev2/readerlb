@@ -1094,7 +1094,21 @@ private fun ImportScreen(
         mutableStateOf(false)
     }
 
+    fun cleanupParsedAssets(
+        book: ParsedBook? = parsed
+    ) {
+        book?.temporaryAssetDirectory
+            ?.takeIf(String::isNotBlank)
+            ?.let(::java.io.File)
+            ?.let { directory ->
+                runCatching {
+                    directory.deleteRecursively()
+                }
+            }
+    }
+
     fun queueFile(uri: Uri) {
+        cleanupParsedAssets()
         val persisted = runCatching {
             context.contentResolver
                 .takePersistableUriPermission(
@@ -1212,7 +1226,11 @@ private fun ImportScreen(
                     .height(48.dp)
             ) {
                 IconButton(
-                    onClick = onBack,
+                    onClick = {
+                        cleanupParsedAssets()
+                        onBack()
+                    },
+                    enabled = !busy,
                     modifier = Modifier.align(
                         Alignment.CenterStart
                     )
@@ -1659,7 +1677,10 @@ private fun ImportScreen(
                     StatusCard(message, true)
                     OutlineAction(
                         "Открыть библиотеку",
-                        onOpenLibrary
+                        onClick = {
+                            cleanupParsedAssets()
+                            onOpenLibrary()
+                        }
                     )
                 }
             }
