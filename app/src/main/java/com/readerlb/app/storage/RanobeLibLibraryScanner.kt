@@ -14,7 +14,8 @@ data class LocalLibraryItem(
     val firstChapter: String,
     val lastChapter: String,
     val coverUri: Uri?,
-    val writeTime: Long
+    val writeTime: Long,
+    val createdByReaderLB: Boolean
 )
 
 data class LocalLibrarySnapshot(
@@ -94,7 +95,9 @@ class RanobeLibLibraryScanner(
             firstChapter = parsed.firstChapter,
             lastChapter = parsed.lastChapter,
             coverUri = coverUri,
-            writeTime = parsed.writeTime
+            writeTime = parsed.writeTime,
+            createdByReaderLB =
+                parsed.createdByReaderLB
         )
     }
 
@@ -117,7 +120,8 @@ internal data class ParsedLocalLibraryMetadata(
     val firstChapter: String,
     val lastChapter: String,
     val coverName: String?,
-    val writeTime: Long
+    val writeTime: Long,
+    val createdByReaderLB: Boolean
 )
 
 internal fun parseLocalLibraryMetadata(
@@ -168,6 +172,34 @@ internal fun parseLocalLibraryMetadata(
         .takeIf(String::isNotBlank)
         ?.substringAfterLast('/')
 
+    val createdByReaderLB =
+        (0 until chapters.length()).any { index ->
+            val chapter =
+                chapters.optJSONObject(index)
+                    ?: return@any false
+            val branches =
+                chapter.optJSONArray("branches")
+                    ?: return@any false
+
+            (0 until branches.length()).any {
+                    branchIndex ->
+                val branch =
+                    branches.optJSONObject(
+                        branchIndex
+                    ) ?: return@any false
+                val username =
+                    branch.optJSONObject("user")
+                        ?.optString("username")
+                        ?.trim()
+                        .orEmpty()
+
+                username.equals(
+                    "ReaderLB",
+                    ignoreCase = true
+                )
+            }
+        }
+
     return ParsedLocalLibraryMetadata(
         title = title,
         slugUrl = slugUrl,
@@ -175,6 +207,8 @@ internal fun parseLocalLibraryMetadata(
         firstChapter = numbers.first(),
         lastChapter = numbers.last(),
         coverName = coverName,
-        writeTime = info.optLong("writeTime", 0L)
+        writeTime = info.optLong("writeTime", 0L),
+        createdByReaderLB =
+            createdByReaderLB
     )
 }
