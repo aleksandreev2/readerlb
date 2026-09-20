@@ -4,10 +4,12 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -67,6 +69,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -127,44 +130,31 @@ private fun ReaderLBRoot() {
 @Composable
 private fun Onboarding(onDone: () -> Unit) {
     var page by remember { mutableIntStateOf(0) }
-    val pages = listOf(
-        OnboardingPage(
-            title = "Создано",
-            accent = "с заботой",
-            body = "Импортер глав для RanobeLib APP\n\nРазработчик · dollar",
-            icon = Icons.Default.CheckCircle
-        ),
-        OnboardingPage(
-            title = "Просто. Удобно.",
-            accent = "Для вас.",
-            body = "Быстрый импорт EPUB и TXT. ReaderLB сам проверит структуру, подготовит главы и формат RanobeLib.",
-            icon = Icons.Default.UploadFile
-        ),
-        OnboardingPage(
-            title = "Важно",
-            accent = "знать",
-            body = "На Android 11+ система ограничивает доступ к Android/data. Если прямой импорт недоступен, ReaderLB сохранит готовый ZIP для ручного переноса.",
-            icon = Icons.Default.Settings
-        )
-    )
-    val current = pages[page]
+    val pageCount = 3
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Navy, Color(0xFF071B30), Navy2)
+                    listOf(
+                        Color(0xFF061B30),
+                        Navy,
+                        Color(0xFF03111F)
+                    )
                 )
             )
     ) {
         Box(
             Modifier
-                .size(330.dp)
-                .align(Alignment.CenterEnd)
+                .size(380.dp)
+                .align(Alignment.Center)
                 .background(
                     Brush.radialGradient(
-                        listOf(Color(0x3326CCFF), Color.Transparent)
+                        listOf(
+                            Color(0x3326CCFF),
+                            Color.Transparent
+                        )
                     )
                 )
         )
@@ -172,66 +162,65 @@ private fun Onboarding(onDone: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 30.dp, vertical = 42.dp),
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = 18.dp
+                ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(28.dp))
-            ReaderLogo(86.dp)
-            Spacer(Modifier.height(42.dp))
-
-            Text(
-                current.title,
-                color = Color.White,
-                fontSize = 31.sp,
-                lineHeight = 35.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
+            OnboardingArtwork(
+                page = page,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
             )
-            Text(
-                current.accent,
-                color = Cyan,
-                fontSize = 31.sp,
-                lineHeight = 35.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(18.dp))
-            Text(
-                current.body,
-                color = Color(0xFFE7EDF5),
-                fontSize = 17.sp,
-                lineHeight = 25.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(40.dp))
 
-            OnboardingVisual(page, current.icon)
+            Spacer(Modifier.height(14.dp))
 
-            Spacer(Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                repeat(pages.size) { index ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                repeat(pageCount) { index ->
                     Box(
                         Modifier
-                            .size(if (index == page) 10.dp else 8.dp)
-                            .clip(RoundedCornerShape(99.dp))
-                            .background(if (index == page) Cyan else Color(0xFF52657A))
+                            .size(
+                                if (index == page) 10.dp
+                                else 8.dp
+                            )
+                            .clip(
+                                RoundedCornerShape(99.dp)
+                            )
+                            .background(
+                                if (index == page) Cyan
+                                else Color(0xFF52657A)
+                            )
                     )
                 }
             }
-            Spacer(Modifier.height(24.dp))
+
+            Spacer(Modifier.height(18.dp))
 
             GradientButton(
-                text = if (page == pages.lastIndex) "Понятно" else "Следующее  →",
+                text = if (page == pageCount - 1) {
+                    "Понятно"
+                } else {
+                    "Следующее  →"
+                },
                 onClick = {
-                    if (page == pages.lastIndex) onDone() else page++
+                    if (page == pageCount - 1) {
+                        onDone()
+                    } else {
+                        page++
+                    }
                 }
             )
-            if (page < pages.lastIndex) {
+
+            if (page < pageCount - 1) {
                 Text(
                     "Пропустить",
                     color = Cyan,
                     modifier = Modifier
-                        .padding(top = 18.dp)
+                        .padding(top = 14.dp)
                         .clickable(onClick = onDone),
                     fontSize = 15.sp
                 )
@@ -240,118 +229,99 @@ private fun Onboarding(onDone: () -> Unit) {
     }
 }
 
-private data class OnboardingPage(
-    val title: String,
-    val accent: String,
-    val body: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
-)
-
 @Composable
-private fun OnboardingVisual(
+private fun OnboardingArtwork(
     page: Int,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(220.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D2945)),
-        shape = RoundedCornerShape(28.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            Color(0x334BC4FF)
-        )
+    val context =
+        androidx.compose.ui.platform.LocalContext.current
+
+    val bitmap = remember(page) {
+        runCatching {
+            val assetName =
+                "onboarding_${page + 1}.webp.b64"
+            val encoded = context.assets
+                .open(assetName)
+                .bufferedReader()
+                .use { it.readText() }
+                .trim()
+
+            val bytes = Base64.decode(
+                encoded,
+                Base64.DEFAULT
+            )
+
+            BitmapFactory.decodeByteArray(
+                bytes,
+                0,
+                bytes.size
+            ) ?: error(
+                "Не удалось декодировать $assetName"
+            )
+        }.getOrNull()
+    }
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
     ) {
-        Box(Modifier.fillMaxSize()) {
-            when (page) {
-                0 -> {
-                    Box(
-                        modifier = Modifier.align(Alignment.Center)
-                    ) {
-                        ReaderLogo(
-                            size = 96.dp
-                        )
-                    }
-                    Text(
-                        "Разработчик  dollar",
-                        color = Color(0xFF9DC9E8),
-                        fontSize = 13.sp,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 22.dp)
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription =
+                    "Экран знакомства ReaderLB ${page + 1}",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth()
+                    .clip(
+                        RoundedCornerShape(26.dp)
                     )
-                }
-
-                1 -> {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        tint = Cyan,
-                        modifier = Modifier
-                            .size(86.dp)
-                            .align(Alignment.Center)
+            )
+        } else {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(520.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor =
+                        Color(0xFF0D2945)
+                ),
+                shape = RoundedCornerShape(28.dp),
+                border =
+                    androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Color(0x334BC4FF)
                     )
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 22.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment =
+                            Alignment.CenterHorizontally
                     ) {
-                        MiniFile("EPUB")
-                        MiniFile("TXT")
-                        MiniFile("ZIP")
-                    }
-                }
-
-                else -> {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        tint = Cyan,
-                        modifier = Modifier
-                            .size(88.dp)
-                            .align(Alignment.Center)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 22.dp)
-                            .clip(RoundedCornerShape(99.dp))
-                            .background(Color(0xFF153A5D))
-                            .border(
-                                1.dp,
-                                Color(0x555DD9FF),
-                                RoundedCornerShape(99.dp)
-                            )
-                            .padding(
-                                horizontal = 18.dp,
-                                vertical = 8.dp
-                            )
-                    ) {
+                        ReaderLogo(96.dp)
+                        Spacer(Modifier.height(20.dp))
                         Text(
-                            "Android 11+",
+                            "ReaderLB",
+                            color = Color.White,
+                            fontSize = 28.sp,
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+                        Text(
+                            "Экран ${page + 1} / 3",
                             color = Cyan,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
+                            modifier =
+                                Modifier.padding(top = 8.dp)
                         )
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun MiniFile(text: String) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(9.dp))
-            .background(Color(0xFF18436B))
-            .border(1.dp, Color(0x556ED6FF), RoundedCornerShape(9.dp))
-            .padding(horizontal = 12.dp, vertical = 9.dp)
-    ) {
-        Text(text, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
