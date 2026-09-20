@@ -7,6 +7,7 @@ import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 class EpubArchiveParserTest {
