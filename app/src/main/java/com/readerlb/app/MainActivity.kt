@@ -1063,6 +1063,28 @@ private fun SettingsScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Line)
             ) {
                 Column(Modifier.padding(18.dp)) {
+                    Text(
+                        "ReaderLB ${BuildConfig.VERSION_NAME}",
+                        fontWeight = FontWeight.Bold,
+                        color = Ink
+                    )
+                    Text(
+                        "Контрольная ветка 0.2: усиленная проверка EPUB, сохранение реальных номеров глав и проверка пакета перед записью в RanobeLib.",
+                        color = Muted,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        }
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+            ) {
+                Column(Modifier.padding(18.dp)) {
                     Text("Формат RanobeLib", fontWeight = FontWeight.Bold, color = Ink)
                     Text(
                         "ReaderLB создаёт info.json, chapters.json и отдельный ZIP с data.txt для каждой главы — тот же локальный формат, который уже проверен в штатной читалке RanobeLib.",
