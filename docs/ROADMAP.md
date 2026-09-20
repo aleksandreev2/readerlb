@@ -166,14 +166,14 @@ Goal: make ReaderLB predictable on low-end phones and very large EPUB files.
 
 Planned work:
 
-- stop retaining all large chapter images in memory at once;
-- stream/copy large assets through temporary storage;
-- define memory ceilings for EPUB analysis;
-- stress corpus with 1000+ chapter books and image-heavy chapter 0 files;
-- corrupt/truncated EPUB recovery tests;
-- cancellation and cleanup tests;
+- [x] stop retaining all large chapter images in memory at once;
+- [x] stream/copy large assets through temporary storage;
+- [x] define a memory contract for EPUB analysis: archive-backed chapter images must retain 0 image payload bytes in ParsedBook;
+- [x] stress coverage includes 1200-chapter packages and an image-heavy chapter 0 low-memory parser fixture;
+- [x] corrupt/truncated EPUB rejection tests;
+- [x] cancellation plus stale temporary-asset cleanup coverage;
 - benchmark parse/import time on Redmi 9;
-- prevent temporary-file leaks after failure.
+- [x] prevent temporary-file leaks with parse-failure cleanup, screen disposal cleanup and stale-cache recovery.
 
 Acceptance criteria:
 
