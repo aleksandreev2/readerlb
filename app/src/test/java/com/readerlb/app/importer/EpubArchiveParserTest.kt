@@ -476,6 +476,63 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun importsFigureIllustrationAndKeepsItsPosition() {
+        val imageBytes = byteArrayOf(
+            0x89.toByte(),
+            'P'.code.toByte(),
+            'N'.code.toByte(),
+            'G'.code.toByte(),
+            13,
+            10,
+            26,
+            10,
+            1,
+            2,
+            3
+        )
+
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "ch0001",
+                    "text/ch0001.xhtml",
+                    "<h1>Глава 1</h1>" +
+                        "<p>До картинки.</p>" +
+                        "<figure class=\"illustration\">" +
+                        "<img src=\"../images/ch0001_01.png\" " +
+                        "alt=\"Иллюстрация к главе 1\"/>" +
+                        "</figure>" +
+                        "<p>После картинки.</p>"
+                )
+            ),
+            extraEntries = mapOf(
+                "OEBPS/images/ch0001_01.png" to imageBytes
+            )
+        )
+
+        val book = parser.parse(epub)
+        val blocks = book.chapters.single().blocks
+
+        assertEquals(3, blocks.size)
+        assertTrue(blocks[0] is ReaderBlock.Paragraph)
+        assertTrue(blocks[1] is ReaderBlock.Image)
+        assertTrue(blocks[2] is ReaderBlock.Paragraph)
+
+        val image = blocks[1] as ReaderBlock.Image
+        assertEquals("png", image.extension)
+        assertEquals(
+            "Иллюстрация к главе 1",
+            image.description
+        )
+        assertTrue(image.bytes.contentEquals(imageBytes))
+        assertTrue(
+            book.issues.none {
+                it.code == "INLINE_IMAGES_OMITTED"
+            }
+        )
+    }
+
+    @Test
     fun coverImageDoesNotTriggerChapterImageWarning() {
         val epub = buildEpub(
             docs = listOf(
@@ -800,7 +857,8 @@ class EpubArchiveParserTest {
         docs: List<Doc>,
         namespacedOpf: Boolean = false,
         namespacedContainer: Boolean = false,
-        opfVersion: String = "3.0"
+        opfVersion: String = "3.0",
+        extraEntries: Map<String, ByteArray> = emptyMap()
     ): File {
         val file = Files.createTempFile("readerlb_test_", ".epub").toFile()
         file.deleteOnExit()
@@ -861,6 +919,12 @@ class EpubArchiveParserTest {
                     """<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml"><head><title>${doc.id}</title></head><body>${doc.body}</body></html>"""
                 )
+            }
+
+            extraEntries.forEach { (name, bytes) ->
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(bytes)
+                zip.closeEntry()
             }
         }
 
