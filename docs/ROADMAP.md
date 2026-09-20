@@ -195,7 +195,7 @@ Scope:
 - [x] settings cleanup;
 - corpus expansion;
 - final migration documentation;
-- crash/error diagnostics that do not collect personal reading data.
+- [x] copyable diagnostics limited to app/device/access state; no book titles, EPUB paths or reading-library content.
 
 No major new feature should enter 0.9.x.
 
