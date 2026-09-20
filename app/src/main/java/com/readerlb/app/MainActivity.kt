@@ -862,7 +862,11 @@ private fun HomeScreen(
                     }
                 }
                 IconButton(onClick = onSettings) {
-                    Icon(Icons.Default.Settings, null, tint = Ink)
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Настройки",
+                        tint = Ink
+                    )
                 }
             }
         }
@@ -1522,9 +1526,9 @@ private fun ImportScreen(
 
                         if (rangeExpanded) {
                             Spacer(Modifier.height(12.dp))
-                            Row(
-                                verticalAlignment =
-                                    Alignment.CenterVertically
+                            Column(
+                                verticalArrangement =
+                                    Arrangement.spacedBy(10.dp)
                             ) {
                                 OutlinedTextField(
                                     value = firstChapter,
@@ -1534,7 +1538,11 @@ private fun ImportScreen(
                                                 it
                                             )
                                     },
-                                    modifier = Modifier.weight(1f),
+                                    modifier =
+                                        Modifier.fillMaxWidth(),
+                                    label = {
+                                        Text("С главы")
+                                    },
                                     placeholder = {
                                         Text(first)
                                     },
@@ -1547,14 +1555,6 @@ private fun ImportScreen(
                                     shape =
                                         RoundedCornerShape(12.dp)
                                 )
-                                Text(
-                                    " — ",
-                                    color = Muted,
-                                    modifier =
-                                        Modifier.padding(
-                                            horizontal = 8.dp
-                                        )
-                                )
                                 OutlinedTextField(
                                     value = lastChapter,
                                     onValueChange = {
@@ -1563,7 +1563,11 @@ private fun ImportScreen(
                                                 it
                                             )
                                     },
-                                    modifier = Modifier.weight(1f),
+                                    modifier =
+                                        Modifier.fillMaxWidth(),
+                                    label = {
+                                        Text("По главу")
+                                    },
                                     placeholder = {
                                         Text(last)
                                     },
@@ -2042,7 +2046,8 @@ private fun ParsedPreview(book: ParsedBook) {
                 if (bitmap != null) {
                     androidx.compose.foundation.Image(
                         bitmap = bitmap.asImageBitmap(),
-                        contentDescription = null,
+                        contentDescription =
+                            "Обложка " + book.title,
                         modifier = Modifier
                             .size(64.dp)
                             .clip(RoundedCornerShape(10.dp))
@@ -2911,7 +2916,8 @@ private fun LibraryTitleDetail(
                         Image(
                             bitmap =
                                 requireNotNull(cover),
-                            contentDescription = null,
+                            contentDescription =
+                                "Обложка " + item.title,
                             contentScale =
                                 ContentScale.Crop,
                             modifier = Modifier
@@ -3179,7 +3185,8 @@ private fun LocalLibraryCard(
             if (cover != null) {
                 Image(
                     bitmap = requireNotNull(cover),
-                    contentDescription = null,
+                    contentDescription =
+                        "Обложка " + item.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(62.dp)
@@ -3433,7 +3440,6 @@ private fun HistoryCard(item: ImportHistoryItem) {
                     )
                 }
             }
-            Icon(Icons.Default.MoreVert, null, tint = Muted)
         }
     }
 }
