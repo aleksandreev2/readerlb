@@ -59,6 +59,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -1108,10 +1109,18 @@ private fun ImportScreen(
             }
     }
 
+    val exportBusyState =
+        rememberUpdatedState(
+            busy &&
+                exportProgress != null
+        )
+
     DisposableEffect(parsed) {
         val book = parsed
         onDispose {
-            cleanupParsedAssets(book)
+            if (!exportBusyState.value) {
+                cleanupParsedAssets(book)
+            }
         }
     }
 
