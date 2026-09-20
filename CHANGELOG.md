@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1-dev
+
+Small usability patch after device testing.
+
+- The import-screen title is now truly centered independently of the back button.
+- The back arrow on the import screen is functional.
+- The RanobeLib folder picker opens at the expected `Android/data/ru.libappc/files/book` location when the Android file provider accepts an initial URI.
+- CI now reuses one debug signing key so future APKs can be installed as updates instead of forcing an uninstall; this preserves ReaderLB settings and the persisted RanobeLib folder grant between builds.
+- Existing Android 11+ storage restrictions still mean ReaderLB cannot silently grant itself access to another app's `Android/data` directory.
+
 ## 0.3.0
 
 Incremental-update milestone.
