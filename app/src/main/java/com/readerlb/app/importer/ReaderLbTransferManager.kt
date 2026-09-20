@@ -495,6 +495,19 @@ class ReaderLbTransferManager(
     }
 }
 
+internal fun shouldInspectReaderLbTransferFile(
+    fileName: String
+): Boolean =
+    fileName
+        .substringAfterLast(
+            '.',
+            ""
+        )
+        .equals(
+            "zip",
+            ignoreCase = true
+        )
+
 internal fun inspectReaderLbTransfer(
     input: InputStream
 ): PortableTitleInfo? {
