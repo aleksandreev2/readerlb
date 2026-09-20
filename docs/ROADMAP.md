@@ -190,7 +190,7 @@ Scope:
 - [x] accessibility/content descriptions;
 - [x] small-screen import layout audit (including full-width chapter-range fields);
 - typography/spacing consistency;
-- empty/error/loading states;
+- [x] empty/error/loading states with retry paths for EPUB analysis and library scanning;
 - [x] update failure/recovery messaging for cancelled, blocked, conflicting, incompatible, invalid, storage, signature and integrity failures;
 - [x] settings cleanup;
 - corpus expansion;
