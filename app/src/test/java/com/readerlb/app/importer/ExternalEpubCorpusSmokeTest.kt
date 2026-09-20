@@ -7,6 +7,7 @@ import org.junit.Test
 import java.io.File
 import java.math.BigDecimal
 import java.nio.file.Files
+import java.util.zip.ZipFile
 
 /**
  * Optional end-to-end smoke test for a real local EPUB corpus.
@@ -115,6 +116,55 @@ class ExternalEpubCorpusSmokeTest {
                 assertEquals(
                     book.chapters.size,
                     built.chapterCount
+                )
+
+                val sourceImageCount =
+                    book.chapters.sumOf { chapter ->
+                        chapter.blocks.count {
+                            it is ReaderBlock.Image
+                        }
+                    }
+
+                val packagedImageCount =
+                    built.titleDir
+                        .listFiles()
+                        .orEmpty()
+                        .filter {
+                            it.extension.equals(
+                                "zip",
+                                ignoreCase = true
+                            )
+                        }
+                        .sumOf { chapterZip ->
+                            ZipFile(chapterZip).use { zip ->
+                                zip.entries()
+                                    .asSequence()
+                                    .count { entry ->
+                                        val extension = entry.name
+                                            .substringAfterLast(
+                                                '.',
+                                                ""
+                                            )
+                                            .lowercase()
+
+                                        !entry.isDirectory &&
+                                            entry.name != "data.txt" &&
+                                            extension in setOf(
+                                                "jpg",
+                                                "jpeg",
+                                                "png",
+                                                "webp",
+                                                "gif"
+                                            )
+                                    }
+                            }
+                        }
+
+                assertEquals(
+                    "Illustrations were lost while packaging " +
+                        file.name,
+                    sourceImageCount,
+                    packagedImageCount
                 )
             } finally {
                 packageRoot.deleteRecursively()
