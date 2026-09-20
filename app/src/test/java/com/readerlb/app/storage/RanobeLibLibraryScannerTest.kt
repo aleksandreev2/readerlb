@@ -21,7 +21,16 @@ class RanobeLibLibraryScannerTest {
 
         val chapters = """
             [
-              {"number":"50"},
+              {
+                "number":"50",
+                "branches":[
+                  {
+                    "user":{
+                      "username":"ReaderLB"
+                    }
+                  }
+                ]
+              },
               {"number":"0"},
               {"number":"51"},
               {"number":"50"}
@@ -41,5 +50,45 @@ class RanobeLibLibraryScannerTest {
         assertEquals("51", parsed.lastChapter)
         assertEquals("cover.webp", parsed.coverName)
         assertEquals(123456789L, parsed.writeTime)
+        assertEquals(
+            true,
+            parsed.createdByReaderLB
+        )
+    }
+
+    @Test
+    fun distinguishesForeignLocalTitle() {
+        val parsed = parseLocalLibraryMetadata(
+            infoText = """
+                {
+                  "media": {
+                    "name": "Обычный тайтл",
+                    "slugUrl": "123--ordinary",
+                    "imageUrl": ""
+                  },
+                  "writeTime": 7
+                }
+            """.trimIndent(),
+            chaptersText = """
+                [
+                  {
+                    "number":"1",
+                    "branches":[
+                      {
+                        "user":{
+                          "username":"translator"
+                        }
+                      }
+                    ]
+                  }
+                ]
+            """.trimIndent(),
+            folderName = "123--ordinary"
+        )
+
+        assertEquals(
+            false,
+            parsed.createdByReaderLB
+        )
     }
 }
