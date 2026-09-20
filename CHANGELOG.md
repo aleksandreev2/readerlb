@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.4
+
+Portable ReaderLB package detection hotfix.
+
+- ReaderLB now inspects every selected `.zip` for the portable-package manifest instead of requiring the exact `.readerlb.zip` filename.
+- Packages renamed by Android, MIUI, messengers or file providers to names such as `*_readerlb.zip` are recognized and open on the dedicated ReaderLB package screen.
+- Ordinary ZIP/EPUB archives still fall back to the existing EPUB parser when no ReaderLB manifest is present.
+- The import screen now lists portable ReaderLB packages among supported inputs.
+
 ## 0.9.3
 
 Local-title actions and portable ReaderLB packages.
