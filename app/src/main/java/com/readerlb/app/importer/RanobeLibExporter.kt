@@ -39,18 +39,13 @@ class RanobeLibExporter(private val context: Context) {
                 rootDir = tempRoot,
                 titleOverride = titleOverride,
                 firstChapter = firstChapter,
-                lastChapter = lastChapter
+                lastChapter = lastChapter,
+                onVerifying = {
+                    onStage(
+                        ExportStage.VERIFYING
+                    )
+                }
             )
-
-            onStage(ExportStage.VERIFYING)
-            val verification =
-                packageBuilder.verify(built)
-
-            if (!verification.isValid) {
-                throw PackageVerificationException(
-                    verification
-                )
-            }
 
             onStage(ExportStage.WRITING)
 
