@@ -478,7 +478,7 @@ private fun MainApp() {
                 }
             }.onSuccess { apk ->
                 updateMessage =
-                    "Обновление загружено. Подтвердите установку Android."
+                    "Обновление загружено. Передаю установку Android…"
                 updateManager.requestInstall(apk)
             }.onFailure {
                 updateMessage =
@@ -2331,8 +2331,8 @@ private fun UpdateAvailableCard(
                 color = Ink
             )
             Text(
-                "Обновление можно скачать прямо из приложения. " +
-                    "Android попросит подтвердить установку.",
+                "ReaderLB сам скачает APK и передаст обновление Android. " +
+                    "На некоторых версиях системы понадобится подтверждение.",
                 color = Muted,
                 fontSize = 12.sp,
                 lineHeight = 17.sp
