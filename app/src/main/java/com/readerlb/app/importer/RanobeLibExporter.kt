@@ -39,14 +39,14 @@ class RanobeLibExporter(private val context: Context) {
                 lastChapter = lastChapter
             )
 
-            val installed = ranobeLibBookTree != null
-            if (ranobeLibBookTree != null) {
+            val directResult = ranobeLibBookTree?.let {
                 copyToRanobeLibTree(
-                    treeUri = ranobeLibBookTree,
+                    treeUri = it,
                     source = built.titleDir,
                     slugUrl = built.slugUrl
                 )
             }
+            val installed = directResult != null
 
             val download = if (installed) {
                 null
@@ -56,9 +56,12 @@ class RanobeLibExporter(private val context: Context) {
 
             return ExportResult(
                 title = built.title,
-                chapterCount = built.chapterCount,
-                firstChapter = built.firstChapter,
-                lastChapter = built.lastChapter,
+                chapterCount = directResult?.chapterCount
+                    ?: built.chapterCount,
+                firstChapter = directResult?.firstChapter
+                    ?: built.firstChapter,
+                lastChapter = directResult?.lastChapter
+                    ?: built.lastChapter,
                 slugUrl = built.slugUrl,
                 installedDirectly = installed,
                 downloadUri = download?.toString()
@@ -72,13 +75,34 @@ class RanobeLibExporter(private val context: Context) {
         treeUri: Uri,
         source: File,
         slugUrl: String
-    ) {
+    ): DirectWriteResult {
         val root = DocumentFile.fromTreeUri(context, treeUri)
             ?: error("Нет доступа к папке RanobeLib")
 
-        require(root.findFile(slugUrl) == null) {
-            "Тайтл уже существует в RanobeLib. " +
-                "Безопасное обновление существующих тайтлов появится в ReaderLB 0.3."
+        val existingTitleDir = root.findFile(slugUrl)
+        if (existingTitleDir != null) {
+            require(existingTitleDir.isDirectory) {
+                "Путь существующего тайтла RanobeLib не является папкой"
+            }
+
+            val result = RanobeLibUpdateTransaction().apply(
+                existing = RanobeLibDocumentStorage(
+                    context = context,
+                    directory = existingTitleDir
+                ),
+                incomingTitleDir = source
+            )
+
+            val merged = result.mergedNumbers
+            require(merged.isNotEmpty()) {
+                "После обновления тайтл не содержит глав"
+            }
+
+            return DirectWriteResult(
+                chapterCount = result.totalChapterCount,
+                firstChapter = merged.first(),
+                lastChapter = merged.last()
+            )
         }
 
         val titleDir = root.createDirectory(slugUrl)
@@ -146,6 +170,28 @@ class RanobeLibExporter(private val context: Context) {
             runCatching { titleDir.delete() }
             throw throwable
         }
+
+        val incomingChapters = org.json.JSONArray(
+            File(source, "chapters.json")
+                .readText(Charsets.UTF_8)
+        )
+        val numbers = (0 until incomingChapters.length())
+            .map {
+                incomingChapters
+                    .getJSONObject(it)
+                    .getString("number")
+            }
+            .sortedWith(::compareChapterNumbers)
+
+        require(numbers.isNotEmpty()) {
+            "Подготовленный тайтл не содержит глав"
+        }
+
+        return DirectWriteResult(
+            chapterCount = numbers.size,
+            firstChapter = numbers.first(),
+            lastChapter = numbers.last()
+        )
     }
 
     private fun mimeType(file: File): String =
@@ -238,4 +284,9 @@ class RanobeLibExporter(private val context: Context) {
             throw throwable
         }
     }
+    private data class DirectWriteResult(
+        val chapterCount: Int,
+        val firstChapter: String,
+        val lastChapter: String
+    )
 }
