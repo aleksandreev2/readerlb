@@ -2102,6 +2102,13 @@ private fun ParsedPreview(book: ParsedBook) {
 }
 
 @Composable
+private enum class LibrarySortMode {
+    RECENT,
+    TITLE,
+    CHAPTERS
+}
+
+@Composable
 private fun LibraryScreen(
     modifier: Modifier,
     items: List<LocalLibraryItem>,
@@ -2113,6 +2120,68 @@ private fun LibraryScreen(
     onPickFolder: () -> Unit,
     onAdd: () -> Unit
 ) {
+    var query by rememberSaveable {
+        mutableStateOf("")
+    }
+    var sortIndex by rememberSaveable {
+        mutableIntStateOf(0)
+    }
+
+    val sortMode =
+        LibrarySortMode.entries[
+            sortIndex.coerceIn(
+                0,
+                LibrarySortMode.entries.lastIndex
+            )
+        ]
+
+    val visibleItems = remember(
+        items,
+        query,
+        sortMode
+    ) {
+        val filtered = items.filter { item ->
+            query.isBlank() ||
+                item.title.contains(
+                    query.trim(),
+                    ignoreCase = true
+                ) ||
+                item.slugUrl.contains(
+                    query.trim(),
+                    ignoreCase = true
+                )
+        }
+
+        when (sortMode) {
+            LibrarySortMode.RECENT ->
+                filtered.sortedWith(
+                    compareByDescending<
+                        LocalLibraryItem
+                    > {
+                        it.writeTime
+                    }.thenBy {
+                        it.title.lowercase()
+                    }
+                )
+
+            LibrarySortMode.TITLE ->
+                filtered.sortedBy {
+                    it.title.lowercase()
+                }
+
+            LibrarySortMode.CHAPTERS ->
+                filtered.sortedWith(
+                    compareByDescending<
+                        LocalLibraryItem
+                    > {
+                        it.chapterCount
+                    }.thenBy {
+                        it.title.lowercase()
+                    }
+                )
+        }
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -2233,6 +2302,92 @@ private fun LibraryScreen(
                 }
             }
 
+            if (items.isNotEmpty()) {
+                item {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = {
+                            Text("Поиск по библиотеке")
+                        },
+                        placeholder = {
+                            Text(
+                                "Название или slug"
+                            )
+                        },
+                        shape =
+                            RoundedCornerShape(12.dp)
+                    )
+                }
+
+                item {
+                    Row(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        horizontalArrangement =
+                            Arrangement.spacedBy(8.dp)
+                    ) {
+                        LibrarySortPill(
+                            modifier =
+                                Modifier.weight(1f),
+                            text = "Недавние",
+                            selected =
+                                sortMode ==
+                                    LibrarySortMode.RECENT,
+                            onClick = {
+                                sortIndex =
+                                    LibrarySortMode.RECENT
+                                        .ordinal
+                            }
+                        )
+                        LibrarySortPill(
+                            modifier =
+                                Modifier.weight(1f),
+                            text = "А–Я",
+                            selected =
+                                sortMode ==
+                                    LibrarySortMode.TITLE,
+                            onClick = {
+                                sortIndex =
+                                    LibrarySortMode.TITLE
+                                        .ordinal
+                            }
+                        )
+                        LibrarySortPill(
+                            modifier =
+                                Modifier.weight(1f),
+                            text = "По главам",
+                            selected =
+                                sortMode ==
+                                    LibrarySortMode.CHAPTERS,
+                            onClick = {
+                                sortIndex =
+                                    LibrarySortMode.CHAPTERS
+                                        .ordinal
+                            }
+                        )
+                    }
+                }
+
+                item {
+                    Text(
+                        if (query.isBlank()) {
+                            "Тайтлов: " + items.size
+                        } else {
+                            "Найдено: " +
+                                visibleItems.size +
+                                " из " +
+                                items.size
+                        },
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
             error?.let { message ->
                 item {
                     StatusCard(
@@ -2256,19 +2411,133 @@ private fun LibraryScreen(
                 }
             }
 
-            if (!loading && items.isEmpty() && error == null) {
-                item {
-                    EmptyLibraryCard(onAdd)
+            when {
+                !loading &&
+                    items.isEmpty() &&
+                    error == null -> {
+                    item {
+                        EmptyLibraryCard(onAdd)
+                    }
                 }
-            } else {
-                items(
-                    items,
-                    key = { it.slugUrl }
-                ) { item ->
-                    LocalLibraryCard(item)
+
+                items.isNotEmpty() &&
+                    visibleItems.isEmpty() -> {
+                    item {
+                        Card(
+                            colors =
+                                CardDefaults.cardColors(
+                                    containerColor =
+                                        Color.White
+                                ),
+                            shape =
+                                RoundedCornerShape(
+                                    16.dp
+                                )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment =
+                                    Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    "Ничего не найдено",
+                                    color = Ink,
+                                    fontWeight =
+                                        FontWeight.Bold
+                                )
+                                Text(
+                                    "Попробуйте другое название.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    modifier =
+                                        Modifier.padding(
+                                            top = 5.dp,
+                                            bottom = 10.dp
+                                        )
+                                )
+                                Text(
+                                    "Сбросить поиск",
+                                    color = Blue,
+                                    fontWeight =
+                                        FontWeight.SemiBold,
+                                    modifier =
+                                        Modifier.clickable {
+                                            query = ""
+                                        }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                else -> {
+                    items(
+                        visibleItems,
+                        key = { it.slugUrl }
+                    ) { item ->
+                        LocalLibraryCard(item)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LibrarySortPill(
+    modifier: Modifier,
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(
+                RoundedCornerShape(99.dp)
+            )
+            .background(
+                if (selected) {
+                    Color(0xFFE6F3FD)
+                } else {
+                    Color.White
+                }
+            )
+            .border(
+                width = 1.dp,
+                color =
+                    if (selected) {
+                        Color(0xFF8DC8EE)
+                    } else {
+                        Line
+                    },
+                shape =
+                    RoundedCornerShape(99.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(
+                horizontal = 8.dp,
+                vertical = 9.dp
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            color = if (selected) {
+                Blue
+            } else {
+                Muted
+            },
+            fontSize = 12.sp,
+            fontWeight =
+                if (selected) {
+                    FontWeight.SemiBold
+                } else {
+                    FontWeight.Normal
+                },
+            maxLines = 1
+        )
     }
 }
 
@@ -2601,17 +2870,50 @@ private fun LocalLibraryCard(
                     modifier =
                         Modifier.padding(top = 3.dp)
                 )
-                Text(
-                    chapterCountText(
-                        item.chapterCount
-                    ),
-                    color = Success,
-                    fontSize = 11.sp,
-                    fontWeight =
-                        FontWeight.SemiBold,
+                Row(
                     modifier =
-                        Modifier.padding(top = 5.dp)
-                )
+                        Modifier.padding(top = 5.dp),
+                    verticalAlignment =
+                        Alignment.CenterVertically,
+                    horizontalArrangement =
+                        Arrangement.spacedBy(7.dp)
+                ) {
+                    Text(
+                        chapterCountText(
+                            item.chapterCount
+                        ),
+                        color = Success,
+                        fontSize = 11.sp,
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+
+                    if (item.createdByReaderLB) {
+                        Box(
+                            modifier = Modifier
+                                .clip(
+                                    RoundedCornerShape(
+                                        99.dp
+                                    )
+                                )
+                                .background(
+                                    Color(0xFFEAF5FF)
+                                )
+                                .padding(
+                                    horizontal = 7.dp,
+                                    vertical = 2.dp
+                                )
+                        ) {
+                            Text(
+                                "ReaderLB",
+                                color = Blue,
+                                fontSize = 10.sp,
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
             }
         }
     }
