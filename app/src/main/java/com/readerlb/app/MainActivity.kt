@@ -103,8 +103,11 @@ import com.readerlb.app.ui.theme.Success
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 private data class IncomingImportRequest(
     val uri: Uri,
@@ -576,25 +579,57 @@ private fun MainApp(
                 libraryScanned = 0
                 libraryScanTotal = 0
 
-                val result =
-                    withContext(
-                        Dispatchers.IO
+                val result = try {
+                    withTimeout(
+                        120_000L
                     ) {
-                        runCatching {
-                            libraryScanner.scan(
-                                tree
-                            ) {
-                                    completed,
-                                    total ->
-                                scope.launch {
-                                    libraryScanned =
-                                        completed
-                                    libraryScanTotal =
-                                        total
+                        runInterruptible(
+                            Dispatchers.IO
+                        ) {
+                            Result.success(
+                                libraryScanner.scan(
+                                    tree
+                                ) {
+                                        completed,
+                                        total ->
+                                    scope.launch {
+                                        libraryScanned =
+                                            maxOf(
+                                                libraryScanned,
+                                                completed
+                                            )
+                                        libraryScanTotal =
+                                            maxOf(
+                                                libraryScanTotal,
+                                                total
+                                            )
+                                    }
                                 }
-                            }
+                            )
                         }
                     }
+                } catch (
+                    timeout:
+                    TimeoutCancellationException
+                ) {
+                    Result.failure(
+                        IllegalStateException(
+                            "RanobeLib слишком долго отвечает. " +
+                                "Проверьте доступ к папке book " +
+                                "и повторите сканирование."
+                        )
+                    )
+                } catch (
+                    cancelled:
+                    CancellationException
+                ) {
+                    throw cancelled
+                } catch (
+                    throwable:
+                    Throwable
+                ) {
+                    Result.failure(throwable)
+                }
 
                 result.onSuccess {
                         snapshot ->
