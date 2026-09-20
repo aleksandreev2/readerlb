@@ -1967,9 +1967,12 @@ class EpubArchiveParser {
             "информация о переводе",
             "справочник",
             "глоссарий",
+            "послесловие переводчика",
             "translation info",
             "translation information",
-            "glossary"
+            "glossary",
+            "translator afterword",
+            "translator's afterword"
         )
 
         val NON_CONTENT_TAGS = setOf(
