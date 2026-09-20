@@ -633,8 +633,8 @@ private fun MainApp(
                 updateManager.requestInstall(apk)
             }.onFailure {
                 updateMessage =
-                    "Не удалось загрузить обновление: " +
-                        (it.message ?: "ошибка сети")
+                    com.readerlb.app.update
+                        .friendlyUpdateDownloadError(it)
             }
             updateBusy = false
         }
