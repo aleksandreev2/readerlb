@@ -388,6 +388,122 @@ class RanobeLibUpdateTransactionTest {
     }
 
     @Test
+    fun committedMetadataWithMissingNewZipRollsBackToOldState() {
+        val root = Files.createTempDirectory("readerlb_update_missing_zip_").toFile()
+        val oldBuilt = builder.build(
+            book = book("Missing zip recovery", 1..3),
+            rootDir = File(root, "old")
+        )
+        val committedBuilt = builder.build(
+            book = book("Missing zip recovery", 1..4),
+            rootDir = File(root, "committed")
+        )
+
+        val storage = FileRanobeLibStorage(
+            committedBuilt.titleDir
+        )
+        val oldStorage = FileRanobeLibStorage(
+            oldBuilt.titleDir
+        )
+
+        storage.writeBytes(
+            ".readerlb-chapters.bak",
+            oldStorage.readBytes("chapters.json")
+        )
+        storage.writeBytes(
+            ".readerlb-info.bak",
+            oldStorage.readBytes("info.json")
+        )
+
+        val committedChapters = JSONArray(
+            storage.readBytes("chapters.json")
+                .toString(Charsets.UTF_8)
+        )
+        val zip4 = RanobeLibUpdatePlanner()
+            .chapterNumberToZip(committedChapters)
+            .getValue("4")
+        assertTrue(storage.delete(zip4))
+
+        storage.writeBytes(
+            ".readerlb-update.json",
+            JSONObject()
+                .put(
+                    "addedZipNames",
+                    JSONArray().put(zip4)
+                )
+                .put(
+                    "addedNumbers",
+                    JSONArray().put("4")
+                )
+                .toString()
+                .toByteArray()
+        )
+
+        val result = transaction.apply(
+            existing = storage,
+            incomingTitleDir = committedBuilt.titleDir
+        )
+
+        assertTrue(result.changed)
+        assertEquals(listOf("4"), result.addedNumbers)
+        val finalChapters = JSONArray(
+            storage.readBytes("chapters.json")
+                .toString(Charsets.UTF_8)
+        )
+        assertEquals(
+            listOf("1", "2", "3", "4"),
+            chapterNumbers(finalChapters)
+        )
+        assertTrue(storage.exists(zip4))
+        assertFalse(storage.exists(".readerlb-update.json"))
+    }
+
+    @Test
+    fun sameLengthCorruptionInStagingIsDetectedBeforePublishingAnything() {
+        val root = Files.createTempDirectory("readerlb_update_hash_").toFile()
+        val existingBuilt = builder.build(
+            book = book("Hash test", 1..3),
+            rootDir = File(root, "existing")
+        )
+        val incomingBuilt = builder.build(
+            book = book("Hash test", 1..4),
+            rootDir = File(root, "incoming")
+        )
+
+        val base = FileRanobeLibStorage(
+            existingBuilt.titleDir
+        )
+        val beforeInfo = base.readBytes("info.json")
+        val beforeChapters = base.readBytes("chapters.json")
+        val beforeNames = base.names()
+
+        val corrupting = CorruptingStagedZipStorage(base)
+
+        try {
+            transaction.apply(
+                existing = corrupting,
+                incomingTitleDir = incomingBuilt.titleDir
+            )
+            fail("Expected hash validation to fail")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(
+                error.message.orEmpty()
+                    .contains("Контрольная сумма")
+            )
+        }
+
+        assertArrayEquals(
+            beforeInfo,
+            base.readBytes("info.json")
+        )
+        assertArrayEquals(
+            beforeChapters,
+            base.readBytes("chapters.json")
+        )
+        assertEquals(beforeNames, base.names())
+    }
+
+    @Test
     fun corruptJournalStopsBeforeChangingExistingTitle() {
         val root = Files.createTempDirectory("readerlb_update_bad_journal_").toFile()
         val existingBuilt = builder.build(
@@ -494,6 +610,50 @@ class RanobeLibUpdateTransactionTest {
             array.getJSONObject(it)
                 .getString("number")
         }
+
+    private class CorruptingStagedZipStorage(
+        private val delegate: RanobeLibMutableStorage
+    ) : RanobeLibMutableStorage {
+
+        override fun exists(name: String): Boolean =
+            delegate.exists(name)
+
+        override fun readBytes(name: String): ByteArray =
+            delegate.readBytes(name)
+
+        override fun writeBytes(
+            name: String,
+            bytes: ByteArray
+        ) {
+            val output = if (
+                name.startsWith(".readerlb-new-") &&
+                bytes.isNotEmpty()
+            ) {
+                bytes.copyOf().also { copy ->
+                    copy[copy.lastIndex] =
+                        (copy.last().toInt() xor 0x01).toByte()
+                }
+            } else {
+                bytes
+            }
+            delegate.writeBytes(name, output)
+        }
+
+        override fun delete(name: String): Boolean =
+            delegate.delete(name)
+
+        override fun rename(
+            from: String,
+            to: String
+        ): Boolean =
+            delegate.rename(from, to)
+
+        override fun length(name: String): Long =
+            delegate.length(name)
+
+        override fun names(): Set<String> =
+            delegate.names()
+    }
 
     private class FaultingStorage(
         private val delegate: RanobeLibMutableStorage,
