@@ -45,3 +45,12 @@ When a newer release exists:
 Android 8+ may require the user to allow ReaderLB as an install source. Older
 Android versions and many OEM builds still require an explicit confirmation for
 each sideloaded update, so the universal flow is intentionally semi-automatic.
+
+## Legacy 0.4.x warning
+
+Do not promise an in-place upgrade from the historical 0.4.1/0.4.2 test APKs.
+Their signing certificates differ from each other and from the pinned test
+certificate. See `docs/SIGNING_MIGRATION.md`.
+
+The first build distributed as the stable update channel must be signed by the
+permanent release key, and all later release APKs must use that exact key.
