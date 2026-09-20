@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -751,7 +752,7 @@ private fun MainApp(
         containerColor = Canvas,
         bottomBar = {
             if (tab != AppTab.IMPORT) {
-                NavigationBar(containerColor = Color.White) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 NavigationBarItem(
                     selected = tab == AppTab.HOME,
                     onClick = { tab = AppTab.HOME },
@@ -1040,7 +1041,7 @@ private fun HomeScreen(
                 item {
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = Color.White
+                            containerColor = MaterialTheme.colorScheme.surface
                         ),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -1328,10 +1329,20 @@ private fun ImportScreen(
         }
     }
 
+    val emptyImportState =
+        parsed == null &&
+            selectedUri == null &&
+            !busy &&
+            error == null
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(
+            horizontal = 18.dp,
+            vertical = 18.dp
+        ),
+        verticalArrangement =
+            Arrangement.spacedBy(16.dp)
     ) {
         item {
             Box(
@@ -1365,6 +1376,14 @@ private fun ImportScreen(
                     fontWeight = FontWeight.Bold,
                     color = Ink,
                     textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        if (emptyImportState) {
+            item {
+                Spacer(
+                    Modifier.height(34.dp)
                 )
             }
         }
@@ -1449,9 +1468,9 @@ private fun ImportScreen(
                         colors = CardDefaults.cardColors(
                             containerColor =
                                 if (warningsAcknowledged) {
-                                    Color(0xFFEAF8F1)
+                                    MaterialTheme.colorScheme.tertiaryContainer
                                 } else {
-                                    Color(0xFFFFF7E6)
+                                    Color(0xFF3A2F16)
                                 }
                         ),
                         shape = RoundedCornerShape(14.dp),
@@ -1459,9 +1478,9 @@ private fun ImportScreen(
                             androidx.compose.foundation.BorderStroke(
                                 1.dp,
                                 if (warningsAcknowledged) {
-                                    Color(0xFFB7DEC9)
+                                    Color(0xFF2F6A55)
                                 } else {
-                                    Color(0xFFF2C46D)
+                                    Color(0xFF7A6327)
                                 }
                             )
                     ) {
@@ -1480,9 +1499,9 @@ private fun ImportScreen(
                                 fontWeight = FontWeight.Bold,
                                 color =
                                     if (warningsAcknowledged) {
-                                        Color(0xFF167054)
+                                        Color(0xFF82D9B7)
                                     } else {
-                                        Color(0xFF7A4E00)
+                                        Color(0xFFE1B95B)
                                     }
                             )
                             Text(
@@ -1497,9 +1516,9 @@ private fun ImportScreen(
                                 },
                                 color =
                                     if (warningsAcknowledged) {
-                                        Color(0xFF3C765F)
+                                        Color(0xFF82C7AA)
                                     } else {
-                                        Color(0xFF8A641B)
+                                        Color(0xFFD2A84F)
                                     },
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
@@ -1565,7 +1584,7 @@ private fun ImportScreen(
 
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
                     shape = RoundedCornerShape(14.dp),
                     border =
@@ -1693,7 +1712,7 @@ private fun ImportScreen(
                 Card(
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
                     border =
                         androidx.compose.foundation.BorderStroke(
@@ -1742,7 +1761,7 @@ private fun ImportScreen(
         ) {
             item {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF5FF)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Column(Modifier.padding(16.dp)) {
@@ -1978,7 +1997,7 @@ private fun ImportProgressCard(
 
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFEAF5FF)
+            containerColor = MaterialTheme.colorScheme.primaryContainer
         ),
         shape = RoundedCornerShape(14.dp)
     ) {
@@ -2055,9 +2074,9 @@ private fun FileDropCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFAFCFF)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         shape = RoundedCornerShape(18.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBED0E3))
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line)
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 22.dp, vertical = 30.dp),
@@ -2072,7 +2091,7 @@ private fun FileDropCard(
                 Icon(
                     Icons.Default.Add,
                     null,
-                    tint = Color(0xFF7890AA),
+                    tint = Muted,
                     modifier = Modifier.size(58.dp)
                 )
             }
@@ -2110,7 +2129,7 @@ private fun FileDropCard(
                             if (enabled) {
                                 Blue
                             } else {
-                                Color(0xFF9AB1C5)
+                                Color(0xFF56616E)
                             }
                         )
                         .clickable(
@@ -2143,7 +2162,7 @@ private fun FileDropCard(
 @Composable
 private fun ParsedPreview(book: ParsedBook) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(14.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Line)
     ) {
@@ -2234,7 +2253,7 @@ private fun ParsedPreview(book: ParsedBook) {
                     val warning = issue.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING
                     Text(
                         text = (if (warning) "⚠ " else "ℹ ") + issue.message,
-                        color = if (warning) Color(0xFF9A6700) else Muted,
+                        color = if (warning) Color(0xFFE1B95B) else Muted,
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
                         modifier = Modifier.padding(vertical = 3.dp)
@@ -2409,7 +2428,7 @@ private fun LibraryScreen(
             item {
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
                     shape = RoundedCornerShape(16.dp),
                     border =
@@ -2448,7 +2467,7 @@ private fun LibraryScreen(
                 item {
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = Color.White
+                            containerColor = MaterialTheme.colorScheme.surface
                         ),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -2626,7 +2645,7 @@ private fun LibraryScreen(
                             skippedTitles +
                             ". Повреждённые или чужие папки " +
                             "пропущены.",
-                        color = Color(0xFF9A6700),
+                        color = Color(0xFFE1B95B),
                         fontSize = 12.sp
                     )
                 }
@@ -2726,7 +2745,7 @@ private fun LibrarySortPill(
             )
             .background(
                 if (selected) {
-                    Color(0xFFE6F3FD)
+                    MaterialTheme.colorScheme.primaryContainer
                 } else {
                     Color.White
                 }
@@ -2735,7 +2754,7 @@ private fun LibrarySortPill(
                 width = 1.dp,
                 color =
                     if (selected) {
-                        Color(0xFF8DC8EE)
+                        Blue
                     } else {
                         Line
                     },
@@ -2801,7 +2820,7 @@ private fun SettingsScreen(
         }
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Line)
             ) {
@@ -2839,7 +2858,7 @@ private fun SettingsScreen(
                     if (folderUri != null) {
                         Text(
                             "Отключить RanobeLib",
-                            color = Color(0xFFD64545),
+                            color = MaterialTheme.colorScheme.error,
                             modifier = Modifier
                                 .padding(top = 14.dp)
                                 .clickable(
@@ -2854,7 +2873,7 @@ private fun SettingsScreen(
         item {
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface
                 ),
                 shape = RoundedCornerShape(16.dp),
                 border =
@@ -2939,7 +2958,7 @@ private fun SettingsScreen(
         item {
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface
                 ),
                 shape = RoundedCornerShape(16.dp),
                 border =
@@ -3010,7 +3029,7 @@ private fun SettingsScreen(
         item {
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface
                 ),
                 shape = RoundedCornerShape(16.dp),
                 border =
@@ -3149,7 +3168,7 @@ private fun LibraryTitleDetail(
         item {
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface
                 ),
                 shape = RoundedCornerShape(18.dp),
                 border =
@@ -3335,7 +3354,7 @@ private fun LibraryDetailRow(
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
+            containerColor = MaterialTheme.colorScheme.surface
         ),
         shape = RoundedCornerShape(14.dp),
         border =
@@ -3420,7 +3439,7 @@ private fun LocalLibraryCard(
     Card(
         modifier = cardModifier,
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
+            containerColor = MaterialTheme.colorScheme.surface
         ),
         shape = RoundedCornerShape(15.dp),
         border = androidx.compose.foundation.BorderStroke(
@@ -3522,7 +3541,7 @@ private fun LocalLibraryCard(
                                     )
                                 )
                                 .background(
-                                    Color(0xFFEAF5FF)
+                                    MaterialTheme.colorScheme.primaryContainer
                                 )
                                 .padding(
                                     horizontal = 7.dp,
@@ -3620,7 +3639,7 @@ private fun decodeLibraryCover(
 @Composable
 private fun HistoryCard(item: ImportHistoryItem) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(15.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Line)
     ) {
@@ -3660,8 +3679,8 @@ private fun HistoryCard(item: ImportHistoryItem) {
                         .padding(top = 7.dp)
                         .clip(RoundedCornerShape(99.dp))
                         .background(
-                            if (item.installedDirectly) Color(0xFFE4F8F0)
-                            else Color(0xFFEAF3FF)
+                            if (item.installedDirectly) MaterialTheme.colorScheme.tertiaryContainer
+                            else MaterialTheme.colorScheme.primaryContainer
                         )
                         .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
@@ -3682,7 +3701,7 @@ private fun HistoryCard(item: ImportHistoryItem) {
                             }
                         },
                         color = if (item.installedDirectly) {
-                            Color(0xFF168B67)
+                            MaterialTheme.colorScheme.onTertiaryContainer
                         } else {
                             Blue
                         },
@@ -3704,7 +3723,7 @@ private fun StatCard(
 ) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(Modifier.padding(13.dp)) {
@@ -3724,7 +3743,7 @@ private fun StatCard(
 @Composable
 private fun EmptyLibraryCard(onAdd: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
@@ -3736,7 +3755,7 @@ private fun EmptyLibraryCard(onAdd: () -> Unit) {
             Icon(
                 Icons.Default.List,
                 null,
-                tint = Color(0xFF8AA2BB),
+                tint = Muted,
                 modifier = Modifier.size(52.dp)
             )
             Text(
@@ -3771,12 +3790,12 @@ private fun CoachHintCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFEAF5FF)
+            containerColor = MaterialTheme.colorScheme.primaryContainer
         ),
         shape = RoundedCornerShape(14.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            Color(0xFFB9DDF5)
+            Line
         )
     ) {
         Column(
@@ -3820,7 +3839,7 @@ private fun UpdateAvailableCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFEAF5FF)
+            containerColor = MaterialTheme.colorScheme.primaryContainer
         ),
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -3853,13 +3872,13 @@ private fun UpdateAvailableCard(
 private fun StatusCard(message: String, success: Boolean) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (success) Color(0xFFE7F8F1) else Color(0xFFFFEEEE)
+            containerColor = if (success) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.errorContainer
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
         Text(
             message,
-            color = if (success) Color(0xFF12785A) else Color(0xFFB13A3A),
+            color = if (success) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onErrorContainer,
             modifier = Modifier.padding(14.dp),
             fontSize = 13.sp
         )
@@ -3888,8 +3907,8 @@ private fun GradientButton(
     onClick: () -> Unit
 ) {
     val colors = if (enabled) listOf(Blue, Color(0xFF09A8F2)) else listOf(
-        Color(0xFF9FB5C9),
-        Color(0xFFB2C3D2)
+        Color(0xFF3C4652),
+        Color(0xFF46515E)
     )
     Box(
         modifier = Modifier
@@ -3910,31 +3929,24 @@ private fun GradientButton(
 }
 
 @Composable
-private fun ReaderLogo(size: androidx.compose.ui.unit.Dp) {
-    Box(
+private fun ReaderLogo(
+    size: androidx.compose.ui.unit.Dp
+) {
+    Image(
+        painter = painterResource(
+            id = R.drawable.readerlb_logo
+        ),
+        contentDescription = "ReaderLB",
+        contentScale = ContentScale.Fit,
         modifier = Modifier
             .size(size)
-            .clip(RoundedCornerShape(size * 0.2f))
-            .background(Color(0xFF071827))
-            .border(1.dp, Color(0xFF0BA7EE), RoundedCornerShape(size * 0.2f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            "R",
-            color = Color.White,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = (size.value * 0.48f).sp
-        )
-        Text(
-            "⌜   ⌟",
-            color = Cyan,
-            fontWeight = FontWeight.Bold,
-            fontSize = (size.value * 0.34f).sp,
-            modifier = Modifier.align(Alignment.Center)
-        )
-    }
+            .clip(
+                RoundedCornerShape(
+                    size * 0.2f
+                )
+            )
+    )
 }
-
 
 private fun sanitizeChapterRangeInput(
     value: String
