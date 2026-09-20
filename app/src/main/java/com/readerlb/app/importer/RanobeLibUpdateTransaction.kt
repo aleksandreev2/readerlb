@@ -135,6 +135,10 @@ class RanobeLibUpdateTransaction(
                     staged,
                     source.readBytes()
                 )
+                // Track the staging file immediately. Validation below can
+                // fail, and rollback must still remove a corrupt temp file.
+                stagedZipNames += staged
+
                 require(
                     existing.length(staged) == source.length()
                 ) {
@@ -146,7 +150,6 @@ class RanobeLibUpdateTransaction(
                 ) {
                     "Контрольная сумма временной копии ${source.name} не совпадает"
                 }
-                stagedZipNames += staged
             }
 
             val chaptersBytes = mergedChapters
