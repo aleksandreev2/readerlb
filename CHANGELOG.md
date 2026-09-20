@@ -4,7 +4,7 @@
 
 Usability, lightweight build, branded EPUB easter egg and update foundation.
 
-- ReaderLB detects EPUB editions carrying the official «Дом Некроманта» translation credit/team link and unlocks a small post-import easter egg.
+- ReaderLB detects EPUB editions carrying the official «Дом Некроманта» translation credit/team link and shows the post-import easter egg «Приятного чтения, товарищ! (с) Некромант».
 - Settings now credit developer dollar and link to https://t.me/domnekromanta.
 - Added a lightweight GitHub Releases update checker: optional automatic daily checks, manual checks in Settings, APK download and Android PackageInstaller handoff.
 - Update downloads verify package name and signing-certificate continuity before Android is asked to install them.
