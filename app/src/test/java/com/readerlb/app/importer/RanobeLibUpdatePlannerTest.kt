@@ -13,6 +13,24 @@ class RanobeLibUpdatePlannerTest {
     private val planner = RanobeLibUpdatePlanner()
 
     @Test
+    fun healingStoreRegressionUpdates600ChapterCopyTo1122WithoutDuplicates() {
+        val existing = chapters(1..600)
+        val incoming = chapters(1..1122, idOffset = 50_000)
+
+        val plan = planner.plan(existing, incoming)
+
+        assertEquals(522, plan.addedCount)
+        assertEquals("601", plan.addedNumbers.first())
+        assertEquals("1122", plan.addedNumbers.last())
+        assertEquals(600, plan.overlappingNumbers.size)
+        assertEquals(1122, plan.mergedNumbers.size)
+        assertEquals(
+            (1..1122).map(Int::toString),
+            plan.mergedNumbers
+        )
+    }
+
+    @Test
     fun addsOnlyNewTailChapters() {
         val existing = chapters(1..600)
         val incoming = chapters(1..653, idOffset = 10_000)
