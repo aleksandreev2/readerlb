@@ -88,6 +88,8 @@ import com.readerlb.app.storage.ImportHistoryItem
 import com.readerlb.app.storage.LocalLibraryItem
 import com.readerlb.app.storage.Preferences
 import com.readerlb.app.storage.RanobeLibLibraryScanner
+import com.readerlb.app.storage.decodeLocalLibraryCache
+import com.readerlb.app.storage.encodeLocalLibraryCache
 import com.readerlb.app.update.UpdateInfo
 import com.readerlb.app.update.UpdateManager
 import com.readerlb.app.ui.theme.Blue
@@ -468,7 +470,23 @@ private fun MainApp(
         mutableStateOf(historyStore.load())
     }
     var localLibrary by remember {
-        mutableStateOf<List<LocalLibraryItem>>(emptyList())
+        mutableStateOf(
+            if (
+                preferences.localLibraryCacheTree ==
+                preferences.ranobeLibBookTree
+            ) {
+                runCatching {
+                    decodeLocalLibraryCache(
+                        preferences
+                            .localLibraryCacheJson
+                    )
+                }.getOrDefault(
+                    emptyList()
+                )
+            } else {
+                emptyList()
+            }
+        )
     }
     var libraryLoading by remember {
         mutableStateOf(false)
@@ -635,6 +653,14 @@ private fun MainApp(
                         snapshot ->
                     localLibrary =
                         snapshot.items
+                    preferences
+                        .localLibraryCacheTree =
+                        tree
+                    preferences
+                        .localLibraryCacheJson =
+                        encodeLocalLibraryCache(
+                            snapshot.items
+                        )
                     librarySkipped =
                         snapshot.skippedTitles
                     libraryScanned =
@@ -772,6 +798,16 @@ private fun MainApp(
                         flags
                     )
             }.isSuccess
+
+            if (folderUri != uri) {
+                localLibrary = emptyList()
+                preferences
+                    .localLibraryCacheTree =
+                    null
+                preferences
+                    .localLibraryCacheJson =
+                    null
+            }
 
             folderUri = uri
             preferences.ranobeLibBookTree =
@@ -912,6 +948,9 @@ private fun MainApp(
                 },
                 onForgetFolder = {
                     preferences.ranobeLibBookTree = null
+                    preferences.localLibraryCacheTree = null
+                    preferences.localLibraryCacheJson = null
+                    localLibrary = emptyList()
                     folderUri = null
                 }
             )
@@ -1099,6 +1138,11 @@ private fun HomeScreen(
                                         libraryScanned +
                                         " из " +
                                         libraryScanTotal
+                                } else if (
+                                    libraryScanned > 0
+                                ) {
+                                    "Читаю локальную библиотеку: " +
+                                        libraryScanned
                                 } else {
                                     "Читаю локальную библиотеку RanobeLib…"
                                 },
@@ -1392,7 +1436,8 @@ private fun ImportScreen(
                     .fillMaxWidth(),
                 contentPadding =
                     PaddingValues(
-                        vertical = 18.dp
+                        top = 8.dp,
+                        bottom = 112.dp
                     ),
                 verticalArrangement =
                     Arrangement.spacedBy(
@@ -2611,6 +2656,11 @@ private fun LibraryScreen(
                                         scanned +
                                         " из " +
                                         scanTotal
+                                } else if (
+                                    scanned > 0
+                                ) {
+                                    "Сканирую: " +
+                                        scanned
                                 } else {
                                     "Сканирую локальные тайтлы…"
                                 },
@@ -2636,6 +2686,11 @@ private fun LibraryScreen(
                                 scanned +
                                 " / " +
                                 scanTotal
+                        } else if (
+                            scanned > 0
+                        ) {
+                            "Обновление библиотеки: " +
+                                scanned
                         } else {
                             "Обновление библиотеки…"
                         },
