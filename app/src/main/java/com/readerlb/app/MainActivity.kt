@@ -31,17 +31,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryBooks
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -83,6 +79,8 @@ import com.readerlb.app.importer.compareChapterNumbers
 import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
 import com.readerlb.app.storage.Preferences
+import com.readerlb.app.update.UpdateInfo
+import com.readerlb.app.update.UpdateManager
 import com.readerlb.app.ui.theme.Blue
 import com.readerlb.app.ui.theme.Canvas
 import com.readerlb.app.ui.theme.Cyan
@@ -336,9 +334,97 @@ private fun MainApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember { Preferences(context) }
     val historyStore = remember { HistoryStore(context) }
+    val updateManager = remember { UpdateManager(context) }
+    val scope = rememberCoroutineScope()
     var history by remember { mutableStateOf(historyStore.load()) }
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var folderUri by remember { mutableStateOf(preferences.ranobeLibBookTree) }
+    var latestUpdate by remember {
+        mutableStateOf<UpdateInfo?>(null)
+    }
+    var updateBusy by remember { mutableStateOf(false) }
+    var updateMessage by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    LaunchedEffect(Unit) {
+        val now = System.currentTimeMillis()
+        val due =
+            now - preferences.lastUpdateCheckMillis >=
+                24L * 60L * 60L * 1000L
+        if (due) {
+            preferences.lastUpdateCheckMillis = now
+            latestUpdate = withContext(Dispatchers.IO) {
+                runCatching {
+                    updateManager.checkLatest()
+                }.getOrNull()
+            }
+        }
+    }
+
+    fun checkForUpdates() {
+        if (updateBusy) return
+        updateBusy = true
+        updateMessage = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    updateManager.checkLatest()
+                }
+            }
+            preferences.lastUpdateCheckMillis =
+                System.currentTimeMillis()
+            result.onSuccess { update ->
+                latestUpdate = update
+                updateMessage = if (update == null) {
+                    "Установлена актуальная версия ReaderLB."
+                } else {
+                    "Доступна ReaderLB ${update.versionName}."
+                }
+            }.onFailure {
+                updateMessage =
+                    "Не удалось проверить обновления: " +
+                        (it.message ?: "ошибка сети")
+            }
+            updateBusy = false
+        }
+    }
+
+    fun installLatestUpdate() {
+        val update = latestUpdate ?: return
+        if (updateBusy) return
+
+        if (!updateManager.canRequestInstallPackages()) {
+            context.startActivity(
+                updateManager.unknownSourcesSettingsIntent()
+            )
+            updateMessage =
+                "Разрешите ReaderLB устанавливать обновления, " +
+                    "затем нажмите «Обновить» ещё раз."
+            return
+        }
+
+        updateBusy = true
+        updateMessage = "Загрузка обновления…"
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    updateManager.download(update)
+                }
+            }.onSuccess { apk ->
+                updateMessage =
+                    "Обновление загружено. Подтвердите установку Android."
+                context.startActivity(
+                    updateManager.installIntent(apk)
+                )
+            }.onFailure {
+                updateMessage =
+                    "Не удалось загрузить обновление: " +
+                        (it.message ?: "ошибка сети")
+            }
+            updateBusy = false
+        }
+    }
 
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -364,13 +450,13 @@ private fun MainApp() {
                 NavigationBarItem(
                     selected = tab == AppTab.IMPORT,
                     onClick = { tab = AppTab.IMPORT },
-                    icon = { Icon(Icons.Default.Description, null) },
+                    icon = { Icon(Icons.Default.List, null) },
                     label = { Text("Импорт") }
                 )
                 NavigationBarItem(
                     selected = tab == AppTab.LIBRARY,
                     onClick = { tab = AppTab.LIBRARY },
-                    icon = { Icon(Icons.Default.LibraryBooks, null) },
+                    icon = { Icon(Icons.Default.List, null) },
                     label = { Text("Библиотека") }
                 )
                 NavigationBarItem(
@@ -386,6 +472,10 @@ private fun MainApp() {
             AppTab.HOME -> HomeScreen(
                 modifier = Modifier.padding(padding),
                 history = history,
+                updateInfo = latestUpdate,
+                updateBusy = updateBusy,
+                updateMessage = updateMessage,
+                onUpdate = ::installLatestUpdate,
                 onAdd = { tab = AppTab.IMPORT },
                 onSettings = { tab = AppTab.SETTINGS }
             )
@@ -413,6 +503,11 @@ private fun MainApp() {
             AppTab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
+                updateInfo = latestUpdate,
+                updateBusy = updateBusy,
+                updateMessage = updateMessage,
+                onCheckUpdates = ::checkForUpdates,
+                onInstallUpdate = ::installLatestUpdate,
                 onPickFolder = {
                     folderPicker.launch(
                         RANOBELIB_BOOK_INITIAL_URI
@@ -431,6 +526,10 @@ private fun MainApp() {
 private fun HomeScreen(
     modifier: Modifier,
     history: List<ImportHistoryItem>,
+    updateInfo: UpdateInfo?,
+    updateBusy: Boolean,
+    updateMessage: String?,
+    onUpdate: () -> Unit,
     onAdd: () -> Unit,
     onSettings: () -> Unit
 ) {
@@ -473,23 +572,43 @@ private fun HomeScreen(
             )
         }
 
+        if (updateInfo != null) {
+            item {
+                UpdateAvailableCard(
+                    info = updateInfo,
+                    busy = updateBusy,
+                    onUpdate = onUpdate
+                )
+            }
+        }
+
+        updateMessage?.let { message ->
+            item {
+                Text(
+                    message,
+                    color = Muted,
+                    fontSize = 12.sp
+                )
+            }
+        }
+
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatCard(
                     Modifier.weight(1f),
-                    Icons.Default.AutoStories,
+                    Icons.Default.List,
                     history.size.toString(),
                     "Новеллы"
                 )
                 StatCard(
                     Modifier.weight(1f),
-                    Icons.Default.Description,
+                    Icons.Default.List,
                     totalChapters.toString(),
                     "Главы"
                 )
                 StatCard(
                     Modifier.weight(1f),
-                    Icons.Default.CheckCircle,
+                    Icons.Default.Check,
                     history.count { it.installedDirectly }.toString(),
                     "В RanobeLib"
                 )
@@ -839,7 +958,7 @@ private fun ImportScreen(
                                 )
                             }
                         }.onSuccess { result ->
-                            success = when {
+                            val baseSuccess = when {
                                 !result.installedDirectly -> {
                                     "Готово: ZIP сохранён в Downloads/ReaderLB."
                                 }
@@ -854,6 +973,15 @@ private fun ImportScreen(
                                 else -> {
                                     "Готово: ${result.chapterCount} глав добавлено в RanobeLib."
                                 }
+                            }
+                            success = if (
+                                book.domNekromantaEdition
+                            ) {
+                                baseSuccess +
+                                    "\n\n☠ Некромант узнал своих. " +
+                                    "Добро пожаловать домой."
+                            } else {
+                                baseSuccess
                             }
                             onImported(result)
                         }.onFailure {
@@ -887,7 +1015,7 @@ private fun FileDropCard(
                 CircularProgressIndicator(color = Blue, modifier = Modifier.size(48.dp))
             } else {
                 Icon(
-                    Icons.Default.UploadFile,
+                    Icons.Default.Add,
                     null,
                     tint = Color(0xFF7890AA),
                     modifier = Modifier.size(58.dp)
@@ -948,7 +1076,7 @@ private fun ParsedPreview(book: ParsedBook) {
                             .background(Brush.linearGradient(listOf(Navy2, Blue))),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.AutoStories, null, tint = Color.White)
+                        Icon(Icons.Default.List, null, tint = Color.White)
                     }
                 }
                 Spacer(Modifier.width(12.dp))
@@ -1062,9 +1190,16 @@ private fun LibraryScreen(
 private fun SettingsScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    updateInfo: UpdateInfo?,
+    updateBusy: Boolean,
+    updateMessage: String?,
+    onCheckUpdates: () -> Unit,
+    onInstallUpdate: () -> Unit,
     onPickFolder: () -> Unit,
     onForgetFolder: () -> Unit
 ) {
+    val uriHandler =
+        androidx.compose.ui.platform.LocalUriHandler.current
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -1106,22 +1241,114 @@ private fun SettingsScreen(
         }
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                ),
                 shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+                border =
+                    androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Line
+                    )
             ) {
-                Column(Modifier.padding(18.dp)) {
+                Column(
+                    Modifier.padding(18.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(10.dp)
+                ) {
                     Text(
                         "ReaderLB ${BuildConfig.VERSION_NAME}",
                         fontWeight = FontWeight.Bold,
                         color = Ink
                     )
                     Text(
-                        "0.3: безопасное добавление новых глав в существующий локальный тайтл без перезаписи старых глав и с восстановлением после сбоя.",
+                        "Обновления проверяются автоматически " +
+                            "не чаще одного раза в сутки.",
                         color = Muted,
                         fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        modifier = Modifier.padding(top = 8.dp)
+                        lineHeight = 19.sp
+                    )
+                    if (updateInfo != null) {
+                        Text(
+                            "Доступна версия " +
+                                updateInfo.versionName,
+                            color = Blue,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        OutlineAction(
+                            if (updateBusy) {
+                                "Загрузка…"
+                            } else {
+                                "Обновить"
+                            },
+                            onInstallUpdate
+                        )
+                    } else {
+                        OutlineAction(
+                            if (updateBusy) {
+                                "Проверка…"
+                            } else {
+                                "Проверить обновления"
+                            },
+                            onCheckUpdates
+                        )
+                    }
+                    updateMessage?.let {
+                        Text(
+                            it,
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border =
+                    androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Line
+                    )
+            ) {
+                Column(
+                    Modifier.padding(18.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "О приложении",
+                        fontWeight = FontWeight.Bold,
+                        color = Ink
+                    )
+                    Text(
+                        "Разработчик: dollar",
+                        color = Ink,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Дом Некроманта · Telegram",
+                        color = Blue,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable {
+                            uriHandler.openUri(
+                                "https://t.me/domnekromanta"
+                            )
+                        }
+                    )
+                    Text(
+                        "GitHub · ReaderLB",
+                        color = Blue,
+                        modifier = Modifier.clickable {
+                            uriHandler.openUri(
+                                "https://github.com/" +
+                                    "aleksandreev2/readerlb"
+                            )
+                        }
                     )
                 }
             }
@@ -1169,7 +1396,7 @@ private fun HistoryCard(item: ImportHistoryItem) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.AutoStories, null, tint = Color.White)
+                Icon(Icons.Default.List, null, tint = Color.White)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -1265,7 +1492,7 @@ private fun EmptyLibraryCard(onAdd: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
-                Icons.Default.LibraryBooks,
+                Icons.Default.List,
                 null,
                 tint = Color(0xFF8AA2BB),
                 modifier = Modifier.size(52.dp)
@@ -1288,6 +1515,43 @@ private fun EmptyLibraryCard(onAdd: () -> Unit) {
                 color = Blue,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onAdd)
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpdateAvailableCard(
+    info: UpdateInfo,
+    busy: Boolean,
+    onUpdate: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFEAF5FF)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "Доступна ReaderLB ${info.versionName}",
+                fontWeight = FontWeight.Bold,
+                color = Ink
+            )
+            Text(
+                "Обновление можно скачать прямо из приложения. " +
+                    "Android попросит подтвердить установку.",
+                color = Muted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+            OutlineAction(
+                if (busy) "Загрузка…" else "Обновить",
+                onUpdate
             )
         }
     }
