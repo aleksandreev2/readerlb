@@ -1,11 +1,15 @@
 package com.readerlb.app.update
 
 import android.content.Context
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.readerlb.app.BuildConfig
 import org.json.JSONObject
@@ -229,7 +233,72 @@ class UpdateManager(
             Intent.FLAG_ACTIVITY_NEW_TASK
         )
 
-    fun installIntent(
+    fun requestInstall(
+        apk: File
+    ) {
+        runCatching {
+            requestInstallWithPackageInstaller(apk)
+        }.onFailure {
+            // OEM fallback for devices whose PackageInstaller session flow
+            // is broken or modified. Android still requires user approval.
+            context.startActivity(
+                legacyInstallIntent(apk)
+            )
+        }
+    }
+
+    private fun requestInstallWithPackageInstaller(
+        apk: File
+    ) {
+        val installer =
+            context.packageManager.packageInstaller
+        val params =
+            PackageInstaller.SessionParams(
+                PackageInstaller.SessionParams.MODE_FULL_INSTALL
+            ).apply {
+                setAppPackageName(context.packageName)
+            }
+
+        val sessionId =
+            installer.createSession(params)
+        val session =
+            installer.openSession(sessionId)
+
+        try {
+            apk.inputStream().buffered().use { input ->
+                session.openWrite(
+                    "ReaderLB-update.apk",
+                    0L,
+                    apk.length()
+                ).use { output ->
+                    input.copyTo(output)
+                    session.fsync(output)
+                }
+            }
+
+            val callbackIntent = Intent(
+                context,
+                UpdateInstallReceiver::class.java
+            ).apply {
+                action =
+                    UpdateInstallReceiver.ACTION_INSTALL_RESULT
+            }
+            val pendingIntent =
+                PendingIntent.getBroadcast(
+                    context,
+                    sessionId,
+                    callbackIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or
+                        PendingIntent.FLAG_MUTABLE
+                )
+
+            session.commit(pendingIntent.intentSender)
+        } finally {
+            session.close()
+        }
+    }
+
+    private fun legacyInstallIntent(
         apk: File
     ): Intent {
         val uri = FileProvider.getUriForFile(
@@ -238,6 +307,7 @@ class UpdateManager(
             apk
         )
 
+        @Suppress("DEPRECATION")
         return Intent(
             Intent.ACTION_INSTALL_PACKAGE
         )
@@ -357,6 +427,70 @@ class UpdateManager(
                 "ReaderLB/${BuildConfig.VERSION_NAME}"
             )
         }
+}
+
+class UpdateInstallReceiver : BroadcastReceiver() {
+
+    override fun onReceive(
+        context: Context,
+        intent: Intent
+    ) {
+        when (
+            intent.getIntExtra(
+                PackageInstaller.EXTRA_STATUS,
+                PackageInstaller.STATUS_FAILURE
+            )
+        ) {
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                val confirmation =
+                    if (
+                        Build.VERSION.SDK_INT >=
+                        Build.VERSION_CODES.TIRAMISU
+                    ) {
+                        intent.getParcelableExtra(
+                            Intent.EXTRA_INTENT,
+                            Intent::class.java
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(
+                            Intent.EXTRA_INTENT
+                        )
+                    }
+
+                confirmation
+                    ?.addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK
+                    )
+                    ?.let(context::startActivity)
+            }
+
+            PackageInstaller.STATUS_SUCCESS -> {
+                Toast.makeText(
+                    context,
+                    "ReaderLB обновлён",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+
+            else -> {
+                val message = intent.getStringExtra(
+                    PackageInstaller.EXTRA_STATUS_MESSAGE
+                ) ?: "установка отменена"
+
+                Toast.makeText(
+                    context,
+                    "Не удалось обновить ReaderLB: $message",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    companion object {
+        const val ACTION_INSTALL_RESULT =
+            "com.readerlb.app.UPDATE_INSTALL_RESULT"
+    }
 }
 
 internal fun isVersionNewer(
