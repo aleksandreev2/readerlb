@@ -20,7 +20,7 @@ class RanobeLibExporter(private val context: Context) {
         firstChapter: String? = null,
         lastChapter: String? = null,
         ranobeLibBookTree: Uri? = null,
-        onStage: (ExportStage) -> Unit = {}
+        onProgress: (ExportProgress) -> Unit = {}
     ): ExportResult {
         val tempRoot = File(
             context.cacheDir,
@@ -32,7 +32,11 @@ class RanobeLibExporter(private val context: Context) {
         }
 
         try {
-            onStage(ExportStage.PREPARING)
+            onProgress(
+                ExportProgress(
+                    stage = ExportStage.PREPARING
+                )
+            )
 
             val built = packageBuilder.build(
                 book = book,
@@ -40,14 +44,33 @@ class RanobeLibExporter(private val context: Context) {
                 titleOverride = titleOverride,
                 firstChapter = firstChapter,
                 lastChapter = lastChapter,
+                onChapterPrepared = {
+                        completed,
+                        total ->
+                    onProgress(
+                        ExportProgress(
+                            stage =
+                                ExportStage.PREPARING,
+                            completed = completed,
+                            total = total
+                        )
+                    )
+                },
                 onVerifying = {
-                    onStage(
-                        ExportStage.VERIFYING
+                    onProgress(
+                        ExportProgress(
+                            stage =
+                                ExportStage.VERIFYING
+                        )
                     )
                 }
             )
 
-            onStage(ExportStage.WRITING)
+            onProgress(
+                ExportProgress(
+                    stage = ExportStage.WRITING
+                )
+            )
 
             val directResult = ranobeLibBookTree?.let {
                 copyToRanobeLibTree(
@@ -64,7 +87,11 @@ class RanobeLibExporter(private val context: Context) {
                 saveZipToDownloads(built)
             }
 
-            onStage(ExportStage.FINALIZING)
+            onProgress(
+                ExportProgress(
+                    stage = ExportStage.FINALIZING
+                )
+            )
 
             return ExportResult(
                 title = built.title,
