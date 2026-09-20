@@ -543,11 +543,15 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertTrue(book.issues.none { it.code == "INLINE_IMAGES_OMITTED" })
+        assertTrue(
+            book.issues.none {
+                it.code.startsWith("INLINE_IMAGE_")
+            }
+        )
     }
 
     @Test
-    fun warnsWhenChapterImagesWouldBeOmitted() {
+    fun warnsWhenReferencedChapterImageFileIsMissing() {
         val epub = buildEpub(
             docs = listOf(
                 Doc(
@@ -560,9 +564,11 @@ class EpubArchiveParserTest {
 
         val book = parser.parse(epub)
 
-        assertTrue(book.issues.any {
-            it.code == "INLINE_IMAGES_OMITTED" && it.message.contains("1")
-        })
+        assertTrue(
+            book.issues.any {
+                it.code == "INLINE_IMAGE_FILE_MISSING"
+            }
+        )
     }
 
     @Test
