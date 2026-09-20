@@ -604,10 +604,13 @@ class EpubArchiveParser {
         val tocChapterNumber = chapterNumberFromLabel(
             tocLabel
         )
-        val hasReliableChapterNumber =
+        // A number explicitly stated by navigation or chapter text
+        // is stronger than service-page heuristics. A technical filename
+        // number alone is not: real EPUBs can have e.g. sec1193.xhtml whose
+        // TOC label is "Послесловие переводчика".
+        val hasExplicitChapterNumber =
             tocChapterNumber != null ||
-                textChapterNumber != null ||
-                hrefChapterNumber != null
+                textChapterNumber != null
 
         return HtmlDoc(
             item = item,
@@ -622,10 +625,10 @@ class EpubArchiveParser {
             hrefChapterNumber = hrefChapterNumber,
             textChapterNumber = textChapterNumber,
             tocChapterNumber = tocChapterNumber,
-            // A real chapter number always wins over service-page heuristics.
-            // This prevents titles such as "Глава 10 — Справочник мага"
-            // from being silently discarded.
-            serviceDocument = !hasReliableChapterNumber &&
+            // Explicit chapter numbering wins over service-page heuristics.
+            // Technical href numbering alone does not, because service pages
+            // are often named secNNNN.xhtml.
+            serviceDocument = !hasExplicitChapterNumber &&
                 (
                     isServiceDocument(item) ||
                         isServiceLabel(tocLabel, heading)
