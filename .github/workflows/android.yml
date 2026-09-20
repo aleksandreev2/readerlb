@@ -107,6 +107,14 @@ jobs:
           KEY_SHA="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
           test "$RELEASE_SHA" = "$KEY_SHA"
 
+      - name: Enforce lightweight APK budget
+        run: |
+          APK="app/build/outputs/apk/release/app-release.apk"
+          SIZE="$(stat -c%s "$APK")"
+          MAX=$((6 * 1024 * 1024))
+          echo "Optimized APK size: $SIZE bytes"
+          test "$SIZE" -le "$MAX"
+
       - name: Upload debug APK
         if: success()
         uses: actions/upload-artifact@v4
