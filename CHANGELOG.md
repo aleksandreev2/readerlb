@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.1
+
+Local-library scan hotfix for Android/MIUI devices.
+
+- Replaced the blocking root `DocumentFile.listFiles()` library enumeration with direct `DocumentsContract` cursor traversal so title folders can be processed progressively.
+- Local-library progress now starts updating as soon as title folders are discovered, even before the total directory count is known.
+- ReaderLB persists the last successful local-library snapshot and keeps those title/chapter counts visible while a background rescan is running.
+- Switching or disconnecting the RanobeLib folder clears the matching cached snapshot safely.
+- The empty import group is shifted slightly above mathematical center for better visual balance on tall phones while remaining scrollable.
+
 ## 0.9.0
 
 Dark UI, finite local-library refresh and pre-1.0 interface hardening.
