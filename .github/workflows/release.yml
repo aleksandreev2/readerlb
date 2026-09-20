@@ -27,6 +27,11 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Verify tag matches app version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -Fq "versionName = \"${VERSION}\"" app/build.gradle.kts
+
       - name: Restore release keystore
         env:
           READERLB_KEYSTORE_B64: ${{ secrets.READERLB_KEYSTORE_B64 }}
