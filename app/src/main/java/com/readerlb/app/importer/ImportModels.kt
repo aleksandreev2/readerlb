@@ -11,7 +11,8 @@ data class ParsedBook(
     val coverBytes: ByteArray? = null,
     val coverExtension: String = "jpg",
     val issues: List<ImportIssue> = emptyList(),
-    val domNekromantaEdition: Boolean = false
+    val domNekromantaEdition: Boolean = false,
+    val temporaryAssetDirectory: String? = null
 )
 
 data class ParsedChapter(
