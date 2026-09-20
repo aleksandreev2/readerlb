@@ -161,6 +161,96 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun titlePageMentioningChapterZeroDoesNotShadowRealIllustratedChapterZero() {
+        val firstImage = byteArrayOf(
+            0x89.toByte(),
+            'P'.code.toByte(),
+            'N'.code.toByte(),
+            'G'.code.toByte(),
+            13,
+            10,
+            26,
+            10,
+            1
+        )
+        val secondImage = byteArrayOf(
+            0x89.toByte(),
+            'P'.code.toByte(),
+            'N'.code.toByte(),
+            'G'.code.toByte(),
+            13,
+            10,
+            26,
+            10,
+            2
+        )
+
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "titlepage",
+                    "text/title.xhtml",
+                    "<section class=\"titlepage\">" +
+                        "<h1>Тестовая книга</h1>" +
+                        "<p>В издание включено глав: 41.</p>" +
+                        "<p>Глава 0 и главы 50–89</p>" +
+                        "</section>"
+                ),
+                Doc(
+                    "ch0",
+                    "text/chapter_0000.xhtml",
+                    "<h1>Глава 0</h1>" +
+                        "<div class=\"illustration\">" +
+                        "<img src=\"../images/ch0000_01.png\" " +
+                        "alt=\"Глава 0, страница 1\"/>" +
+                        "</div>" +
+                        "<div class=\"illustration\">" +
+                        "<img src=\"../images/ch0000_02.png\" " +
+                        "alt=\"Глава 0, страница 2\"/>" +
+                        "</div>"
+                ),
+                Doc(
+                    "ch50",
+                    "text/chapter_0050.xhtml",
+                    "<h1>Глава 50</h1><p>Текст главы 50.</p>"
+                )
+            ),
+            extraEntries = mapOf(
+                "OEBPS/images/ch0000_01.png" to firstImage,
+                "OEBPS/images/ch0000_02.png" to secondImage
+            )
+        )
+
+        val book = parser.parse(
+            epub,
+            "Тестовая_книга_главы_0_50-50.epub"
+        )
+
+        assertEquals(
+            listOf("0", "50"),
+            book.chapters.map { it.number }
+        )
+
+        val chapterZero = book.chapters
+            .first { it.number == "0" }
+        val images = chapterZero.blocks
+            .filterIsInstance<ReaderBlock.Image>()
+
+        assertEquals(2, images.size)
+        assertTrue(
+            images[0].bytes.contentEquals(firstImage)
+        )
+        assertTrue(
+            images[1].bytes.contentEquals(secondImage)
+        )
+        assertTrue(
+            book.issues.none {
+                it.code == "DUPLICATE_CHAPTER_NUMBERS"
+            }
+        )
+    }
+
+    @Test
     fun epub3PrologueMappedToCh0001DoesNotBecomeChapterOne() {
         val epub = buildEpubWithNav(
             docs = listOf(
