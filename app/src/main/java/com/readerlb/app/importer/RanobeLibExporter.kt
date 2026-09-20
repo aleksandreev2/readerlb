@@ -19,7 +19,8 @@ class RanobeLibExporter(private val context: Context) {
         titleOverride: String = "",
         firstChapter: String? = null,
         lastChapter: String? = null,
-        ranobeLibBookTree: Uri? = null
+        ranobeLibBookTree: Uri? = null,
+        onStage: (ExportStage) -> Unit = {}
     ): ExportResult {
         val tempRoot = File(
             context.cacheDir,
@@ -31,6 +32,8 @@ class RanobeLibExporter(private val context: Context) {
         }
 
         try {
+            onStage(ExportStage.PREPARING)
+
             val built = packageBuilder.build(
                 book = book,
                 rootDir = tempRoot,
@@ -38,6 +41,18 @@ class RanobeLibExporter(private val context: Context) {
                 firstChapter = firstChapter,
                 lastChapter = lastChapter
             )
+
+            onStage(ExportStage.VERIFYING)
+            val verification =
+                packageBuilder.verify(built)
+
+            if (!verification.isValid) {
+                throw PackageVerificationException(
+                    verification
+                )
+            }
+
+            onStage(ExportStage.WRITING)
 
             val directResult = ranobeLibBookTree?.let {
                 copyToRanobeLibTree(
@@ -53,6 +68,8 @@ class RanobeLibExporter(private val context: Context) {
             } else {
                 saveZipToDownloads(built)
             }
+
+            onStage(ExportStage.FINALIZING)
 
             return ExportResult(
                 title = built.title,
