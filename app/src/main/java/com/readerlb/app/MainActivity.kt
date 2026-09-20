@@ -505,6 +505,11 @@ private fun MainApp(
     var autoUpdateChecks by remember {
         mutableStateOf(preferences.autoUpdateChecks)
     }
+    var directImportEnabled by remember {
+        mutableStateOf(
+            preferences.directImportEnabled
+        )
+    }
     var updateBusy by remember { mutableStateOf(false) }
     var updateMessage by remember {
         mutableStateOf<String?>(null)
@@ -699,6 +704,14 @@ private fun MainApp(
             AppTab.IMPORT -> ImportScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
+                directImportEnabled =
+                    directImportEnabled,
+                onDirectImportChanged = {
+                    enabled ->
+                    preferences.directImportEnabled =
+                        enabled
+                    directImportEnabled = enabled
+                },
                 initialImport = incomingImport,
                 onInitialImportConsumed =
                     onImportConsumed,
@@ -985,6 +998,8 @@ private fun HomeScreen(
 private fun ImportScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    directImportEnabled: Boolean,
+    onDirectImportChanged: (Boolean) -> Unit,
     initialImport: IncomingImportRequest?,
     onInitialImportConsumed: () -> Unit,
     showHints: Boolean,
@@ -1021,7 +1036,9 @@ private fun ImportScreen(
         mutableStateOf("")
     }
     var direct by rememberSaveable {
-        mutableStateOf(true)
+        mutableStateOf(
+            directImportEnabled
+        )
     }
     var busy by remember {
         mutableStateOf(false)
@@ -1509,7 +1526,13 @@ private fun ImportScreen(
                         }
                         Switch(
                             checked = direct,
-                            onCheckedChange = { direct = it }
+                            onCheckedChange = {
+                                enabled ->
+                                direct = enabled
+                                onDirectImportChanged(
+                                    enabled
+                                )
+                            }
                         )
                     }
                 }
