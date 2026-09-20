@@ -58,6 +58,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -944,51 +945,73 @@ private fun ImportScreen(
     val repository = remember { ImportRepository(context) }
     val exporter = remember { RanobeLibExporter(context) }
 
-    var parsed by remember { mutableStateOf<ParsedBook?>(null) }
-    var fileName by remember { mutableStateOf("") }
-    var title by remember { mutableStateOf("") }
-    var firstChapter by remember { mutableStateOf("") }
-    var lastChapter by remember { mutableStateOf("") }
-    var direct by remember { mutableStateOf(true) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var success by remember { mutableStateOf<String?>(null) }
-    var warningsAcknowledged by remember { mutableStateOf(false) }
-    var rangeExpanded by remember { mutableStateOf(false) }
+    var parsed by remember {
+        mutableStateOf<ParsedBook?>(null)
+    }
+    var selectedUri by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
+    var parseGeneration by rememberSaveable {
+        mutableIntStateOf(0)
+    }
+    var fileName by rememberSaveable {
+        mutableStateOf("")
+    }
+    var title by rememberSaveable {
+        mutableStateOf("")
+    }
+    var firstChapter by rememberSaveable {
+        mutableStateOf("")
+    }
+    var lastChapter by rememberSaveable {
+        mutableStateOf("")
+    }
+    var direct by rememberSaveable {
+        mutableStateOf(true)
+    }
+    var busy by remember {
+        mutableStateOf(false)
+    }
+    var error by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
+    var success by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
+    var warningsAcknowledged by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var rangeExpanded by rememberSaveable {
+        mutableStateOf(false)
+    }
 
-    fun analyzeFile(uri: Uri) {
+    fun queueFile(uri: Uri) {
+        runCatching {
+            context.contentResolver
+                .takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+        }
+
+        selectedUri = uri.toString()
         fileName = repository.displayName(uri)
         parsed = null
+        title = ""
+        firstChapter = ""
+        lastChapter = ""
+        rangeExpanded = false
         error = null
         success = null
         warningsAcknowledged = false
-        busy = true
-
-        scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    repository.parse(uri)
-                }
-            }.onSuccess { book ->
-                parsed = book
-                title = book.title
-                firstChapter = ""
-                lastChapter = ""
-                rangeExpanded = false
-            }.onFailure {
-                error =
-                    it.message
-                        ?: "Не удалось разобрать файл"
-            }
-            busy = false
-        }
+        parseGeneration += 1
     }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            analyzeFile(uri)
+            queueFile(uri)
         }
     }
 
@@ -996,8 +1019,42 @@ private fun ImportScreen(
         val request = initialImport
             ?: return@LaunchedEffect
 
-        analyzeFile(request.uri)
+        queueFile(request.uri)
         onInitialImportConsumed()
+    }
+
+    LaunchedEffect(
+        selectedUri,
+        parseGeneration
+    ) {
+        val rawUri = selectedUri
+            ?: return@LaunchedEffect
+        if (parseGeneration <= 0) {
+            return@LaunchedEffect
+        }
+
+        val uri = Uri.parse(rawUri)
+        parsed = null
+        error = null
+        success = null
+        busy = true
+
+        runCatching {
+            withContext(Dispatchers.IO) {
+                repository.parse(uri)
+            }
+        }.onSuccess { book ->
+            parsed = book
+            if (title.isBlank()) {
+                title = book.title
+            }
+        }.onFailure {
+            error =
+                it.message
+                    ?: "Не удалось разобрать файл"
+        }
+
+        busy = false
     }
 
     LazyColumn(
