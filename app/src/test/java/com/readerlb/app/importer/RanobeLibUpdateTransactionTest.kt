@@ -244,6 +244,176 @@ class RanobeLibUpdateTransactionTest {
     }
 
     @Test
+    fun journalRemovesOrphanZipLeftBeforeMetadataCommit() {
+        val root = Files.createTempDirectory("readerlb_update_journal_").toFile()
+        val existingBuilt = builder.build(
+            book = book("Journal recovery", 1..3),
+            rootDir = File(root, "existing")
+        )
+        val incomingBuilt = builder.build(
+            book = book("Journal recovery", 1..4),
+            rootDir = File(root, "incoming")
+        )
+
+        val storage = FileRanobeLibStorage(
+            existingBuilt.titleDir
+        )
+        val incomingChapters = JSONArray(
+            File(
+                incomingBuilt.titleDir,
+                "chapters.json"
+            ).readText()
+        )
+        val zip4 = RanobeLibUpdatePlanner()
+            .chapterNumberToZip(incomingChapters)
+            .getValue("4")
+
+        // Simulate process death after publishing the new ZIP but before
+        // changing chapters.json/info.json.
+        storage.writeBytes(
+            zip4,
+            byteArrayOf(1, 2, 3, 4)
+        )
+        storage.writeBytes(
+            ".readerlb-update.json",
+            JSONObject()
+                .put(
+                    "addedZipNames",
+                    JSONArray().put(zip4)
+                )
+                .put(
+                    "addedNumbers",
+                    JSONArray().put("4")
+                )
+                .toString()
+                .toByteArray()
+        )
+
+        val result = transaction.apply(
+            existing = storage,
+            incomingTitleDir = incomingBuilt.titleDir
+        )
+
+        assertEquals(listOf("4"), result.addedNumbers)
+        assertFalse(storage.exists(".readerlb-update.json"))
+
+        val finalZip = storage.readBytes(zip4)
+        assertTrue(finalZip.size > 4)
+        assertEquals('P'.code.toByte(), finalZip[0])
+        assertEquals('K'.code.toByte(), finalZip[1])
+    }
+
+    @Test
+    fun journalRecognizesAlreadyCommittedUpdateAndOnlyCleansBackups() {
+        val root = Files.createTempDirectory("readerlb_update_committed_").toFile()
+        val oldBuilt = builder.build(
+            book = book("Committed recovery", 1..3),
+            rootDir = File(root, "old")
+        )
+        val committedBuilt = builder.build(
+            book = book("Committed recovery", 1..4),
+            rootDir = File(root, "committed")
+        )
+
+        val storage = FileRanobeLibStorage(
+            committedBuilt.titleDir
+        )
+        val oldStorage = FileRanobeLibStorage(
+            oldBuilt.titleDir
+        )
+
+        storage.writeBytes(
+            ".readerlb-chapters.bak",
+            oldStorage.readBytes("chapters.json")
+        )
+        storage.writeBytes(
+            ".readerlb-info.bak",
+            oldStorage.readBytes("info.json")
+        )
+
+        val committedChapters = JSONArray(
+            storage.readBytes("chapters.json")
+                .toString(Charsets.UTF_8)
+        )
+        val zip4 = RanobeLibUpdatePlanner()
+            .chapterNumberToZip(committedChapters)
+            .getValue("4")
+
+        storage.writeBytes(
+            ".readerlb-update.json",
+            JSONObject()
+                .put(
+                    "addedZipNames",
+                    JSONArray().put(zip4)
+                )
+                .put(
+                    "addedNumbers",
+                    JSONArray().put("4")
+                )
+                .toString()
+                .toByteArray()
+        )
+
+        val result = transaction.apply(
+            existing = storage,
+            incomingTitleDir = committedBuilt.titleDir
+        )
+
+        assertFalse(result.changed)
+        assertEquals(4, result.totalChapterCount)
+        assertFalse(storage.exists(".readerlb-chapters.bak"))
+        assertFalse(storage.exists(".readerlb-info.bak"))
+        assertFalse(storage.exists(".readerlb-update.json"))
+        assertTrue(storage.exists(zip4))
+    }
+
+    @Test
+    fun corruptJournalStopsBeforeChangingExistingTitle() {
+        val root = Files.createTempDirectory("readerlb_update_bad_journal_").toFile()
+        val existingBuilt = builder.build(
+            book = book("Bad journal", 1..3),
+            rootDir = File(root, "existing")
+        )
+        val incomingBuilt = builder.build(
+            book = book("Bad journal", 1..4),
+            rootDir = File(root, "incoming")
+        )
+
+        val storage = FileRanobeLibStorage(
+            existingBuilt.titleDir
+        )
+        val beforeInfo = storage.readBytes("info.json")
+        val beforeChapters = storage.readBytes("chapters.json")
+
+        storage.writeBytes(
+            ".readerlb-update.json",
+            "not-json".toByteArray()
+        )
+
+        try {
+            transaction.apply(
+                existing = storage,
+                incomingTitleDir = incomingBuilt.titleDir
+            )
+            fail("Expected corrupt journal to stop update")
+        } catch (error: IllegalStateException) {
+            assertTrue(
+                error.message.orEmpty()
+                    .contains("Журнал")
+            )
+        }
+
+        assertArrayEquals(
+            beforeInfo,
+            storage.readBytes("info.json")
+        )
+        assertArrayEquals(
+            beforeChapters,
+            storage.readBytes("chapters.json")
+        )
+    }
+
+    @Test
     fun recoversMetadataBackupLeftByInterruptedPreviousAttempt() {
         val root = Files.createTempDirectory("readerlb_update_recover_").toFile()
         val existingBuilt = builder.build(
