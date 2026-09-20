@@ -6,6 +6,13 @@ plugins {
 
 val releaseKeystorePath =
     System.getenv("READERLB_KEYSTORE_PATH")
+val debugKeystorePath =
+    System.getenv("READERLB_DEBUG_KEYSTORE_PATH")
+        ?: (
+            (System.getenv("HOME")
+                ?: System.getProperty("user.home")) +
+                "/.android/debug.keystore"
+            )
 
 android {
     namespace = "com.readerlb.app"
@@ -30,10 +37,7 @@ android {
 
     signingConfigs {
         getByName("debug") {
-            storeFile = file(
-                System.getProperty("user.home") +
-                    "/.android/debug.keystore"
-            )
+            storeFile = file(debugKeystorePath)
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
