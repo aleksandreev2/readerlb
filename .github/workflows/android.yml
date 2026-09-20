@@ -74,10 +74,18 @@ jobs:
 
       - name: Verify stable APK signing certificate
         run: |
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          test -x "$APKSIGNER"
+
           KEY_SHA="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
-          APK_SHA="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | awk -F': ' '/Signer #1 certificate SHA-256 digest/{print tolower($2); exit}')"
-          echo "Stable certificate SHA-256: $APK_SHA"
+
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk 2>&1)"
+          printf '%s\n' "$CERT_OUTPUT"
+          APK_SHA="$(printf '%s\n' "$CERT_OUTPUT" | sed -n 's/.*SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+
+          echo "Cached key SHA-256: $KEY_SHA"
+          echo "APK key SHA-256:    $APK_SHA"
           test -n "$KEY_SHA"
           test -n "$APK_SHA"
           test "$KEY_SHA" = "$APK_SHA"
