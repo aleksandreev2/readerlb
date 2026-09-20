@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1-dev
+## 0.3.1
 
 Small usability patch after device testing.
 
