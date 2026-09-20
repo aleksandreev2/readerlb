@@ -139,6 +139,8 @@ private fun ReaderLBRoot() {
 private fun Onboarding(onDone: () -> Unit) {
     var page by remember { mutableIntStateOf(0) }
     val pageCount = 3
+    val uriHandler =
+        androidx.compose.ui.platform.LocalUriHandler.current
 
     Box(
         modifier = Modifier
@@ -232,6 +234,30 @@ private fun Onboarding(onDone: () -> Unit) {
                         .clickable(onClick = onDone),
                     fontSize = 15.sp
                 )
+            } else {
+                Row(
+                    modifier = Modifier.padding(top = 14.dp),
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Разработчик: dollar · ",
+                        color = Color(0xFF8DA7BF),
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        "Дом Некроманта",
+                        color = Cyan,
+                        fontSize = 12.sp,
+                        fontWeight =
+                            FontWeight.SemiBold,
+                        modifier = Modifier.clickable {
+                            uriHandler.openUri(
+                                "https://t.me/domnekromanta"
+                            )
+                        }
+                    )
+                }
             }
         }
     }
