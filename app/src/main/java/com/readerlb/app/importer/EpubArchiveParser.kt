@@ -5,6 +5,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
 import java.io.File
+import java.io.InputStream
 import java.math.BigDecimal
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -21,8 +22,18 @@ class EpubArchiveParser {
 
     fun parse(
         file: File,
-        sourceName: String? = null
+        sourceName: String? = null,
+        assetDirectory: File? = null
     ): ParsedBook {
+        assetDirectory?.let { directory ->
+            require(
+                directory.isDirectory ||
+                    directory.mkdirs()
+            ) {
+                "Не удалось создать временную папку иллюстраций"
+            }
+        }
+
         ZipFile(file).use { zip ->
             val issues = mutableListOf<ImportIssue>()
 
@@ -144,7 +155,9 @@ class EpubArchiveParser {
                         item = item,
                         spineIndex = spineIndex,
                         tocLabel = tocByPath[contentPath],
-                        issues = issues
+                        issues = issues,
+                        assetDirectory =
+                            assetDirectory
                     )
                 }
 
@@ -385,7 +398,10 @@ class EpubArchiveParser {
                     it.code to it.message
                 },
                 domNekromantaEdition =
-                    domNekromantaEdition
+                    domNekromantaEdition,
+                temporaryAssetDirectory =
+                    assetDirectory
+                        ?.absolutePath
             )
         }
     }
@@ -558,7 +574,8 @@ class EpubArchiveParser {
         item: ManifestItem,
         spineIndex: Int,
         tocLabel: String?,
-        issues: MutableList<ImportIssue>
+        issues: MutableList<ImportIssue>,
+        assetDirectory: File?
     ): HtmlDoc? {
         val raw = runCatching {
             readText(
@@ -665,7 +682,9 @@ class EpubArchiveParser {
                 contentPath = contentPath,
                 root = body,
                 firstHeading = heading,
-                issues = issues
+                issues = issues,
+                assetDirectory =
+                    assetDirectory
             )
         }
 
@@ -858,7 +877,8 @@ class EpubArchiveParser {
         contentPath: String,
         root: Element,
         firstHeading: String,
-        issues: MutableList<ImportIssue>
+        issues: MutableList<ImportIssue>,
+        assetDirectory: File?
     ): List<ReaderBlock> {
         val out = mutableListOf<ReaderBlock>()
 
@@ -867,7 +887,9 @@ class EpubArchiveParser {
                 zip = zip,
                 contentPath = contentPath,
                 element = element,
-                issues = issues
+                issues = issues,
+                assetDirectory =
+                    assetDirectory
             )?.let(out::add)
         }
 
@@ -1042,7 +1064,8 @@ class EpubArchiveParser {
         zip: ZipFile,
         contentPath: String,
         element: Element,
-        issues: MutableList<ImportIssue>
+        issues: MutableList<ImportIssue>,
+        assetDirectory: File?
     ): ReaderBlock.Image? {
         val src = sequenceOf(
             element.attr("src"),
@@ -1080,12 +1103,15 @@ class EpubArchiveParser {
             return null
         }
 
-        val bytes: ByteArray
         val extensionHint: String
+        val streamFactory: () -> InputStream
 
         if (src.startsWith("data:image/", true)) {
-            val metadata = src.substringBefore(',', "")
-            val payload = src.substringAfter(',', "")
+            val metadata =
+                src.substringBefore(',', "")
+            val payload =
+                src.substringAfter(',', "")
+
             if (
                 metadata.isBlank() ||
                 payload.isBlank() ||
@@ -1096,7 +1122,8 @@ class EpubArchiveParser {
             ) {
                 issues += ImportIssue(
                     code = "INLINE_IMAGE_DATA_INVALID",
-                    message = "В EPUB найдено неподдерживаемое встроенное изображение data:."
+                    message = "В EPUB найдено неподдерживаемое " +
+                        "встроенное изображение data:."
                 )
                 return null
             }
@@ -1109,16 +1136,14 @@ class EpubArchiveParser {
                 .substringBefore(';')
                 .trim()
 
-            bytes = runCatching {
-                Base64.getDecoder().decode(
-                    payload.filterNot(Char::isWhitespace)
-                )
-            }.getOrElse {
-                issues += ImportIssue(
-                    code = "INLINE_IMAGE_DATA_INVALID",
-                    message = "Не удалось декодировать встроенную иллюстрацию EPUB."
-                )
-                return null
+            streamFactory = {
+                Base64
+                    .getMimeDecoder()
+                    .wrap(
+                        payload.byteInputStream(
+                            Charsets.US_ASCII
+                        )
+                    )
             }
         } else {
             val cleanSrc = src
@@ -1130,22 +1155,84 @@ class EpubArchiveParser {
                 base,
                 cleanSrc
             )
+            val entry = zip.getEntry(imagePath)
 
-            bytes = runCatching {
-                readBytes(
-                    zip,
-                    imagePath
-                )
-            }.getOrElse {
+            if (entry == null) {
                 issues += ImportIssue(
                     code = "INLINE_IMAGE_FILE_MISSING",
-                    message = "В EPUB не найден файл иллюстрации: $cleanSrc"
+                    message = "В EPUB не найден файл иллюстрации: " +
+                        cleanSrc
                 )
                 return null
             }
 
             extensionHint = imagePath
                 .substringAfterLast('.', "")
+            streamFactory = {
+                zip.getInputStream(entry)
+            }
+        }
+
+        if (assetDirectory != null) {
+            val spilled = runCatching {
+                streamFactory().use { input ->
+                    spillImageToFile(
+                        input = input,
+                        assetDirectory =
+                            assetDirectory
+                    )
+                }
+            }.getOrElse {
+                issues += ImportIssue(
+                    code = "INLINE_IMAGE_DATA_INVALID",
+                    message = "Не удалось сохранить иллюстрацию EPUB " +
+                        "во временный файл."
+                )
+                return null
+            }
+
+            if (spilled.size == 0L) {
+                spilled.file.delete()
+                issues += ImportIssue(
+                    code = "INLINE_IMAGE_EMPTY",
+                    message = "В EPUB найдена пустая иллюстрация."
+                )
+                return null
+            }
+
+            val extension = imageExtension(
+                hint = extensionHint,
+                bytes = spilled.header
+            )
+
+            if (extension == null) {
+                spilled.file.delete()
+                issues += ImportIssue(
+                    code = "INLINE_IMAGE_FORMAT_UNSUPPORTED",
+                    message = "Формат одной из иллюстраций EPUB " +
+                        "не поддерживается."
+                )
+                return null
+            }
+
+            return ReaderBlock.Image(
+                extension = extension,
+                description = description,
+                filePath =
+                    spilled.file.absolutePath
+            )
+        }
+
+        val bytes = runCatching {
+            streamFactory().use {
+                it.readBytes()
+            }
+        }.getOrElse {
+            issues += ImportIssue(
+                code = "INLINE_IMAGE_DATA_INVALID",
+                message = "Не удалось прочитать иллюстрацию EPUB."
+            )
+            return null
         }
 
         if (bytes.isEmpty()) {
@@ -1164,7 +1251,8 @@ class EpubArchiveParser {
         if (extension == null) {
             issues += ImportIssue(
                 code = "INLINE_IMAGE_FORMAT_UNSUPPORTED",
-                message = "Формат одной из иллюстраций EPUB не поддерживается."
+                message = "Формат одной из иллюстраций EPUB " +
+                    "не поддерживается."
             )
             return null
         }
@@ -1174,6 +1262,89 @@ class EpubArchiveParser {
             extension = extension,
             description = description
         )
+    }
+
+    private data class SpilledImage(
+        val file: File,
+        val header: ByteArray,
+        val size: Long
+    )
+
+    private fun spillImageToFile(
+        input: InputStream,
+        assetDirectory: File
+    ): SpilledImage {
+        val file = File.createTempFile(
+            "chapter_image_",
+            ".bin",
+            assetDirectory
+        )
+        val header = ByteArray(16)
+        var headerSize = 0
+        var total = 0L
+
+        try {
+            file.outputStream()
+                .buffered()
+                .use { output ->
+                    val buffer =
+                        ByteArray(64 * 1024)
+
+                    while (true) {
+                        val count =
+                            input.read(buffer)
+
+                        if (count < 0) {
+                            break
+                        }
+                        if (count == 0) {
+                            continue
+                        }
+
+                        if (
+                            headerSize <
+                            header.size
+                        ) {
+                            val copyCount =
+                                minOf(
+                                    count,
+                                    header.size -
+                                        headerSize
+                                )
+                            buffer.copyInto(
+                                destination =
+                                    header,
+                                destinationOffset =
+                                    headerSize,
+                                startIndex = 0,
+                                endIndex =
+                                    copyCount
+                            )
+                            headerSize +=
+                                copyCount
+                        }
+
+                        output.write(
+                            buffer,
+                            0,
+                            count
+                        )
+                        total += count
+                    }
+                }
+
+            return SpilledImage(
+                file = file,
+                header =
+                    header.copyOf(
+                        headerSize
+                    ),
+                size = total
+            )
+        } catch (throwable: Throwable) {
+            file.delete()
+            throw throwable
+        }
     }
 
     private fun imageExtension(
