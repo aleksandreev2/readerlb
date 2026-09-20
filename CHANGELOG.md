@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — 0.7.0
+
+Local-library usability work in progress.
+
+- Library search matches local title names and slug IDs.
+- Library sorting supports recent local updates, alphabetical order and chapter count.
+- ReaderLB-created local titles are detected from chapter metadata and labelled separately from other RanobeLib local titles.
+- Tapping a library card opens a read-only detail screen with the real local cover, chapter count/range, local update time, source and slug ID.
+- Library cover decoding remains downsampled to avoid loading full-resolution covers into memory on low-end devices.
+
 ## Unreleased — 0.6.0
 
 Import UX work in progress.
