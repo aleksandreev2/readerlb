@@ -90,14 +90,33 @@ jobs:
           test -n "$APK_SHA"
           test "$KEY_SHA" = "$APK_SHA"
 
-      - name: Build optimized release smoke
+      - name: Build optimized test APK
+        env:
+          READERLB_KEYSTORE_PATH: ${{ env.READERLB_DEBUG_KEYSTORE_PATH }}
+          READERLB_KEYSTORE_PASSWORD: android
+          READERLB_KEY_ALIAS: androiddebugkey
+          READERLB_KEY_PASSWORD: android
         run: |
           gradle :app:assembleRelease --stacktrace
           ls -lh app/build/outputs/apk/release/
 
-      - name: Upload APK
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk 2>&1)"
+          printf '%s\n' "$CERT_OUTPUT"
+          RELEASE_SHA="$(printf '%s\n' "$CERT_OUTPUT" | sed -n 's/.*SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          KEY_SHA="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
+          test "$RELEASE_SHA" = "$KEY_SHA"
+
+      - name: Upload debug APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ReaderLB-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload optimized test APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReaderLB-optimized-test
+          path: app/build/outputs/apk/release/app-release.apk
