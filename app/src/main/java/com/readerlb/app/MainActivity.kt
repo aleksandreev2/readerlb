@@ -464,7 +464,9 @@ private fun MainApp(
     var libraryRefreshToken by remember {
         mutableIntStateOf(0)
     }
-    var tab by remember { mutableStateOf(AppTab.HOME) }
+    var tab by rememberSaveable {
+        mutableStateOf(AppTab.HOME)
+    }
 
     LaunchedEffect(incomingImport?.requestId) {
         if (incomingImport != null) {
