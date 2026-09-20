@@ -56,6 +56,8 @@ data class ExportResult(
     val lastChapter: String,
     val slugUrl: String,
     val installedDirectly: Boolean,
+    val updatedExisting: Boolean = false,
+    val addedChapterCount: Int = chapterCount,
     val downloadUri: String? = null
 )
 
