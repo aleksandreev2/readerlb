@@ -398,6 +398,10 @@ class RanobeLibUpdateTransactionTest {
             book = book("Missing zip recovery", 1..4),
             rootDir = File(root, "committed")
         )
+        val incomingBuilt = builder.build(
+            book = book("Missing zip recovery", 1..4),
+            rootDir = File(root, "incoming")
+        )
 
         val storage = FileRanobeLibStorage(
             committedBuilt.titleDir
@@ -441,7 +445,7 @@ class RanobeLibUpdateTransactionTest {
 
         val result = transaction.apply(
             existing = storage,
-            incomingTitleDir = committedBuilt.titleDir
+            incomingTitleDir = incomingBuilt.titleDir
         )
 
         assertTrue(result.changed)
