@@ -2,10 +2,14 @@ package com.readerlb.app.storage
 
 import android.content.Context
 import android.net.Uri
+import android.util.JsonReader
+import android.util.JsonToken
 import androidx.documentfile.provider.DocumentFile
 import com.readerlb.app.importer.compareChapterNumbers
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.Reader
+import java.io.StringReader
 
 data class LocalLibraryItem(
     val title: String,
@@ -27,36 +31,55 @@ class RanobeLibLibraryScanner(
     private val context: Context
 ) {
     fun scan(
-        treeUri: Uri
+        treeUri: Uri,
+        onProgress: (
+            completed: Int,
+            total: Int
+        ) -> Unit = { _, _ -> }
     ): LocalLibrarySnapshot {
         val root = DocumentFile.fromTreeUri(
             context,
             treeUri
         ) ?: error("Нет доступа к папке RanobeLib")
 
-        var skipped = 0
-        val items = root
+        val directories = root
             .listFiles()
-            .asSequence()
             .filter(DocumentFile::isDirectory)
-            .mapNotNull { directory ->
-                val result = runCatching {
-                    readTitle(directory)
-                }
 
-                result.getOrElse {
-                    skipped++
-                    null
-                }
+        var skipped = 0
+        val items = ArrayList<
+            LocalLibraryItem
+        >(directories.size)
+
+        directories.forEachIndexed {
+                index,
+                directory ->
+            val item = runCatching {
+                readTitle(directory)
+            }.getOrElse {
+                skipped++
+                null
             }
-            .sortedWith(
-                compareByDescending<LocalLibraryItem> {
-                    it.writeTime
-                }.thenBy {
-                    it.title.lowercase()
-                }
+
+            if (item != null) {
+                items += item
+            }
+
+            onProgress(
+                index + 1,
+                directories.size
             )
-            .toList()
+        }
+
+        items.sortWith(
+            compareByDescending<
+                LocalLibraryItem
+            > {
+                it.writeTime
+            }.thenBy {
+                it.title.lowercase()
+            }
+        )
 
         return LocalLibrarySnapshot(
             items = items,
@@ -74,32 +97,79 @@ class RanobeLibLibraryScanner(
             "chapters.json"
         ) ?: return null
 
-        val infoText = readText(infoFile)
-        val chaptersText = readText(chaptersFile)
-        val parsed = parseLocalLibraryMetadata(
-            infoText = infoText,
-            chaptersText = chaptersText,
-            folderName = directory.name.orEmpty()
+        val info = JSONObject(
+            readText(infoFile)
+        )
+        val media = info.getJSONObject(
+            "media"
+        )
+        val chapters = readChapterSummary(
+            chaptersFile
         )
 
-        val coverName = parsed.coverName
+        val title = sequenceOf(
+            media.optString("rusName"),
+            media.optString("name"),
+            media.optString("engName"),
+            directory.name.orEmpty()
+        )
+            .map(String::trim)
+            .firstOrNull(String::isNotBlank)
+            ?: error("У тайтла нет названия")
+
+        val slugUrl = media
+            .optString("slugUrl")
+            .trim()
+            .ifBlank {
+                directory.name.orEmpty()
+            }
+
+        val coverName = media
+            .optString("imageUrl")
+            .trim()
+            .takeIf(String::isNotBlank)
+            ?.substringAfterLast('/')
+
         val coverUri = coverName
             ?.let(directory::findFile)
             ?.takeIf(DocumentFile::isFile)
             ?.uri
 
         return LocalLibraryItem(
-            title = parsed.title,
-            slugUrl = parsed.slugUrl,
-            chapterCount = parsed.chapterCount,
-            firstChapter = parsed.firstChapter,
-            lastChapter = parsed.lastChapter,
+            title = title,
+            slugUrl = slugUrl,
+            chapterCount =
+                chapters.chapterCount,
+            firstChapter =
+                chapters.firstChapter,
+            lastChapter =
+                chapters.lastChapter,
             coverUri = coverUri,
-            writeTime = parsed.writeTime,
+            writeTime =
+                info.optLong(
+                    "writeTime",
+                    0L
+                ),
             createdByReaderLB =
-                parsed.createdByReaderLB
+                chapters.createdByReaderLB
         )
     }
+
+    private fun readChapterSummary(
+        file: DocumentFile
+    ): LocalChapterSummary =
+        context.contentResolver
+            .openInputStream(file.uri)
+            ?.bufferedReader(Charsets.UTF_8)
+            ?.use { reader ->
+                readLocalChapterSummary(
+                    JsonReader(reader)
+                )
+            }
+            ?: error(
+                "Не удалось прочитать " +
+                    file.name
+            )
 
     private fun readText(
         file: DocumentFile
@@ -109,9 +179,186 @@ class RanobeLibLibraryScanner(
             ?.bufferedReader(Charsets.UTF_8)
             ?.use { it.readText() }
             ?: error(
-                "Не удалось прочитать ${file.name}"
+                "Не удалось прочитать " +
+                    file.name
             )
 }
+
+internal data class LocalChapterSummary(
+    val chapterCount: Int,
+    val firstChapter: String,
+    val lastChapter: String,
+    val createdByReaderLB: Boolean
+)
+
+internal fun parseLocalChapterSummary(
+    chaptersText: String
+): LocalChapterSummary =
+    JsonReader(
+        StringReader(chaptersText)
+    ).use(::readLocalChapterSummary)
+
+private fun readLocalChapterSummary(
+    reader: JsonReader
+): LocalChapterSummary {
+    val numbers = HashSet<String>()
+    var first: String? = null
+    var last: String? = null
+    var createdByReaderLB = false
+
+    reader.beginArray()
+    while (reader.hasNext()) {
+        var number = ""
+
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "number" -> {
+                    number =
+                        readJsonString(reader)
+                            .trim()
+                }
+
+                "branches" -> {
+                    if (
+                        readBranchesForReaderLb(
+                            reader
+                        )
+                    ) {
+                        createdByReaderLB = true
+                    }
+                }
+
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+
+        if (
+            number.isNotBlank() &&
+            numbers.add(number)
+        ) {
+            if (
+                first == null ||
+                compareChapterNumbers(
+                    number,
+                    requireNotNull(first)
+                ) < 0
+            ) {
+                first = number
+            }
+
+            if (
+                last == null ||
+                compareChapterNumbers(
+                    number,
+                    requireNotNull(last)
+                ) > 0
+            ) {
+                last = number
+            }
+        }
+    }
+    reader.endArray()
+
+    require(
+        numbers.isNotEmpty()
+    ) {
+        "Тайтл не содержит глав"
+    }
+
+    return LocalChapterSummary(
+        chapterCount = numbers.size,
+        firstChapter = requireNotNull(first),
+        lastChapter = requireNotNull(last),
+        createdByReaderLB =
+            createdByReaderLB
+    )
+}
+
+private fun readBranchesForReaderLb(
+    reader: JsonReader
+): Boolean {
+    if (reader.peek() == JsonToken.NULL) {
+        reader.nextNull()
+        return false
+    }
+
+    var found = false
+    reader.beginArray()
+
+    while (reader.hasNext()) {
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "user" -> {
+                    if (
+                        readUserIsReaderLb(
+                            reader
+                        )
+                    ) {
+                        found = true
+                    }
+                }
+
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+    }
+
+    reader.endArray()
+    return found
+}
+
+private fun readUserIsReaderLb(
+    reader: JsonReader
+): Boolean {
+    if (reader.peek() == JsonToken.NULL) {
+        reader.nextNull()
+        return false
+    }
+
+    var username = ""
+    reader.beginObject()
+
+    while (reader.hasNext()) {
+        when (reader.nextName()) {
+            "username" ->
+                username =
+                    readJsonString(reader)
+                        .trim()
+
+            else -> reader.skipValue()
+        }
+    }
+
+    reader.endObject()
+
+    return username.equals(
+        "ReaderLB",
+        ignoreCase = true
+    )
+}
+
+private fun readJsonString(
+    reader: JsonReader
+): String =
+    when (reader.peek()) {
+        JsonToken.STRING,
+        JsonToken.NUMBER ->
+            reader.nextString()
+
+        JsonToken.NULL -> {
+            reader.nextNull()
+            ""
+        }
+
+        else -> {
+            reader.skipValue()
+            ""
+        }
+    }
 
 internal data class ParsedLocalLibraryMetadata(
     val title: String,
@@ -135,7 +382,8 @@ internal fun parseLocalLibraryMetadata(
 
     val numbers = buildList {
         for (index in 0 until chapters.length()) {
-            val chapter = chapters.optJSONObject(index)
+            val chapter = chapters
+                .optJSONObject(index)
                 ?: continue
             val number = chapter
                 .optString("number")
@@ -173,7 +421,8 @@ internal fun parseLocalLibraryMetadata(
         ?.substringAfterLast('/')
 
     val createdByReaderLB =
-        (0 until chapters.length()).any { index ->
+        (0 until chapters.length()).any {
+                index ->
             val chapter =
                 chapters.optJSONObject(index)
                     ?: return@any false
@@ -188,7 +437,8 @@ internal fun parseLocalLibraryMetadata(
                         branchIndex
                     ) ?: return@any false
                 val username =
-                    branch.optJSONObject("user")
+                    branch
+                        .optJSONObject("user")
                         ?.optString("username")
                         ?.trim()
                         .orEmpty()
@@ -207,7 +457,11 @@ internal fun parseLocalLibraryMetadata(
         firstChapter = numbers.first(),
         lastChapter = numbers.last(),
         coverName = coverName,
-        writeTime = info.optLong("writeTime", 0L),
+        writeTime =
+            info.optLong(
+                "writeTime",
+                0L
+            ),
         createdByReaderLB =
             createdByReaderLB
     )
