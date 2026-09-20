@@ -2640,25 +2640,46 @@ private fun SettingsScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Line)
             ) {
                 Column(Modifier.padding(18.dp)) {
-                    Text("Папка RanobeLib", fontWeight = FontWeight.Bold, color = Ink)
                     Text(
-                        folderUri?.toString() ?: "Не выбрана",
+                        "Связь с RanobeLib",
+                        fontWeight = FontWeight.Bold,
+                        color = Ink
+                    )
+                    Text(
+                        if (folderUri == null) {
+                            "Не подключено. Без доступа ReaderLB " +
+                                "сохраняет готовый ZIP в Downloads."
+                        } else {
+                            "Подключено. ReaderLB может читать локальную " +
+                                "библиотеку и добавлять главы напрямую."
+                        },
                         color = Muted,
-                        fontSize = 12.sp,
-                        maxLines = 3,
-                        modifier = Modifier.padding(top = 6.dp, bottom = 14.dp)
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        modifier =
+                            Modifier.padding(
+                                top = 6.dp,
+                                bottom = 14.dp
+                            )
                     )
                     OutlineAction(
-                        if (folderUri == null) "Выбрать Android/data/.../book" else "Изменить папку",
+                        if (folderUri == null) {
+                            "Подключить RanobeLib"
+                        } else {
+                            "Изменить доступ"
+                        },
                         onPickFolder
                     )
                     if (folderUri != null) {
                         Text(
-                            "Забыть доступ",
+                            "Отключить RanobeLib",
                             color = Color(0xFFD64545),
                             modifier = Modifier
                                 .padding(top = 14.dp)
-                                .clickable(onClick = onForgetFolder)
+                                .clickable(
+                                    onClick =
+                                        onForgetFolder
+                                )
                         )
                     }
                 }
@@ -2699,8 +2720,10 @@ private fun SettingsScreen(
                                     FontWeight.SemiBold
                             )
                             Text(
-                                "Не чаще одного раза в сутки. " +
-                                    "APK сам не устанавливается.",
+                                "Проверять новые стабильные версии " +
+                                    "не чаще одного раза в сутки. " +
+                                    "Установка запускается только после " +
+                                    "нажатия «Обновить».",
                                 color = Muted,
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
@@ -2830,24 +2853,6 @@ private fun SettingsScreen(
                                     "aleksandreev2/readerlb"
                             )
                         }
-                    )
-                }
-            }
-        }
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-            ) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("Формат RanobeLib", fontWeight = FontWeight.Bold, color = Ink)
-                    Text(
-                        "ReaderLB создаёт info.json, chapters.json и отдельный ZIP с data.txt для каждой главы — тот же локальный формат, который уже проверен в штатной читалке RanobeLib.",
-                        color = Muted,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }
