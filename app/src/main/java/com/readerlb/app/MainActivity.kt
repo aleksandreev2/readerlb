@@ -339,6 +339,9 @@ private fun MainApp() {
     var history by remember { mutableStateOf(historyStore.load()) }
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var folderUri by remember { mutableStateOf(preferences.ranobeLibBookTree) }
+    var importHintsDone by remember {
+        mutableStateOf(preferences.importHintsDone)
+    }
     var latestUpdate by remember {
         mutableStateOf<UpdateInfo?>(null)
     }
@@ -443,7 +446,8 @@ private fun MainApp() {
     Scaffold(
         containerColor = Canvas,
         bottomBar = {
-            NavigationBar(containerColor = Color.White) {
+            if (tab != AppTab.IMPORT) {
+                NavigationBar(containerColor = Color.White) {
                 NavigationBarItem(
                     selected = tab == AppTab.HOME,
                     onClick = { tab = AppTab.HOME },
@@ -468,6 +472,7 @@ private fun MainApp() {
                     icon = { Icon(Icons.Default.Settings, null) },
                     label = { Text("Настройки") }
                 )
+                }
             }
         }
     ) { padding ->
@@ -480,11 +485,17 @@ private fun MainApp() {
                 updateMessage = updateMessage,
                 onUpdate = ::installLatestUpdate,
                 onAdd = { tab = AppTab.IMPORT },
+                onOpenLibrary = { tab = AppTab.LIBRARY },
                 onSettings = { tab = AppTab.SETTINGS }
             )
             AppTab.IMPORT -> ImportScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
+                showHints = !importHintsDone,
+                onHintsDone = {
+                    preferences.importHintsDone = true
+                    importHintsDone = true
+                },
                 onBack = { tab = AppTab.HOME },
                 onPickFolder = {
                     folderPicker.launch(
@@ -511,6 +522,11 @@ private fun MainApp() {
                 updateMessage = updateMessage,
                 onCheckUpdates = ::checkForUpdates,
                 onInstallUpdate = ::installLatestUpdate,
+                onRepeatHints = {
+                    preferences.importHintsDone = false
+                    importHintsDone = false
+                    tab = AppTab.IMPORT
+                },
                 onPickFolder = {
                     folderPicker.launch(
                         RANOBELIB_BOOK_INITIAL_URI
@@ -534,6 +550,7 @@ private fun HomeScreen(
     updateMessage: String?,
     onUpdate: () -> Unit,
     onAdd: () -> Unit,
+    onOpenLibrary: () -> Unit,
     onSettings: () -> Unit
 ) {
     val totalChapters = history.sumOf { it.chapters }
@@ -632,7 +649,10 @@ private fun HomeScreen(
                 Text(
                     "Все",
                     color = Blue,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable(
+                        onClick = onOpenLibrary
+                    )
                 )
             }
         }
@@ -653,6 +673,8 @@ private fun HomeScreen(
 private fun ImportScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    showHints: Boolean,
+    onHintsDone: () -> Unit,
     onBack: () -> Unit,
     onPickFolder: () -> Unit,
     onImported: (com.readerlb.app.importer.ExportResult) -> Unit,
@@ -673,6 +695,7 @@ private fun ImportScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var success by remember { mutableStateOf<String?>(null) }
     var warningsAcknowledged by remember { mutableStateOf(false) }
+    var rangeExpanded by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -692,6 +715,7 @@ private fun ImportScreen(
                     title = book.title
                     firstChapter = ""
                     lastChapter = ""
+                    rangeExpanded = false
                 }.onFailure {
                     error = it.message ?: "Не удалось разобрать файл"
                 }
@@ -754,9 +778,32 @@ private fun ImportScreen(
             )
         }
 
+        if (showHints && parsed == null && !busy) {
+            item {
+                CoachHintCard(
+                    title = "Начните с файла",
+                    text = "Выберите EPUB или TXT. ReaderLB сам найдёт " +
+                        "главы, обложку и иллюстрации — ничего вручную " +
+                        "заполнять до анализа не нужно."
+                )
+            }
+        }
+
         parsed?.let { book ->
             item {
                 ParsedPreview(book)
+            }
+            if (showHints) {
+                item {
+                    CoachHintCard(
+                        title = "Файл уже проверен",
+                        text = "Если количество глав и иллюстраций " +
+                            "совпадает с ожиданием, оставьте «Все главы». " +
+                            "Диапазон нужен только для частичного импорта.",
+                        actionText = "Понятно",
+                        onAction = onHintsDone
+                    )
+                }
             }
             if (book.issues.any { it.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING }) {
                 item {
@@ -793,106 +840,221 @@ private fun ImportScreen(
             }
         }
 
-        item {
-            Text("Название новеллы", fontWeight = FontWeight.SemiBold, color = Ink)
-            Spacer(Modifier.height(7.dp))
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Введите название...") },
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true
-            )
-        }
-
-        item {
-            Text("Диапазон глав", fontWeight = FontWeight.SemiBold, color = Ink)
-            Spacer(Modifier.height(7.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = firstChapter,
-                    onValueChange = { firstChapter = sanitizeChapterRangeInput(it) },
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            parsed
-                                ?.chapters
-                                ?.minWithOrNull(
-                                    Comparator { left, right ->
-                                        compareChapterNumbers(
-                                            left.number,
-                                            right.number
-                                        )
-                                    }
-                                )
-                                ?.number
-                                ?: "1"
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+        if (parsed != null) {
+            item {
+                Text(
+                    "Название новеллы",
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink
                 )
-                Text(" — ", color = Muted, modifier = Modifier.padding(horizontal = 8.dp))
+                Spacer(Modifier.height(7.dp))
                 OutlinedTextField(
-                    value = lastChapter,
-                    onValueChange = { lastChapter = sanitizeChapterRangeInput(it) },
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            parsed
-                                ?.chapters
-                                ?.maxWithOrNull(
-                                    Comparator { left, right ->
-                                        compareChapterNumbers(
-                                            left.number,
-                                            right.number
-                                        )
-                                    }
-                                )
-                                ?.number
-                                ?: "100"
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    value = title,
+                    onValueChange = { title = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Введите название...") },
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
                 )
             }
-            Spacer(Modifier.height(7.dp))
-            Text(
-                "Оставьте пустым, чтобы импортировать все главы",
-                fontSize = 12.sp,
-                color = Muted
-            )
         }
 
-        item {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Добавить в RanobeLib", fontWeight = FontWeight.Bold, color = Ink)
-                        Text(
-                            "Если тайтл уже существует, ReaderLB добавит только отсутствующие главы. Старые главы и их ID не перезаписываются.",
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            color = Muted
+        parsed?.let { book ->
+            item {
+                val first = book.chapters
+                    .minWithOrNull(
+                        Comparator { left, right ->
+                            compareChapterNumbers(
+                                left.number,
+                                right.number
+                            )
+                        }
+                    )
+                    ?.number
+                    .orEmpty()
+                val last = book.chapters
+                    .maxWithOrNull(
+                        Comparator { left, right ->
+                            compareChapterNumbers(
+                                left.number,
+                                right.number
+                            )
+                        }
+                    )
+                    ?.number
+                    .orEmpty()
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    border =
+                        androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            Line
                         )
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Главы",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Ink
+                                )
+                                Text(
+                                    if (
+                                        firstChapter.isBlank() &&
+                                        lastChapter.isBlank()
+                                    ) {
+                                        "Все ${book.chapters.size} · " +
+                                            "$first–$last"
+                                    } else {
+                                        "Выбран диапазон"
+                                    },
+                                    color = Muted,
+                                    fontSize = 12.sp,
+                                    modifier =
+                                        Modifier.padding(top = 3.dp)
+                                )
+                            }
+                            Text(
+                                if (rangeExpanded) {
+                                    "Скрыть"
+                                } else {
+                                    "Изменить"
+                                },
+                                color = Blue,
+                                fontWeight =
+                                    FontWeight.SemiBold,
+                                modifier = Modifier.clickable {
+                                    rangeExpanded =
+                                        !rangeExpanded
+                                }
+                            )
+                        }
+
+                        if (rangeExpanded) {
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                verticalAlignment =
+                                    Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = firstChapter,
+                                    onValueChange = {
+                                        firstChapter =
+                                            sanitizeChapterRangeInput(
+                                                it
+                                            )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    placeholder = {
+                                        Text(first)
+                                    },
+                                    keyboardOptions =
+                                        KeyboardOptions(
+                                            keyboardType =
+                                                KeyboardType.Decimal
+                                        ),
+                                    singleLine = true,
+                                    shape =
+                                        RoundedCornerShape(12.dp)
+                                )
+                                Text(
+                                    " — ",
+                                    color = Muted,
+                                    modifier =
+                                        Modifier.padding(
+                                            horizontal = 8.dp
+                                        )
+                                )
+                                OutlinedTextField(
+                                    value = lastChapter,
+                                    onValueChange = {
+                                        lastChapter =
+                                            sanitizeChapterRangeInput(
+                                                it
+                                            )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    placeholder = {
+                                        Text(last)
+                                    },
+                                    keyboardOptions =
+                                        KeyboardOptions(
+                                            keyboardType =
+                                                KeyboardType.Decimal
+                                        ),
+                                    singleLine = true,
+                                    shape =
+                                        RoundedCornerShape(12.dp)
+                                )
+                            }
+                            Text(
+                                "Оставьте поля пустыми, чтобы " +
+                                    "импортировать все главы.",
+                                fontSize = 12.sp,
+                                color = Muted,
+                                modifier =
+                                    Modifier.padding(top = 7.dp)
+                            )
+                        }
                     }
-                    Switch(checked = direct, onCheckedChange = { direct = it })
                 }
             }
         }
 
-        if (direct && folderUri == null) {
+        if (parsed != null) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    border =
+                        androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            Line
+                        )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Добавить в RanobeLib",
+                                fontWeight = FontWeight.Bold,
+                                color = Ink
+                            )
+                            Text(
+                                "Если тайтл уже существует, ReaderLB " +
+                                    "добавит только отсутствующие главы.",
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
+                                color = Muted
+                            )
+                        }
+                        Switch(
+                            checked = direct,
+                            onCheckedChange = { direct = it }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (
+            parsed != null &&
+            direct &&
+            folderUri == null
+        ) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF5FF)),
@@ -935,9 +1097,14 @@ private fun ImportScreen(
             }
         }
 
-        item {
-            GradientButton(
-                text = if (busy) "Подготовка..." else "↥  Импортировать",
+        if (parsed != null) {
+            item {
+                GradientButton(
+                text = if (busy) {
+                    "Подготовка..."
+                } else {
+                    "Импортировать"
+                },
                 enabled = !busy &&
                     parsed != null &&
                     (!direct || folderUri != null) &&
@@ -993,7 +1160,8 @@ private fun ImportScreen(
                         busy = false
                     }
                 }
-            )
+                )
+            }
         }
     }
 }
@@ -1026,12 +1194,16 @@ private fun FileDropCard(
             }
             Spacer(Modifier.height(14.dp))
             Text(
-                if (fileName.isBlank()) "Перетащите файл сюда" else fileName,
+                if (fileName.isBlank()) {
+                    "Выберите EPUB или TXT"
+                } else {
+                    fileName
+                },
                 fontWeight = FontWeight.Bold,
                 color = Ink,
                 textAlign = TextAlign.Center
             )
-            Text("или", color = Muted, modifier = Modifier.padding(vertical = 8.dp))
+            Spacer(Modifier.height(10.dp))
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
@@ -1198,6 +1370,7 @@ private fun SettingsScreen(
     updateMessage: String?,
     onCheckUpdates: () -> Unit,
     onInstallUpdate: () -> Unit,
+    onRepeatHints: () -> Unit,
     onPickFolder: () -> Unit,
     onForgetFolder: () -> Unit
 ) {
@@ -1306,6 +1479,43 @@ private fun SettingsScreen(
                 }
             }
         }
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border =
+                    androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Line
+                    )
+            ) {
+                Column(
+                    Modifier.padding(18.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Помощь",
+                        fontWeight = FontWeight.Bold,
+                        color = Ink
+                    )
+                    Text(
+                        "Контекстные подсказки объясняют импорт " +
+                            "прямо на нужном экране.",
+                        color = Muted,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+                    OutlineAction(
+                        "Повторить подсказки",
+                        onRepeatHints
+                    )
+                }
+            }
+        }
+
         item {
             Card(
                 colors = CardDefaults.cardColors(
@@ -1519,6 +1729,56 @@ private fun EmptyLibraryCard(onAdd: () -> Unit) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onAdd)
             )
+        }
+    }
+}
+
+@Composable
+private fun CoachHintCard(
+    title: String,
+    text: String,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFEAF5FF)
+        ),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            Color(0xFFB9DDF5)
+        )
+    ) {
+        Column(
+            Modifier.padding(15.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                title,
+                fontWeight = FontWeight.Bold,
+                color = Ink
+            )
+            Text(
+                text,
+                color = Muted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+            if (
+                actionText != null &&
+                onAction != null
+            ) {
+                Text(
+                    actionText,
+                    color = Blue,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable(onClick = onAction)
+                )
+            }
         }
     }
 }
