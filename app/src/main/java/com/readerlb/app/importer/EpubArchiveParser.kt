@@ -4,6 +4,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.math.BigDecimal
@@ -1561,23 +1562,78 @@ class EpubArchiveParser {
         path: String
     ): String =
         readBytes(
-            zip,
-            path
+            zip = zip,
+            path = path,
+            maxBytes =
+                MAX_TEXT_ENTRY_BYTES
         ).toString(Charsets.UTF_8)
 
     private fun readBytes(
         zip: ZipFile,
-        path: String
+        path: String,
+        maxBytes: Int =
+            MAX_COVER_ENTRY_BYTES
     ): ByteArray {
         val entry = zip.getEntry(path)
             ?: error(
                 "В EPUB отсутствует $path"
             )
 
+        if (
+            entry.size >= 0L &&
+            entry.size > maxBytes
+        ) {
+            error(
+                "Файл $path внутри EPUB слишком большой " +
+                    "для безопасного анализа"
+            )
+        }
+
         return zip
             .getInputStream(entry)
-            .use {
-                it.readBytes()
+            .buffered()
+            .use { input ->
+                val initialSize =
+                    entry.size
+                        .takeIf {
+                            it in 1..maxBytes.toLong()
+                        }
+                        ?.toInt()
+                        ?: 8 * 1024
+                val output =
+                    ByteArrayOutputStream(
+                        initialSize
+                    )
+                val buffer =
+                    ByteArray(32 * 1024)
+                var total = 0
+
+                while (true) {
+                    val count =
+                        input.read(buffer)
+                    if (count < 0) {
+                        break
+                    }
+                    if (count == 0) {
+                        continue
+                    }
+
+                    total += count
+                    if (total > maxBytes) {
+                        error(
+                            "Файл $path внутри EPUB слишком большой " +
+                                "для безопасного анализа"
+                        )
+                    }
+
+                    output.write(
+                        buffer,
+                        0,
+                        count
+                    )
+                }
+
+                output.toByteArray()
             }
     }
 
@@ -1856,6 +1912,10 @@ class EpubArchiveParser {
     private companion object {
         const val MIN_CHAPTER_TEXT = 20
         const val MAX_GAP_SCAN = 10_000
+        const val MAX_TEXT_ENTRY_BYTES =
+            16 * 1024 * 1024
+        const val MAX_COVER_ENTRY_BYTES =
+            32 * 1024 * 1024
         const val DOM_NEKROMANTA_TEAM_URL =
             "https://ranobelib.me/ru/team/11969--dom-nekromanta"
 
