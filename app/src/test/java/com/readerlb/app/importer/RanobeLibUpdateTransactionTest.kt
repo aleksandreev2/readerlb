@@ -140,7 +140,27 @@ class RanobeLibUpdateTransactionTest {
             beforeChapters,
             baseStorage.readBytes("chapters.json")
         )
-        assertEquals(beforeNames, baseStorage.names())
+
+        // Keep the journal after an in-process rollback. If deleting a file
+        // during rollback ever fails on a real SAF provider, the next launch
+        // still has enough information to finish recovery safely.
+        assertTrue(
+            baseStorage.exists(".readerlb-update.json")
+        )
+        assertEquals(
+            beforeNames,
+            baseStorage.names() - ".readerlb-update.json"
+        )
+
+        val recovered = transaction.apply(
+            existing = baseStorage,
+            incomingTitleDir = incomingBuilt.titleDir
+        )
+        assertTrue(recovered.changed)
+        assertEquals(listOf("4", "5"), recovered.addedNumbers)
+        assertFalse(
+            baseStorage.exists(".readerlb-update.json")
+        )
     }
 
     @Test
