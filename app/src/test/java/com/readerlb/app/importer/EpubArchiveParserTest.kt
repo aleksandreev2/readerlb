@@ -533,6 +533,79 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun realCorpusStyleChapterKeepsTwoJpegIllustrationsAndSceneBreak() {
+        val firstImage = byteArrayOf(
+            0xFF.toByte(),
+            0xD8.toByte(),
+            0xFF.toByte(),
+            1,
+            2,
+            3
+        )
+        val secondImage = byteArrayOf(
+            0xFF.toByte(),
+            0xD8.toByte(),
+            0xFF.toByte(),
+            4,
+            5,
+            6
+        )
+
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "chapter0062",
+                    "text/chapter_0062.xhtml",
+                    "<h1>Глава 62</h1>" +
+                        "<p>До первой картинки.</p>" +
+                        "<figure class=\"illustration\">" +
+                        "<img src=\"../images/ch0062_01.jpg\" " +
+                        "alt=\"Иллюстрация к главе 62\" />" +
+                        "</figure>" +
+                        "<p class=\"scene\">***</p>" +
+                        "<p>Между картинками.</p>" +
+                        "<figure class=\"illustration\">" +
+                        "<img src=\"../images/ch0062_02.jpg\" " +
+                        "alt=\"Иллюстрация к главе 62\" />" +
+                        "</figure>" +
+                        "<p>После второй картинки.</p>"
+                )
+            ),
+            extraEntries = mapOf(
+                "OEBPS/images/ch0062_01.jpg" to firstImage,
+                "OEBPS/images/ch0062_02.jpg" to secondImage
+            )
+        )
+
+        val book = parser.parse(epub)
+        val blocks = book.chapters.single().blocks
+
+        assertEquals(
+            listOf(
+                ReaderBlock.Paragraph::class,
+                ReaderBlock.Image::class,
+                ReaderBlock.HorizontalRule::class,
+                ReaderBlock.Paragraph::class,
+                ReaderBlock.Image::class,
+                ReaderBlock.Paragraph::class
+            ),
+            blocks.map { it::class }
+        )
+
+        val images = blocks
+            .filterIsInstance<ReaderBlock.Image>()
+        assertEquals(2, images.size)
+        assertEquals("jpg", images[0].extension)
+        assertEquals("jpg", images[1].extension)
+        assertTrue(
+            images[0].bytes.contentEquals(firstImage)
+        )
+        assertTrue(
+            images[1].bytes.contentEquals(secondImage)
+        )
+    }
+
+    @Test
     fun coverImageDoesNotTriggerChapterImageWarning() {
         val epub = buildEpub(
             docs = listOf(
