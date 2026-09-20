@@ -1,8 +1,14 @@
 # Changelog
 
-## Unreleased — 0.9.0
+## 0.9.0
 
-Pre-1.0 interface hardening in progress.
+Dark UI, finite local-library refresh and pre-1.0 interface hardening.
+
+- Reworked the local RanobeLib scan into a single-flight refresh: repeated taps no longer start parallel scans, progress shows scanned/total titles, and a stuck Android document provider times out instead of leaving an endless spinner.
+- Large local `chapters.json` files are summarized with a streaming parser so thousands of chapters do not need to be materialized as one JSON array in memory.
+- ReaderLB now uses a RanobeLib-inspired dark palette across the app and dark Android system/window surfaces.
+- The official ReaderLB logo supplied for the project is used inside the app and as the launcher icon.
+- The empty import experience is genuinely vertically centered while remaining scrollable on small displays.
 
 - Expanded chapter-range controls now use full-width «С главы / По главу» fields instead of two cramped side-by-side inputs on narrow phones.
 - Removed the non-functional overflow glyph from import-history cards.
