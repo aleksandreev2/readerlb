@@ -124,7 +124,7 @@ Android storage internals.
 Planned work:
 
 - [x] Android "Open with ReaderLB" / share-to-ReaderLB entry point for EPUB/TXT;
-- [ ] recent-file shortcut where Android permits it;
+- [x] recent-file shortcut when Android granted persistent read access;
 - [x] explicit import stages: analysis -> preparation -> verification -> writing -> finalization;
 - [x] progress by chapter for long preparation work;
 - [x] cancellable pre-write analysis;
