@@ -2625,6 +2625,12 @@ private fun SettingsScreen(
 ) {
     val uriHandler =
         androidx.compose.ui.platform.LocalUriHandler.current
+    val context =
+        androidx.compose.ui.platform.LocalContext.current
+    var diagnosticsCopied by rememberSaveable {
+        mutableStateOf(false)
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -2803,6 +2809,40 @@ private fun SettingsScreen(
                         "Повторить подсказки",
                         onRepeatHints
                     )
+                    OutlineAction(
+                        "Скопировать диагностику",
+                        onClick = {
+                            val clipboard =
+                                context.getSystemService(
+                                    android.content.Context
+                                        .CLIPBOARD_SERVICE
+                                ) as android.content
+                                    .ClipboardManager
+                            clipboard.setPrimaryClip(
+                                android.content.ClipData
+                                    .newPlainText(
+                                        "ReaderLB diagnostics",
+                                        buildReaderLbDiagnostics(
+                                            folderConnected =
+                                                folderUri != null,
+                                            autoUpdateChecks =
+                                                autoUpdateChecks
+                                        )
+                                    )
+                            )
+                            diagnosticsCopied = true
+                        }
+                    )
+                    if (diagnosticsCopied) {
+                        Text(
+                            "Скопировано. Отчёт не содержит " +
+                                "названий книг, путей к EPUB или " +
+                                "содержимого библиотеки.",
+                            color = Success,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
                 }
             }
         }
@@ -2859,6 +2899,52 @@ private fun SettingsScreen(
         }
     }
 }
+
+private fun buildReaderLbDiagnostics(
+    folderConnected: Boolean,
+    autoUpdateChecks: Boolean
+): String =
+    buildString {
+        appendLine("ReaderLB diagnostics")
+        append("Version: ")
+        append(BuildConfig.VERSION_NAME)
+        append(" (")
+        append(BuildConfig.VERSION_CODE)
+        appendLine(")")
+        append("Android: ")
+        append(android.os.Build.VERSION.RELEASE)
+        append(" / API ")
+        appendLine(
+            android.os.Build.VERSION.SDK_INT
+                .toString()
+        )
+        append("Device: ")
+        append(
+            android.os.Build.MANUFACTURER
+                .ifBlank { "unknown" }
+        )
+        append(' ')
+        appendLine(
+            android.os.Build.MODEL
+                .ifBlank { "unknown" }
+        )
+        append("RanobeLib access: ")
+        appendLine(
+            if (folderConnected) {
+                "connected"
+            } else {
+                "not connected"
+            }
+        )
+        append("Automatic update checks: ")
+        appendLine(
+            if (autoUpdateChecks) {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        )
+    }
 
 @Composable
 private fun LibraryTitleDetail(
