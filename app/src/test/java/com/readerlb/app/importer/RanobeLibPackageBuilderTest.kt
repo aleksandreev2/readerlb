@@ -225,6 +225,83 @@ class RanobeLibPackageBuilderTest {
     }
 
     @Test
+    fun streamsFileBackedIllustrationIntoChapterZip() {
+        val imageBytes = byteArrayOf(
+            0x89.toByte(),
+            'P'.code.toByte(),
+            'N'.code.toByte(),
+            'G'.code.toByte(),
+            13,
+            10,
+            26,
+            10,
+            42,
+            43,
+            44
+        )
+        val imageFile = Files
+            .createTempFile(
+                "readerlb_spilled_image_",
+                ".png"
+            )
+            .toFile()
+            .apply {
+                writeBytes(imageBytes)
+            }
+
+        val book = ParsedBook(
+            title = "Файловая иллюстрация",
+            chapters = listOf(
+                ParsedChapter(
+                    number = "1",
+                    title = "",
+                    blocks = listOf(
+                        ReaderBlock.Image(
+                            extension = "png",
+                            description = "С диска",
+                            filePath =
+                                imageFile.absolutePath
+                        )
+                    )
+                )
+            )
+        )
+        val root = Files
+            .createTempDirectory(
+                "readerlb_file_image_"
+            )
+            .toFile()
+
+        val built = builder.build(
+            book = book,
+            rootDir = root
+        )
+        val chapterZip = built.titleDir
+            .listFiles()
+            .orEmpty()
+            .single {
+                it.extension == "zip"
+            }
+
+        ZipFile(chapterZip).use { archive ->
+            val imageEntry = archive.entries()
+                .toList()
+                .single {
+                    it.name.endsWith(".png")
+                }
+            val stored = archive
+                .getInputStream(imageEntry)
+                .use { it.readBytes() }
+
+            assertTrue(
+                stored.contentEquals(imageBytes)
+            )
+        }
+
+        assertTrue(builder.verify(built).isValid)
+    }
+
+    @Test
     fun infoJsonMatchesGeneratedPackage() {
         val book = ParsedBook(
             title = "Первоклассная удача",
