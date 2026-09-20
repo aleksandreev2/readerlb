@@ -7,6 +7,7 @@ import java.io.File
 data class RanobeLibUpdateResult(
     val addedNumbers: List<String>,
     val overlappingNumbers: List<String>,
+    val mergedNumbers: List<String>,
     val totalChapterCount: Int,
     val changed: Boolean
 )
@@ -80,6 +81,7 @@ class RanobeLibUpdateTransaction(
             return RanobeLibUpdateResult(
                 addedNumbers = emptyList(),
                 overlappingNumbers = plan.overlappingNumbers,
+                mergedNumbers = plan.mergedNumbers,
                 totalChapterCount = existingChapters.length(),
                 changed = false
             )
@@ -234,6 +236,7 @@ class RanobeLibUpdateTransaction(
             return RanobeLibUpdateResult(
                 addedNumbers = plan.addedNumbers,
                 overlappingNumbers = plan.overlappingNumbers,
+                mergedNumbers = plan.mergedNumbers,
                 totalChapterCount = mergedChapters.length(),
                 changed = true
             )
@@ -328,6 +331,26 @@ class RanobeLibUpdateTransaction(
     private fun recoverMetadataIfNeeded(
         storage: RanobeLibMutableStorage
     ) {
+        // If both the canonical metadata and a backup exist, the canonical
+        // file is authoritative: this is the normal state after a successful
+        // commit whose final backup cleanup was interrupted.
+        if (
+            storage.exists(CHAPTERS) &&
+            storage.exists(BACKUP_CHAPTERS)
+        ) {
+            require(storage.delete(BACKUP_CHAPTERS)) {
+                "Не удалось удалить старую резервную копию $CHAPTERS"
+            }
+        }
+        if (
+            storage.exists(INFO) &&
+            storage.exists(BACKUP_INFO)
+        ) {
+            require(storage.delete(BACKUP_INFO)) {
+                "Не удалось удалить старую резервную копию $INFO"
+            }
+        }
+
         if (
             !storage.exists(CHAPTERS) &&
             storage.exists(BACKUP_CHAPTERS)
@@ -373,7 +396,11 @@ class RanobeLibUpdateTransaction(
                     it == STAGED_INFO ||
                     it.startsWith(STAGED_ZIP_PREFIX)
             }
-            .forEach(storage::delete)
+            .forEach { name ->
+                require(storage.delete(name)) {
+                    "Не удалось очистить временный файл $name"
+                }
+            }
     }
 
     private fun requireJsonArrayFile(
