@@ -261,6 +261,55 @@ class EpubArchiveParserTest {
     }
 
     @Test
+    fun underscoreSeparatedSplitFilenameDoesNotCreateFalseRangeWarnings() {
+        val docs = buildList {
+            add(
+                Doc(
+                    "ch0",
+                    "text/chapter_0000.xhtml",
+                    "<h1>Глава 0</h1><p>Нулевая глава.</p>"
+                )
+            )
+            (50..89).forEach { chapter ->
+                add(
+                    Doc(
+                        "ch$chapter",
+                        "text/chapter_" +
+                            chapter.toString().padStart(4, '0') +
+                            ".xhtml",
+                        "<h1>Глава $chapter</h1>" +
+                            "<p>Текст главы $chapter.</p>"
+                    )
+                )
+            }
+        }
+
+        val epub = buildEpub(docs = docs)
+        val book = parser.parse(
+            epub,
+            "Я_стал_мастером_бессознательного_флирта_" +
+                "главы_0_50_89.epub"
+        )
+
+        assertEquals(41, book.chapters.size)
+        assertEquals(
+            listOf("0") +
+                (50..89).map(Int::toString),
+            book.chapters.map { it.number }
+        )
+        assertTrue(
+            book.issues.none {
+                it.code == "CHAPTER_GAPS"
+            }
+        )
+        assertTrue(
+            book.issues.none {
+                it.code == "SOURCE_RANGE_MISMATCH"
+            }
+        )
+    }
+
+    @Test
     fun epub3PrologueMappedToCh0001DoesNotBecomeChapterOne() {
         val epub = buildEpubWithNav(
             docs = listOf(
