@@ -420,9 +420,7 @@ private fun MainApp() {
             }.onSuccess { apk ->
                 updateMessage =
                     "Обновление загружено. Подтвердите установку Android."
-                context.startActivity(
-                    updateManager.installIntent(apk)
-                )
+                updateManager.requestInstall(apk)
             }.onFailure {
                 updateMessage =
                     "Не удалось загрузить обновление: " +
