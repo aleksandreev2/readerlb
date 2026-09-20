@@ -70,9 +70,20 @@ class RanobeLibUpdatePlanner {
         )
 
         val merged = JSONArray()
+        val seenIds = mutableSetOf<Long>()
+
         numbers.forEachIndexed { index, number ->
             val source = existing[number] ?: incoming.getValue(number)
             val copy = JSONObject(source.toString())
+            val id = copy.optLong("id", Long.MIN_VALUE)
+
+            require(id != Long.MIN_VALUE) {
+                "У главы $number отсутствует id"
+            }
+            require(seenIds.add(id)) {
+                "После объединения повторяется id $id. " +
+                    "ReaderLB не будет записывать потенциально повреждённый тайтл."
+            }
 
             copy.put("itemNumber", index + 1)
             merged.put(copy)
