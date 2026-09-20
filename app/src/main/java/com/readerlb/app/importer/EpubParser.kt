@@ -61,35 +61,57 @@ class EpubParser(
     }
 
     private fun cleanupStaleAssetDirectories() {
-        val cutoff =
-            System.currentTimeMillis() -
-                STALE_ASSET_MAX_AGE_MILLIS
-
-        context.cacheDir
-            .listFiles()
-            .orEmpty()
-            .asSequence()
-            .filter(File::isDirectory)
-            .filter {
-                it.name.startsWith(
-                    ASSET_DIRECTORY_PREFIX
-                )
-            }
-            .filter {
-                it.lastModified() < cutoff
-            }
-            .forEach {
-                runCatching {
-                    it.deleteRecursively()
-                }
-            }
+        cleanupStaleEpubAssetDirectories(
+            cacheDir = context.cacheDir,
+            nowMillis =
+                System.currentTimeMillis()
+        )
     }
 
     private companion object {
         const val ASSET_DIRECTORY_PREFIX =
-            "readerlb_epub_assets_"
-
-        const val STALE_ASSET_MAX_AGE_MILLIS =
-            24L * 60L * 60L * 1000L
+            EPUB_ASSET_DIRECTORY_PREFIX
     }
+}
+
+internal const val EPUB_ASSET_DIRECTORY_PREFIX =
+    "readerlb_epub_assets_"
+
+internal const val EPUB_ASSET_MAX_AGE_MILLIS =
+    24L * 60L * 60L * 1000L
+
+internal fun cleanupStaleEpubAssetDirectories(
+    cacheDir: File,
+    nowMillis: Long
+): Int {
+    val cutoff =
+        nowMillis -
+            EPUB_ASSET_MAX_AGE_MILLIS
+    var removed = 0
+
+    cacheDir
+        .listFiles()
+        .orEmpty()
+        .asSequence()
+        .filter(File::isDirectory)
+        .filter {
+            it.name.startsWith(
+                EPUB_ASSET_DIRECTORY_PREFIX
+            )
+        }
+        .filter {
+            it.lastModified() in
+                1 until cutoff
+        }
+        .forEach { directory ->
+            if (
+                runCatching {
+                    directory.deleteRecursively()
+                }.getOrDefault(false)
+            ) {
+                removed += 1
+            }
+        }
+
+    return removed
 }
