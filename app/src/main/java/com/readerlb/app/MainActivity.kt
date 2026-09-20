@@ -1350,8 +1350,8 @@ private fun ImportScreen(
                                 book.domNekromantaEdition
                             ) {
                                 baseSuccess +
-                                    "\n\n☠ Некромант узнал своих. " +
-                                    "Добро пожаловать домой."
+                                    "\n\nПриятного чтения, товарищ! " +
+                                    "(с) Некромант"
                             } else {
                                 baseSuccess
                             }
