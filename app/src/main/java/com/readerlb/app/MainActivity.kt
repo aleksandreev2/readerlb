@@ -56,7 +56,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -2077,26 +2076,26 @@ private fun rememberLibraryCover(
 > {
     val context =
         androidx.compose.ui.platform.LocalContext.current
+    val state = remember(uri) {
+        mutableStateOf<
+            androidx.compose.ui.graphics.ImageBitmap?
+        >(null)
+    }
 
-    return produceState(
-        initialValue = null,
-        key1 = uri
-    ) {
-        if (uri == null) {
-            value = null
-            return@produceState
-        }
-
-        val decoded =
+    LaunchedEffect(uri) {
+        state.value = if (uri == null) {
+            null
+        } else {
             withContext(Dispatchers.IO) {
                 decodeLibraryCover(
                     context = context,
                     uri = uri
                 )?.asImageBitmap()
             }
-
-        value = decoded
+        }
     }
+
+    return state
 }
 
 private fun decodeLibraryCover(
