@@ -97,6 +97,7 @@ import com.readerlb.app.ui.theme.Navy
 import com.readerlb.app.ui.theme.Navy2
 import com.readerlb.app.ui.theme.ReaderLBTheme
 import com.readerlb.app.ui.theme.Success
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1083,7 +1084,9 @@ private fun ImportScreen(
     ) {
         val rawUri = selectedUri
             ?: return@LaunchedEffect
-        if (parseGeneration <= 0) {
+        val generation = parseGeneration
+
+        if (generation <= 0) {
             return@LaunchedEffect
         }
 
@@ -1093,22 +1096,44 @@ private fun ImportScreen(
         success = null
         busy = true
 
-        runCatching {
-            withContext(Dispatchers.IO) {
+        try {
+            val book = withContext(Dispatchers.IO) {
                 repository.parse(uri)
             }
-        }.onSuccess { book ->
+
             parsed = book
             if (title.isBlank()) {
                 title = book.title
             }
-        }.onFailure {
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Throwable) {
             error =
-                it.message
+                throwable.message
                     ?: "Не удалось разобрать файл"
+        } finally {
+            if (
+                parseGeneration == generation
+            ) {
+                busy = false
+            }
         }
+    }
 
-        busy = false
+    fun cancelAnalysis() {
+        if (
+            busy &&
+            parsed == null
+        ) {
+            selectedUri = null
+            fileName = ""
+            title = ""
+            firstChapter = ""
+            lastChapter = ""
+            error = null
+            success = null
+            warningsAcknowledged = false
+        }
     }
 
     LazyColumn(
@@ -1151,7 +1176,11 @@ private fun ImportScreen(
         item {
             FileDropCard(
                 fileName = fileName,
-                busy = busy,
+                analyzing =
+                    busy && parsed == null,
+                enabled = !busy,
+                onCancelAnalysis =
+                    ::cancelAnalysis,
                 onPick = {
                     filePicker.launch(
                         arrayOf(
@@ -1779,7 +1808,9 @@ private fun chapterCountText(
 @Composable
 private fun FileDropCard(
     fileName: String,
-    busy: Boolean,
+    analyzing: Boolean,
+    enabled: Boolean,
+    onCancelAnalysis: () -> Unit,
     onPick: () -> Unit
 ) {
     Card(
@@ -1792,8 +1823,11 @@ private fun FileDropCard(
             modifier = Modifier.padding(horizontal = 22.dp, vertical = 30.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (busy) {
-                CircularProgressIndicator(color = Blue, modifier = Modifier.size(48.dp))
+            if (analyzing) {
+                CircularProgressIndicator(
+                    color = Blue,
+                    modifier = Modifier.size(48.dp)
+                )
             } else {
                 Icon(
                     Icons.Default.Add,
@@ -1814,14 +1848,47 @@ private fun FileDropCard(
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(10.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Blue)
-                    .clickable(enabled = !busy, onClick = onPick)
-                    .padding(horizontal = 42.dp, vertical = 12.dp)
-            ) {
-                Text("Выбрать файл", color = Color.White, fontWeight = FontWeight.Bold)
+            if (analyzing) {
+                Text(
+                    "Отменить анализ",
+                    color = Blue,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .padding(vertical = 12.dp)
+                        .clickable(
+                            onClick =
+                                onCancelAnalysis
+                        )
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .clip(
+                            RoundedCornerShape(12.dp)
+                        )
+                        .background(
+                            if (enabled) {
+                                Blue
+                            } else {
+                                Color(0xFF9AB1C5)
+                            }
+                        )
+                        .clickable(
+                            enabled = enabled,
+                            onClick = onPick
+                        )
+                        .padding(
+                            horizontal = 42.dp,
+                            vertical = 12.dp
+                        )
+                ) {
+                    Text(
+                        "Выбрать файл",
+                        color = Color.White,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
             }
             Text(
                 "Поддерживаются: EPUB, TXT · ZIP с EPUB-структурой",
