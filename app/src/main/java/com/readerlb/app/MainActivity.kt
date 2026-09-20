@@ -2667,7 +2667,7 @@ private fun LibraryScreen(
                             colors =
                                 CardDefaults.cardColors(
                                     containerColor =
-                                        Color.White
+                                        MaterialTheme.colorScheme.surface
                                 ),
                             shape =
                                 RoundedCornerShape(
@@ -2747,7 +2747,7 @@ private fun LibrarySortPill(
                 if (selected) {
                     MaterialTheme.colorScheme.primaryContainer
                 } else {
-                    Color.White
+                    MaterialTheme.colorScheme.surface
                 }
             )
             .border(
