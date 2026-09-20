@@ -75,6 +75,7 @@ import com.readerlb.app.importer.ImportRepository
 import com.readerlb.app.importer.ParsedBook
 import com.readerlb.app.importer.RanobeLibExporter
 import com.readerlb.app.importer.ReaderBlock
+import com.readerlb.app.importer.chapterNumberInRange
 import com.readerlb.app.importer.compareChapterNumbers
 import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
@@ -1095,13 +1096,25 @@ private fun ImportScreen(
             }
         }
 
-        if (parsed != null) {
+        parsed?.let { book ->
             item {
+                val selectedCount =
+                    book.chapters.count { chapter ->
+                        chapterNumberInRange(
+                            value = chapter.number,
+                            first = firstChapter
+                                .ifBlank { null },
+                            last = lastChapter
+                                .ifBlank { null }
+                        )
+                    }
+
                 GradientButton(
                 text = if (busy) {
-                    "Подготовка..."
+                    "Подготовка…"
                 } else {
-                    "Импортировать"
+                    "Импортировать " +
+                        chapterCountText(selectedCount)
                 },
                 enabled = !busy &&
                     parsed != null &&
@@ -1110,7 +1123,6 @@ private fun ImportScreen(
                         it.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING
                     } != false || warningsAcknowledged),
                 onClick = {
-                    val book = parsed ?: return@GradientButton
                     busy = true
                     error = null
                     success = null
@@ -1162,6 +1174,21 @@ private fun ImportScreen(
             }
         }
     }
+}
+
+private fun chapterCountText(
+    count: Int
+): String {
+    val mod100 = count % 100
+    val mod10 = count % 10
+    val word = when {
+        mod100 in 11..14 -> "глав"
+        mod10 == 1 -> "главу"
+        mod10 in 2..4 -> "главы"
+        else -> "глав"
+    }
+
+    return "$count $word"
 }
 
 @Composable
