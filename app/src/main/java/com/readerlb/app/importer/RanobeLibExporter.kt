@@ -64,6 +64,9 @@ class RanobeLibExporter(private val context: Context) {
                     ?: built.lastChapter,
                 slugUrl = built.slugUrl,
                 installedDirectly = installed,
+                updatedExisting = directResult?.updatedExisting ?: false,
+                addedChapterCount = directResult?.addedChapterCount
+                    ?: built.chapterCount,
                 downloadUri = download?.toString()
             )
         } finally {
@@ -101,7 +104,9 @@ class RanobeLibExporter(private val context: Context) {
             return DirectWriteResult(
                 chapterCount = result.totalChapterCount,
                 firstChapter = merged.first(),
-                lastChapter = merged.last()
+                lastChapter = merged.last(),
+                updatedExisting = true,
+                addedChapterCount = result.addedNumbers.size
             )
         }
 
@@ -190,7 +195,9 @@ class RanobeLibExporter(private val context: Context) {
         return DirectWriteResult(
             chapterCount = numbers.size,
             firstChapter = numbers.first(),
-            lastChapter = numbers.last()
+            lastChapter = numbers.last(),
+            updatedExisting = false,
+            addedChapterCount = numbers.size
         )
     }
 
@@ -287,6 +294,8 @@ class RanobeLibExporter(private val context: Context) {
     private data class DirectWriteResult(
         val chapterCount: Int,
         val firstChapter: String,
-        val lastChapter: String
+        val lastChapter: String,
+        val updatedExisting: Boolean,
+        val addedChapterCount: Int
     )
 }
