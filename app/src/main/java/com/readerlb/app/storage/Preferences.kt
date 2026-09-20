@@ -11,8 +11,28 @@ class Preferences(context: Context) {
         set(value) = prefs.edit().putBoolean("onboarding_done", value).apply()
 
     var ranobeLibBookTree: Uri?
-        get() = prefs.getString("ranobelib_book_tree", null)?.let(Uri::parse)
-        set(value) = prefs.edit().putString("ranobelib_book_tree", value?.toString()).apply()
+        get() = prefs.getString(
+            "ranobelib_book_tree",
+            null
+        )?.let(Uri::parse)
+        set(value) = prefs.edit()
+            .putString(
+                "ranobelib_book_tree",
+                value?.toString()
+            )
+            .apply()
+
+    var lastImportDocument: Uri?
+        get() = prefs.getString(
+            "last_import_document",
+            null
+        )?.let(Uri::parse)
+        set(value) = prefs.edit()
+            .putString(
+                "last_import_document",
+                value?.toString()
+            )
+            .apply()
 
     var lastUpdateCheckMillis: Long
         get() = prefs.getLong("last_update_check_millis", 0L)
