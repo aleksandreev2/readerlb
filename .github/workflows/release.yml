@@ -1,0 +1,61 @@
+name: ReaderLB release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Restore release keystore
+        env:
+          READERLB_KEYSTORE_B64: ${{ secrets.READERLB_KEYSTORE_B64 }}
+        run: |
+          test -n "$READERLB_KEYSTORE_B64"
+          echo "$READERLB_KEYSTORE_B64" | base64 --decode > release.keystore
+
+      - name: Test and build release APK
+        env:
+          READERLB_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          READERLB_KEYSTORE_PASSWORD: ${{ secrets.READERLB_KEYSTORE_PASSWORD }}
+          READERLB_KEY_ALIAS: ${{ secrets.READERLB_KEY_ALIAS }}
+          READERLB_KEY_PASSWORD: ${{ secrets.READERLB_KEY_PASSWORD }}
+        run: |
+          gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease --stacktrace
+
+      - name: Prepare release files
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp app/build/outputs/apk/release/app-release.apk "ReaderLB-${VERSION}.apk"
+          sha256sum "ReaderLB-${VERSION}.apk" > "ReaderLB-${VERSION}.apk.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "ReaderLB-${VERSION}.apk" \
+            "ReaderLB-${VERSION}.apk.sha256" \
+            --title "ReaderLB ${VERSION}" \
+            --generate-notes
