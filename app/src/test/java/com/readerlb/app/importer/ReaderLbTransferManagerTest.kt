@@ -165,3 +165,4 @@ class ReaderLbTransferManagerTest {
                 }
             }
             .toByteArray()
+}
