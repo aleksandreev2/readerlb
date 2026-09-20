@@ -1,8 +1,8 @@
 # Android update signing migration
 
-ReaderLB 0.4.x exposed a CI signing bug that explains why an APK could install
-cleanly but would not update the already installed app on a device such as a
-Redmi 9.
+ReaderLB 0.3.1–0.4.2 exposed a CI signing bug that explains why an APK could
+install cleanly but would not update the already installed app on a device such
+as a Redmi 9.
 
 ## What actually happened
 
@@ -16,6 +16,8 @@ debug certificates even though `versionCode` increased correctly.
 
 Fingerprints recovered directly from the published APK signing blocks:
 
+- ReaderLB 0.3.1: `0c4f8dfe5cab290dfdabb955ed7df27c5ce490499850283e0786e737ac59caf6`
+- ReaderLB 0.4.0: `e957d6a9d8f1462bd86320acba8afbd64d5e139f614331240cbff0ccf385ee53`
 - ReaderLB 0.4.1: `460470a11c4a15b3caa40bcc5779c65be3382276e741ae5254a9f7d6b60ea8ba`
 - ReaderLB 0.4.2: `171d0580de60360f9f641a7b573f61d852fd3a3dd96cc0975d42fc31d87d5417`
 - Current pinned test certificate: `c17731310b880d0fb9c4e55c1863aee7461650725003d02fa985ce2be3d22b22`
@@ -28,8 +30,8 @@ package manager bug; Redmi/MIUI simply exposed the signing inconsistency.
 
 There is no safe way to make Android accept a new APK over a package signed by
 an unrelated private key. The old CI-generated private keys are not available,
-so 0.4.x requires one final uninstall/reinstall when moving to the stable
-signing channel.
+so 0.3.1–0.4.2 requires one final uninstall/reinstall when moving to the
+stable signing channel.
 
 After that migration, every public ReaderLB release must use the same permanent
 release key. Never rotate it accidentally.
