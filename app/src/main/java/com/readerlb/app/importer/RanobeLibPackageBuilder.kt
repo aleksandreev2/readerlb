@@ -59,7 +59,8 @@ class RanobeLibPackageBuilder(
         rootDir: File,
         titleOverride: String = "",
         firstChapter: String? = null,
-        lastChapter: String? = null
+        lastChapter: String? = null,
+        onVerifying: () -> Unit = {}
     ): BuiltRanobeLibPackage {
         val firstValue = firstChapter
             ?.takeIf(String::isNotBlank)
@@ -235,6 +236,8 @@ class RanobeLibPackageBuilder(
             lastChapter = selected.last().number,
             slugUrl = slugUrl
         )
+
+        onVerifying()
 
         val report = verify(
             built = built,
