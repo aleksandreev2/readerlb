@@ -103,9 +103,7 @@ class RanobeLibLibraryScannerTest {
                 chapterCount = 41,
                 firstChapter = "0",
                 lastChapter = "89",
-                coverUri = android.net.Uri.parse(
-                    "content://example/cover"
-                ),
+                coverUri = null,
                 writeTime = 42L,
                 createdByReaderLB = true
             )
