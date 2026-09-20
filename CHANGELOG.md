@@ -6,10 +6,13 @@ Usability, lightweight build, branded EPUB easter egg and update foundation.
 
 - ReaderLB detects EPUB editions carrying the official «Дом Некроманта» translation credit/team link and unlocks a small post-import easter egg.
 - Settings now credit developer dollar and link to https://t.me/domnekromanta.
-- Added a lightweight GitHub Releases update checker: automatic daily checks, manual checks in Settings, APK download and Android installer handoff.
+- Added a lightweight GitHub Releases update checker: optional automatic daily checks, manual checks in Settings, APK download and Android PackageInstaller handoff.
+- Update downloads verify package name and signing-certificate continuity before Android is asked to install them.
+- Fixed the CI signing-path bug that made historical 0.3.1–0.4.2 test APKs use different debug certificates; current CI pins and verifies one explicit test certificate.
+- Added a permanent release-signing workflow and guards against tag/version mismatches and wrong release certificates.
 - Replaced the huge Material Icons Extended dependency with Material Icons Core.
-- Release builds now enable R8/resource shrinking and can use a dedicated persistent signing key supplied by CI secrets.
-- Added FileProvider/unknown-source update plumbing without adding a networking framework or background worker.
+- Release builds now enable R8/resource shrinking; the optimized test APK is about 2.3 MiB instead of roughly 55 MiB, with a 6 MiB CI size budget.
+- Import is now a guided mobile flow: settings appear only after file analysis, chapter range is collapsed by default, contextual hints can be replayed, the bottom navigation is hidden during import, and the action shows the selected chapter count.
 
 ## 0.4.2
 
@@ -48,7 +51,7 @@ Small usability patch after device testing.
 - The import-screen title is now truly centered independently of the back button.
 - The back arrow on the import screen is functional.
 - The RanobeLib folder picker opens at the expected `Android/data/ru.libappc/files/book` location when the Android file provider accepts an initial URI.
-- CI now reuses one debug signing key so future APKs can be installed as updates instead of forcing an uninstall; this preserves ReaderLB settings and the persisted RanobeLib folder grant between builds.
+- CI attempted to reuse one debug signing key for seamless updates. A runner-path mismatch was later found to make this ineffective for 0.3.1–0.4.2 artifacts; 0.5.0 fixes and verifies the signing path explicitly.
 - Existing Android 11+ storage restrictions still mean ReaderLB cannot silently grant itself access to another app's `Android/data` directory.
 
 ## 0.3.0
