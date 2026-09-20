@@ -401,7 +401,9 @@ private fun MainApp() {
                 onImported = {
                     historyStore.add(it)
                     history = historyStore.load()
-                    tab = AppTab.HOME
+                },
+                onOpenLibrary = {
+                    tab = AppTab.LIBRARY
                 }
             )
             AppTab.LIBRARY -> LibraryScreen(
@@ -531,7 +533,8 @@ private fun ImportScreen(
     folderUri: Uri?,
     onBack: () -> Unit,
     onPickFolder: () -> Unit,
-    onImported: (com.readerlb.app.importer.ExportResult) -> Unit
+    onImported: (com.readerlb.app.importer.ExportResult) -> Unit,
+    onOpenLibrary: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -796,7 +799,18 @@ private fun ImportScreen(
             item { StatusCard(message, false) }
         }
         success?.let { message ->
-            item { StatusCard(message, true) }
+            item {
+                Column(
+                    verticalArrangement =
+                        Arrangement.spacedBy(10.dp)
+                ) {
+                    StatusCard(message, true)
+                    OutlineAction(
+                        "Открыть библиотеку",
+                        onOpenLibrary
+                    )
+                }
+            }
         }
 
         item {
