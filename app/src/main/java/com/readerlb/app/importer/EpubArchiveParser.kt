@@ -600,30 +600,42 @@ class EpubArchiveParser {
             tocChapterNumber != null ||
                 textChapterNumber != null
 
+        // Explicit chapter numbering wins over service-page heuristics.
+        // Technical href numbering alone does not, because service pages are
+        // often named secNNNN.xhtml.
+        val serviceDocument =
+            !hasExplicitChapterNumber &&
+                (
+                    isServiceDocument(item) ||
+                        isServiceLabel(
+                            tocLabel,
+                            heading
+                        )
+                    )
+
+        val blocks = if (serviceDocument) {
+            emptyList()
+        } else {
+            extractBlocks(
+                zip = zip,
+                contentPath = contentPath,
+                root = body,
+                firstHeading = heading,
+                issues = issues
+            )
+        }
+
         return HtmlDoc(
             item = item,
             spineIndex = spineIndex,
             heading = heading,
             tocLabel = tocLabel,
             plainText = plainText,
-            blocks = extractBlocks(
-                zip = zip,
-                contentPath = contentPath,
-                root = body,
-                firstHeading = heading,
-                issues = issues
-            ),
+            blocks = blocks,
             hrefChapterNumber = hrefChapterNumber,
             textChapterNumber = textChapterNumber,
             tocChapterNumber = tocChapterNumber,
-            // Explicit chapter numbering wins over service-page heuristics.
-            // Technical href numbering alone does not, because service pages
-            // are often named secNNNN.xhtml.
-            serviceDocument = !hasExplicitChapterNumber &&
-                (
-                    isServiceDocument(item) ||
-                        isServiceLabel(tocLabel, heading)
-                    ),
+            serviceDocument = serviceDocument,
             inlineImageCount = body
                 .getAllElements()
                 .count {
