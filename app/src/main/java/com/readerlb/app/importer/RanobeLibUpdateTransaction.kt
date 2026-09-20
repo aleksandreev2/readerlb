@@ -40,6 +40,7 @@ class RanobeLibUpdateTransaction(
             "Папка нового пакета не существует"
         }
 
+        recoverInterruptedUpdate(existing)
         recoverMetadataIfNeeded(existing)
         cleanupStaging(existing)
 
@@ -166,6 +167,29 @@ class RanobeLibUpdateTransaction(
                 STAGED_INFO
             )
 
+            val journal = JSONObject()
+                .put(
+                    "addedZipNames",
+                    JSONArray(
+                        newZipFiles.values
+                            .map { it.name }
+                    )
+                )
+                .put(
+                    "addedNumbers",
+                    JSONArray(plan.addedNumbers)
+                )
+
+            existing.writeBytes(
+                JOURNAL,
+                journal.toString()
+                    .toByteArray(Charsets.UTF_8)
+            )
+            requireJsonObjectFile(
+                existing,
+                JOURNAL
+            )
+
             newZipFiles.values.forEach { source ->
                 val staged = STAGED_ZIP_PREFIX + source.name
                 require(
@@ -232,6 +256,7 @@ class RanobeLibUpdateTransaction(
 
             existing.delete(BACKUP_CHAPTERS)
             existing.delete(BACKUP_INFO)
+            existing.delete(JOURNAL)
 
             return RanobeLibUpdateResult(
                 addedNumbers = plan.addedNumbers,
@@ -326,6 +351,134 @@ class RanobeLibUpdateTransaction(
 
         // Backups may still be present if restoration itself failed. Leaving
         // them is safer than deleting the last known-good metadata.
+    }
+
+    private fun recoverInterruptedUpdate(
+        storage: RanobeLibMutableStorage
+    ) {
+        if (!storage.exists(JOURNAL)) {
+            return
+        }
+
+        val journal = runCatching {
+            readJsonObject(
+                storage.readBytes(JOURNAL)
+            )
+        }.getOrElse {
+            error(
+                "Журнал предыдущего обновления повреждён. " +
+                    "ReaderLB не будет автоматически менять тайтл."
+            )
+        }
+
+        val zipNames = journal
+            .optJSONArray("addedZipNames")
+            ?.let { array ->
+                (0 until array.length())
+                    .map { array.optString(it).trim() }
+                    .filter(String::isNotBlank)
+            }
+            ?: emptyList()
+
+        val addedNumbers = journal
+            .optJSONArray("addedNumbers")
+            ?.let { array ->
+                (0 until array.length())
+                    .map { array.optString(it).trim() }
+                    .filter(String::isNotBlank)
+            }
+            ?: emptyList()
+
+        val canonicalCommitted =
+            storage.exists(CHAPTERS) &&
+                storage.exists(INFO) &&
+                runCatching {
+                    val chapters = readJsonArray(
+                        storage.readBytes(CHAPTERS)
+                    )
+                    val numbers = (0 until chapters.length())
+                        .map {
+                            chapters.getJSONObject(it)
+                                .getString("number")
+                        }
+                        .toSet()
+
+                    addedNumbers.isNotEmpty() &&
+                        addedNumbers.all(numbers::contains) &&
+                        readJsonObject(
+                            storage.readBytes(INFO)
+                        ).optJSONObject("media") != null
+                }.getOrDefault(false)
+
+        if (canonicalCommitted) {
+            // Metadata already crossed the final visibility boundary. The
+            // transaction committed; only cleanup was interrupted.
+            storage.delete(BACKUP_CHAPTERS)
+            storage.delete(BACKUP_INFO)
+        } else {
+            // The old metadata remains authoritative. Restore backups when
+            // needed and remove any new ZIPs that may have been published
+            // before the process was killed.
+            restoreBackup(
+                storage = storage,
+                canonical = CHAPTERS,
+                backup = BACKUP_CHAPTERS
+            )
+            restoreBackup(
+                storage = storage,
+                canonical = INFO,
+                backup = BACKUP_INFO
+            )
+
+            zipNames.forEach { name ->
+                if (storage.exists(name)) {
+                    require(storage.delete(name)) {
+                        "Не удалось удалить незавершённый файл $name"
+                    }
+                }
+            }
+        }
+
+        storage.names()
+            .filter {
+                it == STAGED_CHAPTERS ||
+                    it == STAGED_INFO ||
+                    it.startsWith(STAGED_ZIP_PREFIX)
+            }
+            .forEach { name ->
+                require(storage.delete(name)) {
+                    "Не удалось очистить файл предыдущей транзакции $name"
+                }
+            }
+
+        require(storage.delete(JOURNAL)) {
+            "Не удалось удалить журнал предыдущего обновления"
+        }
+    }
+
+    private fun restoreBackup(
+        storage: RanobeLibMutableStorage,
+        canonical: String,
+        backup: String
+    ) {
+        if (!storage.exists(backup)) {
+            return
+        }
+
+        if (storage.exists(canonical)) {
+            require(storage.delete(canonical)) {
+                "Не удалось подготовить восстановление $canonical"
+            }
+        }
+
+        require(
+            storage.rename(
+                backup,
+                canonical
+            )
+        ) {
+            "Не удалось восстановить $canonical после предыдущего сбоя"
+        }
     }
 
     private fun recoverMetadataIfNeeded(
@@ -444,5 +597,6 @@ class RanobeLibUpdateTransaction(
         const val BACKUP_INFO = ".readerlb-info.bak"
         const val BACKUP_CHAPTERS = ".readerlb-chapters.bak"
         const val STAGED_ZIP_PREFIX = ".readerlb-new-"
+        const val JOURNAL = ".readerlb-update.json"
     }
 }
