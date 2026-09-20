@@ -78,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import com.readerlb.app.importer.ImportRepository
 import com.readerlb.app.importer.ParsedBook
 import com.readerlb.app.importer.RanobeLibExporter
+import com.readerlb.app.importer.ReaderBlock
 import com.readerlb.app.importer.compareChapterNumbers
 import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
@@ -972,6 +973,23 @@ private fun ParsedPreview(book: ParsedBook) {
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 5.dp)
                     )
+
+                    val illustrationCount =
+                        book.chapters.sumOf { chapter ->
+                            chapter.blocks.count {
+                                it is ReaderBlock.Image
+                            }
+                        }
+
+                    if (illustrationCount > 0) {
+                        Text(
+                            "Иллюстраций к переносу: $illustrationCount",
+                            color = Blue,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
+                    }
                 }
             }
 
