@@ -56,6 +56,7 @@ Gradle устанавливать отдельно не нужно: в репо�
 
 - unit tests;
 - Android test compilation;
+- instrumented tests on API 29 and API 35;
 - Android Lint;
 - debug APK;
 - проверка сертификата подписи;
