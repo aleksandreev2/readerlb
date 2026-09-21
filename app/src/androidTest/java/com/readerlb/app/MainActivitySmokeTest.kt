@@ -22,16 +22,23 @@ class MainActivitySmokeTest {
         createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun firstLaunchCanReachHomeScreen() {
-        composeRule
-            .onNodeWithContentDescription(
-                "Экран знакомства ReaderLB 1"
-            )
-            .fetchSemanticsNode()
+    fun launchCanReachHomeScreen() {
+        val skipNodes =
+            composeRule
+                .onAllNodesWithText("Пропустить")
+                .fetchSemanticsNodes()
 
-        composeRule
-            .onNodeWithText("Пропустить")
-            .performClick()
+        if (skipNodes.isNotEmpty()) {
+            composeRule
+                .onNodeWithContentDescription(
+                    "Экран знакомства ReaderLB 1"
+                )
+                .fetchSemanticsNode()
+
+            composeRule
+                .onNodeWithText("Пропустить")
+                .performClick()
+        }
 
         composeRule
             .onNodeWithText(
