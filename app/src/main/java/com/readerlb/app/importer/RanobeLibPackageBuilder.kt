@@ -402,6 +402,23 @@ class RanobeLibPackageBuilder(
             }
         }
 
+        if (actualNumbers.isNotEmpty()) {
+            if (
+                actualNumbers.first() !=
+                built.firstChapter
+            ) {
+                errors +=
+                    "Первая глава пакета не совпадает с метаданными"
+            }
+            if (
+                actualNumbers.last() !=
+                built.lastChapter
+            ) {
+                errors +=
+                    "Последняя глава пакета не совпадает с метаданными"
+            }
+        }
+
         if (expectedChapterNumbers != null) {
             if (actualNumbers != expectedChapterNumbers) {
                 errors += "Список номеров глав после сборки не совпадает с исходным"

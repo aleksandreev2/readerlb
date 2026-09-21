@@ -366,6 +366,53 @@ class RanobeLibPackageBuilderTest {
     }
 
     @Test
+    fun verifyRejectsChapterRangeMetadataThatDoesNotMatchFiles() {
+        val root =
+            Files.createTempDirectory(
+                "readerlb_range_verify_"
+            ).toFile()
+
+        try {
+            val built =
+                builder.build(
+                    book =
+                        bookWithChapters(
+                            "10",
+                            "11",
+                            "12"
+                        ),
+                    rootDir = root
+                )
+
+            val report =
+                builder.verify(
+                    built.copy(
+                        firstChapter = "9",
+                        lastChapter = "99"
+                    )
+                )
+
+            assertFalse(report.isValid)
+            assertTrue(
+                report.errors.any {
+                    it.contains(
+                        "Первая глава"
+                    )
+                }
+            )
+            assertTrue(
+                report.errors.any {
+                    it.contains(
+                        "Последняя глава"
+                    )
+                }
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun duplicateChapterNumbersAreRejectedBeforeWriting() {
         val book = ParsedBook(
             title = "Дубликаты",
