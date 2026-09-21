@@ -69,13 +69,30 @@ The release workflow then:
 
 1. verifies the tag/version match;
 2. restores the permanent signing key;
-3. runs the Android 10 emulator smoke test;
+3. prepares KVM/emulator dependencies with retries and runs the Android 10 smoke test;
 4. runs unit tests and release lint;
 5. builds the R8/resource-shrunk APK;
 6. verifies the signing certificate;
 7. writes the APK SHA-256 file;
-8. publishes both files to GitHub Releases;
-9. sends the optional FCM release notification when configured.
+8. creates a signed GitHub/Sigstore build-provenance attestation for the APK;
+9. publishes the APK and checksum to GitHub Releases;
+10. sends the optional FCM release notification when configured.
+
+## Build provenance
+
+Stable APKs receive a GitHub artifact attestation from the release workflow.
+This lets users verify that an APK was produced by this repository's GitHub
+Actions workflow rather than only comparing a checksum.
+
+Example verification with GitHub CLI:
+
+```bash
+gh attestation verify ReaderLB-1.0.0.apk -R aleksandreev2/readerlb
+```
+
+The Android signing certificate remains the compatibility identity used by the
+OS for in-place upgrades. The GitHub attestation is an additional supply-chain
+proof, not a replacement for Android signing.
 
 ## Post-release verification
 
