@@ -1,0 +1,92 @@
+name: ReaderLB release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Verify tag matches app version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -Fq "versionName = \"${VERSION}\"" app/build.gradle.kts
+
+      - name: Restore release keystore
+        env:
+          READERLB_KEYSTORE_B64: ${{ secrets.READERLB_KEYSTORE_B64 }}
+        run: |
+          test -n "$READERLB_KEYSTORE_B64"
+          echo "$READERLB_KEYSTORE_B64" | base64 --decode > release.keystore
+
+      - name: Android 10 UI smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: gradle :app:connectedDebugAndroidTest --stacktrace
+
+      - name: Test and build release APK
+        env:
+          READERLB_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          READERLB_KEYSTORE_PASSWORD: ${{ secrets.READERLB_KEYSTORE_PASSWORD }}
+          READERLB_KEY_ALIAS: ${{ secrets.READERLB_KEY_ALIAS }}
+          READERLB_KEY_PASSWORD: ${{ secrets.READERLB_KEY_PASSWORD }}
+        run: |
+          gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease --stacktrace
+
+      - name: Verify release signing identity
+        env:
+          READERLB_KEYSTORE_PASSWORD: ${{ secrets.READERLB_KEYSTORE_PASSWORD }}
+          READERLB_KEY_ALIAS: ${{ secrets.READERLB_KEY_ALIAS }}
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk 2>&1)"
+          printf '%s\n' "$CERT_OUTPUT"
+
+          APK_SHA="$(printf '%s\n' "$CERT_OUTPUT" | sed -n 's/.*SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          KEY_SHA="$(keytool -list -v -keystore release.keystore -storepass "$READERLB_KEYSTORE_PASSWORD" -alias "$READERLB_KEY_ALIAS" | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
+
+          test -n "$APK_SHA"
+          test -n "$KEY_SHA"
+          test "$APK_SHA" = "$KEY_SHA"
+
+      - name: Prepare release files
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp app/build/outputs/apk/release/app-release.apk "ReaderLB-${VERSION}.apk"
+          sha256sum "ReaderLB-${VERSION}.apk" > "ReaderLB-${VERSION}.apk.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "ReaderLB-${VERSION}.apk" \
+            "ReaderLB-${VERSION}.apk.sha256" \
+            --title "ReaderLB ${VERSION}" \
+            --generate-notes

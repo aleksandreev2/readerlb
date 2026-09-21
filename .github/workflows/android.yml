@@ -1,0 +1,133 @@
+name: Android build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Restore stable debug signing key
+        id: debug-keystore-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: readerlb-debug-keystore-v1
+
+      - name: Create stable debug signing key
+        if: steps.debug-keystore-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.android
+          keytool -genkeypair -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=ReaderLB Debug,O=ReaderLB,C=AM"
+
+      - name: Pin Gradle to cached debug signing key
+        run: |
+          echo "READERLB_DEBUG_KEYSTORE_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+
+      - name: Run unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - name: Compile Android runtime tests
+        run: gradle :app:assembleDebugAndroidTest --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReaderLB-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest
+            app/build/test-results/testDebugUnitTest
+
+      - name: Run Android lint
+        run: gradle :app:lintDebug --stacktrace
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Verify stable APK signing certificate
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          test -x "$APKSIGNER"
+
+          KEY_SHA="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
+
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk 2>&1)"
+          printf '%s\n' "$CERT_OUTPUT"
+          APK_SHA="$(printf '%s\n' "$CERT_OUTPUT" | sed -n 's/.*SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+
+          echo "Cached key SHA-256: $KEY_SHA"
+          echo "APK key SHA-256:    $APK_SHA"
+          test -n "$KEY_SHA"
+          test -n "$APK_SHA"
+          test "$KEY_SHA" = "$APK_SHA"
+
+      - name: Build optimized test APK
+        env:
+          READERLB_KEYSTORE_PATH: ${{ env.READERLB_DEBUG_KEYSTORE_PATH }}
+          READERLB_KEYSTORE_PASSWORD: android
+          READERLB_KEY_ALIAS: androiddebugkey
+          READERLB_KEY_PASSWORD: android
+        run: |
+          gradle :app:assembleRelease --stacktrace
+          ls -lh app/build/outputs/apk/release/
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk 2>&1)"
+          printf '%s\n' "$CERT_OUTPUT"
+          RELEASE_SHA="$(printf '%s\n' "$CERT_OUTPUT" | sed -n 's/.*SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          KEY_SHA="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(":","",$2); print tolower($2); exit}')"
+          test "$RELEASE_SHA" = "$KEY_SHA"
+
+      - name: Enforce lightweight APK budget
+        run: |
+          APK="app/build/outputs/apk/release/app-release.apk"
+          SIZE="$(stat -c%s "$APK")"
+          MAX=$((6 * 1024 * 1024))
+          echo "Optimized APK size: $SIZE bytes"
+          test "$SIZE" -le "$MAX"
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReaderLB-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload optimized test APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReaderLB-optimized-test
+          path: app/build/outputs/apk/release/app-release.apk
