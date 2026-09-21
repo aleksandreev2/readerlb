@@ -5,9 +5,9 @@ settings that cannot be safely inferred from source code.
 
 ## Required before calling ReaderLB fully open source
 
-- [ ] Choose and add an OSI-compatible software license in a root `LICENSE`
-  file.
-- [ ] Update the README license section to name the selected license.
+- [x] Choose and add an OSI-compatible software license in a root `LICENSE`
+  file (GNU GPL v3.0).
+- [x] Update the README license section to name the selected license.
 
 Publishing source without a license allows viewing/forking through GitHub, but
 does not grant the normal reuse, modification and redistribution permissions
