@@ -34,7 +34,7 @@ jobs:
 
           while IFS= read -r ref; do
             branch="${ref#refs/remotes/origin/}"
-            if [ "$branch" = "HEAD" ]; then
+            if [ "$branch" = "HEAD" ] || [ "$branch" = "$(git branch --show-current)" ]; then
               continue
             fi
             git branch -f "$branch" "$ref"
