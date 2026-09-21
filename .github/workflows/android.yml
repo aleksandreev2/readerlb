@@ -26,8 +26,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: "8.9"
 
       - name: Restore stable debug signing key
         id: debug-keystore-cache
@@ -55,10 +53,10 @@ jobs:
           echo "READERLB_DEBUG_KEYSTORE_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
 
       - name: Run unit tests
-        run: gradle :app:testDebugUnitTest --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
 
       - name: Compile Android runtime tests
-        run: gradle :app:assembleDebugAndroidTest --stacktrace
+        run: ./gradlew :app:assembleDebugAndroidTest --stacktrace
 
       - name: Upload test reports
         if: always()
@@ -70,10 +68,10 @@ jobs:
             app/build/test-results/testDebugUnitTest
 
       - name: Run Android lint
-        run: gradle :app:lintDebug --stacktrace
+        run: ./gradlew :app:lintDebug --stacktrace
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug --stacktrace
 
       - name: Verify stable APK signing certificate
         run: |
@@ -100,7 +98,7 @@ jobs:
           READERLB_KEY_ALIAS: androiddebugkey
           READERLB_KEY_PASSWORD: android
         run: |
-          gradle :app:assembleRelease --stacktrace
+          ./gradlew :app:assembleRelease --stacktrace
           ls -lh app/build/outputs/apk/release/
 
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
