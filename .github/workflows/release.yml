@@ -34,8 +34,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
-          if ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Release tag must use a semantic version such as v1.0.0"
+          if ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Stable release tags must use exactly vMAJOR.MINOR.PATCH (for example v1.0.0)"
             exit 1
           fi
 
