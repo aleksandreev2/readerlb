@@ -8,8 +8,26 @@
 .externalNativeBuild
 .cxx
 app/build
+
+# Private local configuration and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+secrets.properties
+keystore.properties
+credentials.json
+**/credentials*.json
+
 # Firebase Admin / service-account credentials (never commit)
 **/*service-account*.json
 **/*-firebase-adminsdk-*.json
 **/firebase-admin*.json
 
+# app/google-services.json is intentionally tracked.
+# It is Firebase Android client configuration, not an Admin credential.
