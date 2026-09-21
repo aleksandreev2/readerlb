@@ -60,10 +60,13 @@ jobs:
       - name: Preinstall Android emulator with retries
         shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -perm -111 | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
           for attempt in 1 2 3; do
-            if sdkmanager --install emulator --channel=0 > /dev/null; then
+            if "$SDKMANAGER" --install emulator --channel=0 > /dev/null; then
               exit 0
             fi
 
