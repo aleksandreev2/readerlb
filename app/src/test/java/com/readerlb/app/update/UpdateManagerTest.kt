@@ -159,5 +159,17 @@ class UpdateManagerTest {
                 current = "0.4.2"
             )
         )
+        assertFalse(
+            isVersionNewer(
+                latest = "1.0.0-beta",
+                current = "0.9.6"
+            )
+        )
+        assertFalse(
+            isVersionNewer(
+                latest = "nightly",
+                current = "0.9.6"
+            )
+        )
     }
 }
