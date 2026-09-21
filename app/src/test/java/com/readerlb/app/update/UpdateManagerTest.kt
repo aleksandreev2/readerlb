@@ -101,6 +101,39 @@ class UpdateManagerTest {
     }
 
     @Test
+    fun updateDownloadSizeLimitAllowsUnknownOrExpectedSizes() {
+        requireUpdateApkSizeWithinLimit(-1L)
+        requireUpdateApkSizeWithinLimit(
+            MAX_UPDATE_APK_BYTES
+        )
+    }
+
+    @Test
+    fun updateDownloadSizeLimitRejectsOversizedApks() {
+        var failed = false
+
+        try {
+            requireUpdateApkSizeWithinLimit(
+                MAX_UPDATE_APK_BYTES + 1L
+            )
+        } catch (
+            expected:
+                IllegalArgumentException
+        ) {
+            failed = true
+        }
+
+        assertTrue(failed)
+        assertTrue(
+            friendlyUpdateDownloadError(
+                IllegalArgumentException(
+                    "APK обновления слишком большой"
+                )
+            ).contains("неожиданный размер")
+        )
+    }
+
+    @Test
     fun semanticVersionComparisonUsesNumericSegments() {
         assertTrue(
             isVersionNewer(
