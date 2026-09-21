@@ -41,14 +41,27 @@ Before merge:
 
 1. unit tests are green;
 2. Android runtime tests compile;
-3. Android Lint is green;
-4. debug and optimized APKs build;
-5. signing identity check passes;
-6. APK size budget passes;
-7. CodeQL has no blocking result.
+3. instrumented tests pass on Android 10 / API 29 and Android 15 / API 35;
+4. Android Lint is green;
+5. debug and optimized APKs build;
+6. signing identity check passes;
+7. APK size budget passes;
+8. CodeQL has no blocking result.
 
 For storage, update, signing or notification changes, add a manual smoke-test
 note to the PR.
+
+## Android runtime matrix
+
+`.github/workflows/android-runtime.yml` executes the instrumented Android tests
+on both ends of ReaderLB's important compatibility range:
+
+- API 29 — the minimum supported Android version;
+- API 35 — a modern scoped-storage/notification-permission environment.
+
+This is intentionally separate from the faster build workflow: the normal
+Android job still compiles instrumented tests early, while the runtime workflow
+boots real emulators and executes them.
 
 ## Security scanning
 
