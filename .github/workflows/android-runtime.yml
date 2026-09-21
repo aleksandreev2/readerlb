@@ -63,6 +63,35 @@ jobs:
             -dname "CN=ReaderLB Runtime Tests,O=ReaderLB,C=AM"
           echo "READERLB_DEBUG_KEYSTORE_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
 
+      - name: Preinstall Android emulator with retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+
+          PACKAGE="system-images;android-${{ matrix.api }};google_apis;x86_64"
+          success=false
+
+          for attempt in 1 2 3; do
+            echo "SDK install attempt $attempt/3"
+            if sdkmanager --install \
+              emulator \
+              platform-tools \
+              "platforms;android-${{ matrix.api }}" \
+              "$PACKAGE"; then
+              success=true
+              break
+            fi
+
+            echo "::warning::Android SDK download failed; retrying."
+            sleep $((attempt * 10))
+          done
+
+          if [ "$success" != "true" ]; then
+            echo "::error::Android emulator SDK packages could not be installed after 3 attempts."
+            exit 1
+          fi
+
       - name: Run Android instrumentation tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
