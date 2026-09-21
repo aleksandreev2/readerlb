@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -27,10 +29,22 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Verify tag matches app version
+      - name: Verify release tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+
+          if ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag must use a semantic version such as v1.0.0"
+            exit 1
+          fi
+
           grep -Fq "versionName = \"${VERSION}\"" app/build.gradle.kts
+
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Stable release tags must point to a commit already in main"
+            exit 1
+          fi
 
       - name: Restore release keystore
         env:
@@ -106,6 +120,7 @@ jobs:
       - name: Authenticate to Google for FCM
         if: steps.firebase.outputs.configured == 'true'
         id: google-auth
+        continue-on-error: true
         uses: google-github-actions/auth@v3
         with:
           credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
@@ -113,7 +128,9 @@ jobs:
           access_token_scopes: https://www.googleapis.com/auth/firebase.messaging
 
       - name: Notify ReaderLB release subscribers
-        if: steps.firebase.outputs.configured == 'true'
+        if: steps.firebase.outputs.configured == 'true' && steps.google-auth.outcome == 'success'
+        id: release-push
+        continue-on-error: true
         env:
           ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
           VERSION: ${{ github.ref_name }}
@@ -137,8 +154,18 @@ jobs:
             }')"
 
           curl --fail-with-body \
+            --retry 2 \
+            --retry-all-errors \
             -X POST \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json; UTF-8" \
+            -H "Content-Type: application/json; charset=UTF-8" \
             -d "$PAYLOAD" \
             "https://fcm.googleapis.com/v1/projects/$FIREBASE_PROJECT_ID/messages:send"
+
+      - name: Report release push failure
+        if: >-
+          steps.firebase.outputs.configured == 'true' &&
+          (steps.google-auth.outcome != 'success' ||
+           steps.release-push.outcome == 'failure')
+        run: |
+          echo "::warning::GitHub Release was published, but the optional FCM notification failed."
