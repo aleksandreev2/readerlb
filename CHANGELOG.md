@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.6
+
+Portable-package integrity hardening.
+
+- ReaderLB portable-package inspection no longer depends on the manifest being the first ZIP entry.
+- ReaderLB package manifests are size-bounded instead of being read into memory without a limit.
+- Portable packages reject unsafe, nested, foreign and duplicate files before installation.
+- Ordinary non-ReaderLB ZIP files still fall back to the normal ZIP/EPUB path instead of being rejected by transfer-only validation.
+- RanobeLib package verification now confirms that first/last chapter metadata matches the actual chapter list.
+
 ## 0.9.5
 
 Release notifications and repository hardening.
