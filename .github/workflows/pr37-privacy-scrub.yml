@@ -1,0 +1,93 @@
+name: One-time PR privacy scrub
+
+on:
+  push:
+    branches:
+      - "fix/import-screen-centering"
+    paths:
+      - ".github/workflows/pr37-privacy-scrub.yml"
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  scrub:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout complete branch history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Rewrite branch-only commit metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+          NOREPLY: "302271325+aleksandreev2@users.noreply.github.com"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin main "${BRANCH}"
+
+          BASE="$(git merge-base origin/main HEAD)"
+
+          git config user.name "aleksandreev2"
+          git config user.email "${NOREPLY}"
+
+          git rebase --rebase-merges --exec \
+            'git commit --amend --no-edit --author="aleksandreev2 <302271325+aleksandreev2@users.noreply.github.com>"' \
+            "${BASE}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git rm ".github/workflows/pr37-privacy-scrub.yml"
+          git commit -m "chore: remove one-time PR privacy scrub"
+
+          EXPECTED_TREE="182725390e206d4f1a5d1216a65c9b291bd6d007"
+          ACTUAL_TREE="$(git rev-parse 'HEAD^{tree}')"
+          test "${ACTUAL_TREE}" = "${EXPECTED_TREE}"
+
+          if git log "${BASE}..HEAD" --format='%ae%n%ce' |
+            grep -Ev '(@users\.noreply\.github\.com$|^noreply@github\.com$)' |
+            grep -q .
+          then
+            echo "::error::A branch-only commit still exposes a non-noreply email."
+            exit 1
+          fi
+
+          git push --force-with-lease origin "HEAD:${BRANCH}"
+
+      - name: Delete obsolete branch workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${BRANCH}&per_page=100" \
+            --jq '.workflow_runs[].id' |
+          while read -r run_id; do
+            if [ "${run_id}" != "${GITHUB_RUN_ID}" ]; then
+              gh api -X DELETE \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" ||
+                true
+            fi
+          done
+
+      - name: Delete this cleanup run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api -X DELETE \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" ||
+            true
