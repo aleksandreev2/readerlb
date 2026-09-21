@@ -70,6 +70,18 @@ class Preferences(context: Context) {
             .putBoolean("auto_update_checks", value)
             .apply()
 
+    var releaseNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(
+            "release_notifications_enabled",
+            false
+        )
+        set(value) = prefs.edit()
+            .putBoolean(
+                "release_notifications_enabled",
+                value
+            )
+            .apply()
+
     var directImportEnabled: Boolean
         get() = prefs.getBoolean("direct_import_enabled", true)
         set(value) = prefs.edit()

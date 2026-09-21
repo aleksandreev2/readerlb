@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.5
+
+Release notifications and repository hardening.
+
+- Added opt-in Firebase Cloud Messaging support for stable-release notifications.
+- FCM auto-initialization stays disabled until the user explicitly enables release notifications.
+- Android 13+ notification permission is requested only when the user enables the feature.
+- Release notifications open ReaderLB's update screen and force a fresh GitHub Releases check.
+- Added professional repository contribution, security, issue, pull-request and dependency-update templates.
+- Documented the new main/feature-branch workflow and Firebase notification architecture.
+
 ## 0.9.4
 
 Portable ReaderLB package detection hotfix.
