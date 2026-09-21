@@ -21,7 +21,9 @@ ReaderLB uses two channels only:
    - Are the only builds visible to the in-app updater.
 
 Do not add a beta channel until the updater has explicit pre-release version
-handling. Until then, test artifacts are the beta channel.
+handling. Until then, test artifacts are the beta channel. The stable release
+workflow therefore accepts only exact `vMAJOR.MINOR.PATCH` tags and rejects
+pre-release suffixes such as `-beta` or `-rc1`.
 
 ## Mandatory release gates
 
