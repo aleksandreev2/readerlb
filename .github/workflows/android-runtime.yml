@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload Android test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ReaderLB-android-runtime-api-${{ matrix.api-level }}
           if-no-files-found: ignore
