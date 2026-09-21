@@ -1,6 +1,7 @@
 # ReaderLB
 
 [![Android CI](https://github.com/aleksandreev2/readerlb/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/aleksandreev2/readerlb/actions/workflows/android.yml)
+[![CodeQL](https://github.com/aleksandreev2/readerlb/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/aleksandreev2/readerlb/actions/workflows/codeql.yml)
 
 ReaderLB — Android-приложение для безопасного импорта EPUB/TXT и переносимых пакетов ReaderLB в локальную библиотеку RanobeLib.
 
@@ -58,7 +59,8 @@ Push-уведомления о релизах выключены по умолч
 - debug APK;
 - проверка сертификата подписи;
 - R8/resource-shrunk APK;
-- лимит размера APK.
+- лимит размера APK;
+- CodeQL-анализ Kotlin-кода.
 
 Подробности: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) и [docs/TESTING.md](docs/TESTING.md).
 
@@ -76,10 +78,13 @@ Push-уведомления о релизах выключены по умолч
 
 Перед pull request прочитайте [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Ошибки и предложения можно создавать через GitHub Issues. Для уязвимостей используйте инструкции из [SECURITY.md](SECURITY.md), а не публичный issue.
+Ошибки и предложения можно создавать через GitHub Issues. Общие вопросы — в [SUPPORT.md](SUPPORT.md). Для уязвимостей используйте инструкции из [SECURITY.md](SECURITY.md), а не публичный issue.
 
 ## Связанные документы
 
+- [Architecture](docs/ARCHITECTURE.md)
+- [Privacy](PRIVACY.md)
+- [Open-source readiness](docs/OPEN_SOURCE_CHECKLIST.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Release process](docs/RELEASING.md)
 - [Signing migration](docs/SIGNING_MIGRATION.md)

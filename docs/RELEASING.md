@@ -1,36 +1,96 @@
 # ReaderLB releases and updates
 
-ReaderLB uses GitHub Releases as the update source.
+ReaderLB uses GitHub Releases as the only stable update source.
+
+## Release prerequisites
+
+A stable release must come from a commit already merged into `main`.
+
+Before tagging a release:
+
+1. update `versionCode` and `versionName` in `app/build.gradle.kts`;
+2. update `CHANGELOG.md`;
+3. merge the change into `main`;
+4. wait for Android CI and CodeQL to finish successfully;
+5. verify the intended version on at least one physical Android device when the
+   change touches storage, installation or notifications.
+
+Do not publish ordinary CI artifacts as stable releases.
 
 ## Permanent signing key
 
-Do not distribute CI debug APKs as updateable releases. Android only accepts an
-upgrade when the new APK is signed by the same certificate as the installed
-version.
+Android only accepts an in-place upgrade when the new APK is signed by the same
+certificate as the installed version.
 
-The repository release workflow expects one permanent Android signing keystore
-stored only in GitHub Actions secrets:
+The release workflow expects one permanent Android signing keystore stored only
+in GitHub Actions secrets:
 
 - `READERLB_KEYSTORE_B64`
 - `READERLB_KEYSTORE_PASSWORD`
 - `READERLB_KEY_ALIAS`
 - `READERLB_KEY_PASSWORD`
 
-The keystore itself must never be committed to this public repository.
+The keystore itself must never be committed to this public repository or copied
+into an issue, pull request, workflow log or release asset.
 
-After the first release-signed build is installed, every later release must use
-the same key.
+After the first release-signed build is installed, every later stable release
+must use that exact key.
+
+## Optional Firebase release push
+
+Release notifications use Firebase Cloud Messaging. The release workflow can
+send a push after the GitHub Release has been created successfully.
+
+The sender credential is stored only as:
+
+- `FIREBASE_SERVICE_ACCOUNT`
+
+This must contain the Firebase service-account JSON, not
+`app/google-services.json`.
+
+If the secret is absent, release publication still succeeds and the push step
+is skipped.
 
 ## Publishing
 
-Create a tag such as `v0.5.0`. The release workflow runs tests and lint,
-builds an R8/resource-shrunk release APK, calculates SHA-256 and publishes both
-files to GitHub Releases.
+Create a SemVer-style tag that exactly matches `versionName`, for example:
+
+```text
+v1.0.0
+```
+
+The tag must point at the reviewed `main` commit.
+
+The release workflow then:
+
+1. verifies the tag/version match;
+2. restores the permanent signing key;
+3. runs the Android 10 emulator smoke test;
+4. runs unit tests and release lint;
+5. builds the R8/resource-shrunk APK;
+6. verifies the signing certificate;
+7. writes the APK SHA-256 file;
+8. publishes both files to GitHub Releases;
+9. sends the optional FCM release notification when configured.
+
+## Post-release verification
+
+After publication:
+
+1. open the GitHub Release and verify the APK and `.sha256` assets exist;
+2. verify `releases/latest` resolves to the new stable release;
+3. check ReaderLB's in-app updater from the previous stable build;
+4. if FCM is configured, verify a subscribed device receives the release push;
+5. install the update over the previous stable build and confirm Android accepts
+   the signature.
+
+The stable-to-stable update test is mandatory before calling the signing/update
+chain production-ready.
 
 ## In-app updater
 
 ReaderLB checks `releases/latest` at most once per 24 hours when the app is
-opened. It does not run a permanent background service.
+opened. A release push can also open the update screen and force a fresh check.
 
 When a newer release exists:
 
@@ -40,13 +100,10 @@ When a newer release exists:
    release SHA-256 digest when one is available.
 4. ReaderLB verifies that the downloaded APK has the same application package
    name.
-5. ReaderLB opens a PackageInstaller session and Android handles the final user-authorized install.
+5. ReaderLB opens a PackageInstaller session and Android handles the final
+   user-authorized install.
 
-Android 8+ may require the user to allow ReaderLB as an install source. On
-Android 12+ ReaderLB requests the platform's no-extra-user-action update path
-when the system's documented conditions are satisfied. ReaderLB must still
-handle STATUS_PENDING_USER_ACTION because Android/OEM policy can require a
-confirmation. Android 11 and older therefore remain a semi-automatic flow.
+Android/OEM policy may still require user confirmation.
 
 ## Legacy test-build warning
 
