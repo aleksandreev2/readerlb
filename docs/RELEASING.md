@@ -49,7 +49,9 @@ This must contain the Firebase service-account JSON, not
 `app/google-services.json`.
 
 If the secret is absent, release publication still succeeds and the push step
-is skipped.
+is skipped. FCM delivery is best-effort: authentication or delivery failure is
+reported as a workflow warning after the GitHub Release has already been
+published.
 
 ## Publishing
 
@@ -59,7 +61,9 @@ Create a SemVer-style tag that exactly matches `versionName`, for example:
 v1.0.0
 ```
 
-The tag must point at the reviewed `main` commit.
+The tag must point at a reviewed commit already contained in `main`. The
+workflow verifies this before restoring signing material or building the
+release.
 
 The release workflow then:
 
