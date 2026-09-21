@@ -82,6 +82,8 @@ Push-уведомления о релизах выключены по умолч
 
 ## Связанные документы
 
+- [Architecture](docs/ARCHITECTURE.md)
+- [Privacy](PRIVACY.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Release process](docs/RELEASING.md)
 - [Signing migration](docs/SIGNING_MIGRATION.md)
