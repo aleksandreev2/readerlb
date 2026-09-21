@@ -20,6 +20,30 @@ Current fixtures cover:
 - filename-declared ranges that do not match the EPUB contents;
 - fallback numbering only when the EPUB contains no reliable numbering.
 
+## Android runtime tests
+
+For changes that can affect app startup, storage integration, Android APIs,
+notifications or installation flows, CI executes the instrumented suite on:
+
+- API 29 — ReaderLB's minimum supported Android version;
+- API 35 — a modern scoped-storage and notification-permission environment.
+
+A runtime failure is treated as a real regression until the test or application
+behavior is understood. CI setup failures such as transient emulator downloads
+should be fixed in the workflow rather than hidden by disabling the test.
+
+## Portable package checks
+
+Portable `.readerlb.zip` regression coverage includes:
+
+- manifest detection independent of filename suffix and ZIP entry ordering;
+- ordinary ZIP fallback when no ReaderLB manifest exists;
+- path traversal / foreign-path rejection once a ReaderLB manifest is present;
+- duplicate-entry rejection;
+- bounded manifest size;
+- package extraction into the expected title directory;
+- first/last chapter metadata matching the actual chapter list.
+
 ## Corpus checks
 
 Before parser releases, use a varied local corpus rather than a single successful EPUB. The private corpus itself is not committed to this public repository.
