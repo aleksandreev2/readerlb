@@ -9,7 +9,8 @@ ReaderLB uses a simple trunk-oriented workflow:
 - feature/fix/docs/chore branches are short-lived;
 - changes return to `main` through pull requests.
 
-The old long-running MVP branch exists only as project history. New development should not continue from it after the initial merge.
+The old long-running MVP branch exists only as project history. New development
+must not continue from it after the initial merge.
 
 ## Branch names
 
@@ -23,21 +24,44 @@ The old long-running MVP branch exists only as project history. New development 
 Before merge:
 
 1. unit tests are green;
-2. Android tests compile;
-3. lint is green;
+2. Android runtime tests compile;
+3. Android Lint is green;
 4. debug and optimized APKs build;
 5. signing identity check passes;
-6. size budget passes.
+6. APK size budget passes;
+7. CodeQL has no blocking result.
 
-For storage, update or signing changes, add a manual smoke-test note.
+For storage, update, signing or notification changes, add a manual smoke-test
+note to the PR.
+
+## Security scanning
+
+`.github/workflows/codeql.yml` performs GitHub CodeQL analysis for Kotlin using
+manual build mode. Kotlin requires a real build for complete extraction, so the
+workflow builds the debug app between CodeQL initialization and analysis.
+
+The workflow runs for `main`, pull requests into `main`, a weekly schedule,
+and manual dispatch.
+
+## Dependencies
+
+Dependabot checks Gradle and GitHub Actions monthly. Related updates are grouped
+to avoid a stream of one-dependency pull requests.
+
+Dependency PRs are not auto-merged. Major framework/tooling changes should pass
+the same CI and device checks as hand-written changes.
 
 ## Releases
 
-Stable releases are tag-driven and come only from a reviewed commit that is already in `main`.
+Stable releases are tag-driven and come only from a reviewed commit already in
+`main`.
 
 The release tag must match `versionName`, for example `v1.0.0`.
 
-Test artifacts from ordinary CI are not stable releases and must not be advertised by the in-app updater.
+Test artifacts from ordinary CI are not stable releases and must not be
+advertised by the in-app updater.
+
+See [RELEASING.md](RELEASING.md).
 
 ## Versioning
 
@@ -51,12 +75,15 @@ After 1.0:
 
 ## Main protection
 
-Recommended GitHub settings for `main`:
+Recommended GitHub rules for `main`:
 
 - require pull requests before merging;
-- require the Android CI status check;
+- require the Android build and CodeQL status checks;
 - block force pushes;
 - block branch deletion;
-- dismiss stale approvals when code changes if external contributors are active.
+- require branches to be up to date before merging;
+- dismiss stale approvals when code changes once external contributors are
+  active.
 
-Repository-admin settings are configured in GitHub itself; they are not stored in this repository.
+Repository-admin branch rules are configured in GitHub itself rather than in the
+source tree.
