@@ -1,0 +1,54 @@
+name: Bug report
+description: Сообщить об ошибке ReaderLB
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за отчёт. Не прикладывайте приватные книги, ключи или содержимое пользовательской библиотеки без необходимости.
+  - type: input
+    id: version
+    attributes:
+      label: Версия ReaderLB
+      placeholder: "0.9.5"
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android / устройство
+      placeholder: "Android 14, Xiaomi ..."
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что произошло?
+      description: Кратко опишите фактическое поведение.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как воспроизвести?
+      placeholder: |
+        1. Открыть ...
+        2. Выбрать ...
+        3. Нажать ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+    validations:
+      required: true
+  - type: checkboxes
+    id: data
+    attributes:
+      label: Проверка приватности
+      options:
+        - label: Я не приложил приватные EPUB, токены, keystore или service-account ключи.
+          required: true

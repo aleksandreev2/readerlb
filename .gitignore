@@ -1,0 +1,15 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+app/build
+# Firebase Admin / service-account credentials (never commit)
+**/*service-account*.json
+**/*-firebase-adminsdk-*.json
+**/firebase-admin*.json
+
