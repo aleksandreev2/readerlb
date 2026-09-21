@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -1687,7 +1688,7 @@ private fun ImportScreen(
             error == null
 
     if (emptyImportState) {
-        Column(
+        Box(
             modifier = modifier
                 .fillMaxSize()
                 .padding(
@@ -1702,69 +1703,36 @@ private fun ImportScreen(
                 }
             )
 
-            LazyColumn(
+            FileDropCard(
+                fileName = fileName,
+                analyzing = false,
+                enabled = true,
+                recentFileAvailable =
+                    recentDocument != null,
+                onOpenRecent = {
+                    queueFile(
+                        requireNotNull(
+                            recentDocument
+                        )
+                    )
+                },
+                onCancelAnalysis = {},
+                onPick = {
+                    filePicker.launch(
+                        arrayOf(
+                            "application/epub+zip",
+                            "application/zip",
+                            "text/plain",
+                            "application/octet-stream"
+                        )
+                    )
+                },
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding =
-                    PaddingValues(
-                        vertical = 18.dp
-                    ),
-                verticalArrangement =
-                    Arrangement.spacedBy(
-                        16.dp,
-                        Alignment.CenterVertically
+                    .align(Alignment.Center)
+                    .testTag(
+                        "import-file-hero"
                     )
-            ) {
-                item {
-                    FileDropCard(
-                        fileName = fileName,
-                        analyzing = false,
-                        enabled = true,
-                        onCancelAnalysis = {},
-                        onPick = {
-                            filePicker.launch(
-                                arrayOf(
-                                    "application/epub+zip",
-                                    "application/zip",
-                                    "text/plain",
-                                    "application/octet-stream"
-                                )
-                            )
-                        }
-                    )
-                }
-
-                if (recentDocument != null) {
-                    item {
-                        OutlineAction(
-                            "Открыть последний файл",
-                            onClick = {
-                                queueFile(
-                                    requireNotNull(
-                                        recentDocument
-                                    )
-                                )
-                            }
-                        )
-                    }
-                }
-
-                if (showHints) {
-                    item {
-                        CoachHintCard(
-                            title =
-                                "Начните с файла",
-                            text =
-                                "Выберите EPUB или TXT. " +
-                                    "ReaderLB сам найдёт главы, " +
-                                    "обложку и иллюстрации — " +
-                                    "ничего вручную заполнять " +
-                                    "до анализа не нужно."
-                        )
-                    }
-                }
-            }
+            )
         }
         return
     }
@@ -2576,10 +2544,13 @@ private fun FileDropCard(
     analyzing: Boolean,
     enabled: Boolean,
     onCancelAnalysis: () -> Unit,
-    onPick: () -> Unit
+    onPick: () -> Unit,
+    recentFileAvailable: Boolean = false,
+    onOpenRecent: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         shape = RoundedCornerShape(18.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Line)
@@ -2652,6 +2623,21 @@ private fun FileDropCard(
                         color = Color.White,
                         fontWeight =
                             FontWeight.Bold
+                    )
+                }
+
+                if (recentFileAvailable) {
+                    Text(
+                        "Открыть последний файл",
+                        color = Blue,
+                        fontWeight =
+                            FontWeight.SemiBold,
+                        modifier = Modifier
+                            .padding(top = 14.dp)
+                            .clickable(
+                                onClick =
+                                    onOpenRecent
+                            )
                     )
                 }
             }
