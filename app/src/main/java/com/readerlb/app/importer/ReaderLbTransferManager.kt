@@ -7,6 +7,7 @@ import android.provider.DocumentsContract
 import androidx.core.content.FileProvider
 import com.readerlb.app.storage.LocalLibraryItem
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipEntry
@@ -512,8 +513,10 @@ internal fun inspectReaderLbTransfer(
     input: InputStream
 ): PortableTitleInfo? {
     var manifest: PortableTitleInfo? = null
-    var hasInfo = false
-    var hasChapters = false
+    var manifestCount = 0
+    var duplicateFile: String? = null
+    val entries = ArrayList<String>()
+    val files = LinkedHashSet<String>()
 
     ZipInputStream(
         input.buffered()
@@ -524,50 +527,42 @@ internal fun inspectReaderLbTransfer(
                     ?: break
 
             val name = entry.name
-            require(
-                isSafeTransferEntry(
-                    name
-                )
-            ) {
-                "Пакет ReaderLB содержит небезопасный путь"
-            }
+            entries += name
 
-            if (
-                !entry.isDirectory &&
-                name ==
-                TRANSFER_MANIFEST
-            ) {
-                val json =
-                    JSONObject(
-                        zip.readBytes()
-                            .toString(
-                                Charsets.UTF_8
-                            )
-                    )
-                manifest =
-                    parseTransferManifest(
-                        json
-                    )
-            }
-
-            val current = manifest
-            if (current != null) {
-                val prefix =
-                    "book/" +
-                        current.slugUrl +
-                        "/"
+            if (!entry.isDirectory) {
                 if (
-                    name ==
-                    prefix + "info.json"
+                    !files.add(name) &&
+                    duplicateFile == null
                 ) {
-                    hasInfo = true
+                    duplicateFile = name
                 }
+
                 if (
                     name ==
-                    prefix +
-                        "chapters.json"
+                    TRANSFER_MANIFEST
                 ) {
-                    hasChapters = true
+                    manifestCount += 1
+                    require(
+                        manifestCount == 1
+                    ) {
+                        "Манифест пакета ReaderLB повторяется"
+                    }
+
+                    val manifestBytes =
+                        readZipEntryBytesLimited(
+                            input = zip,
+                            maxBytes =
+                                MAX_TRANSFER_MANIFEST_BYTES
+                        )
+                    manifest =
+                        parseTransferManifest(
+                            JSONObject(
+                                manifestBytes
+                                    .toString(
+                                        Charsets.UTF_8
+                                    )
+                            )
+                        )
                 }
             }
 
@@ -579,13 +574,108 @@ internal fun inspectReaderLbTransfer(
         manifest ?: return null
 
     require(
-        hasInfo &&
-            hasChapters
+        entries.size <=
+            MAX_TRANSFER_ENTRIES
+    ) {
+        "Пакет ReaderLB содержит слишком много файлов"
+    }
+
+    require(
+        duplicateFile == null
+    ) {
+        "Пакет ReaderLB содержит повторяющийся файл: $duplicateFile"
+    }
+
+    require(
+        entries.all(
+            ::isSafeTransferEntry
+        )
+    ) {
+        "Пакет ReaderLB содержит небезопасный путь"
+    }
+
+    val prefix =
+        "book/" +
+            result.slugUrl +
+            "/"
+
+    require(
+        entries.all { name ->
+            name ==
+                TRANSFER_MANIFEST ||
+                name == "book/" ||
+                name == prefix ||
+                (
+                    name.startsWith(
+                        prefix
+                    ) &&
+                        isSafeLeafName(
+                            name.removePrefix(
+                                prefix
+                            )
+                        )
+                )
+        }
+    ) {
+        "В пакете ReaderLB найден посторонний или вложенный файл"
+    }
+
+    require(
+        files.contains(
+            prefix + "info.json"
+        ) &&
+            files.contains(
+                prefix + "chapters.json"
+            )
     ) {
         "Пакет ReaderLB неполный"
     }
 
     return result
+}
+
+private fun readZipEntryBytesLimited(
+    input: InputStream,
+    maxBytes: Int
+): ByteArray {
+    val output =
+        ByteArrayOutputStream(
+            minOf(
+                maxBytes,
+                8 * 1024
+            )
+        )
+    val buffer =
+        ByteArray(
+            8 * 1024
+        )
+    var total = 0
+
+    while (true) {
+        val count =
+            input.read(buffer)
+        if (count < 0) {
+            break
+        }
+        if (count == 0) {
+            continue
+        }
+
+        total += count
+        require(
+            total <= maxBytes
+        ) {
+            "Манифест пакета ReaderLB слишком большой"
+        }
+
+        output.write(
+            buffer,
+            0,
+            count
+        )
+    }
+
+    return output.toByteArray()
 }
 
 internal fun extractReaderLbTransfer(
@@ -609,6 +699,9 @@ internal fun extractReaderLbTransfer(
             "/"
     var totalBytes = 0L
     var extracted = 0
+    var entryCount = 0
+    val seenFiles =
+        mutableSetOf<String>()
 
     ZipInputStream(
         input.buffered()
@@ -618,6 +711,14 @@ internal fun extractReaderLbTransfer(
                 zip.nextEntry
                     ?: break
             val name = entry.name
+            entryCount += 1
+
+            require(
+                entryCount <=
+                    MAX_TRANSFER_ENTRIES
+            ) {
+                "Пакет ReaderLB содержит слишком много файлов"
+            }
 
             require(
                 isSafeTransferEntry(
@@ -628,12 +729,33 @@ internal fun extractReaderLbTransfer(
             }
 
             if (
-                entry.isDirectory ||
                 name ==
                 TRANSFER_MANIFEST
             ) {
+                require(
+                    seenFiles.add(name)
+                ) {
+                    "Манифест пакета ReaderLB повторяется"
+                }
                 zip.closeEntry()
                 continue
+            }
+
+            if (entry.isDirectory) {
+                require(
+                    name == "book/" ||
+                        name == prefix
+                ) {
+                    "Пакет ReaderLB содержит постороннюю папку"
+                }
+                zip.closeEntry()
+                continue
+            }
+
+            require(
+                seenFiles.add(name)
+            ) {
+                "Пакет ReaderLB содержит повторяющийся файл"
             }
 
             require(
@@ -804,5 +926,9 @@ private const val TRANSFER_FORMAT =
 private const val TRANSFER_VERSION = 1
 private const val TRANSFER_MANIFEST =
     "readerlb-transfer.json"
+private const val MAX_TRANSFER_MANIFEST_BYTES =
+    64 * 1024
+private const val MAX_TRANSFER_ENTRIES =
+    20_000
 private const val MAX_TRANSFER_BYTES =
     2L * 1024L * 1024L * 1024L
