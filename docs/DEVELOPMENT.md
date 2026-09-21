@@ -19,6 +19,22 @@ must not continue from it after the initial merge.
 - `docs/<short-name>`
 - `chore/<short-name>`
 
+## Gradle Wrapper
+
+Use the committed Gradle Wrapper for all local and CI builds:
+
+```bash
+./gradlew :app:testDebugUnitTest
+./gradlew :app:lintDebug
+./gradlew :app:assembleDebug
+```
+
+Windows users can run the equivalent commands through `gradlew.bat`.
+
+The repository pins Gradle 8.9 in `gradle/wrapper/gradle-wrapper.properties`
+and verifies the official distribution SHA-256. Do not replace the wrapper JAR
+manually; regenerate it with a trusted Gradle installation when upgrading.
+
 ## Pull request gates
 
 Before merge:
