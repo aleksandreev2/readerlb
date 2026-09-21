@@ -646,16 +646,30 @@ internal fun isVersionNewer(
     latest: String,
     current: String
 ): Boolean {
-    fun parts(value: String): List<Int> =
-        value
-            .substringBefore('-')
+    fun parts(
+        value: String
+    ): List<Int>? {
+        if (
+            !STABLE_VERSION_REGEX
+                .matches(value)
+        ) {
+            return null
+        }
+
+        return value
             .split('.')
             .map {
-                it.toIntOrNull() ?: 0
+                it.toIntOrNull()
+                    ?: return null
             }
+    }
 
-    val left = parts(latest)
-    val right = parts(current)
+    val left =
+        parts(latest)
+            ?: return false
+    val right =
+        parts(current)
+            ?: return false
     val count = maxOf(
         left.size,
         right.size
@@ -674,6 +688,11 @@ internal fun isVersionNewer(
 
     return false
 }
+
+private val STABLE_VERSION_REGEX =
+    Regex(
+        """^\d+\.\d+\.\d+$"""
+    )
 
 private inline fun <T> HttpURLConnection
     .useConnection(
