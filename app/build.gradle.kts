@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 val releaseKeystorePath =
@@ -22,8 +23,8 @@ android {
         applicationId = "com.readerlb.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.9.4"
+        versionCode = 14
+        versionName = "0.9.5"
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -111,6 +112,8 @@ dependencies {
     )
 
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-messaging")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")

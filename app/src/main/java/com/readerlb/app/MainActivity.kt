@@ -1,8 +1,11 @@
 package com.readerlb.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Base64
 import androidx.activity.ComponentActivity
@@ -77,6 +80,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.google.firebase.messaging.FirebaseMessaging
 import com.readerlb.app.importer.ExportProgress
 import com.readerlb.app.importer.ExportStage
 import com.readerlb.app.importer.ImportRepository
@@ -116,6 +121,9 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
+internal const val EXTRA_OPEN_UPDATES = "readerlb.open_updates"
+private const val RELEASE_TOPIC = "readerlb_releases"
+
 private data class IncomingImportRequest(
     val uri: Uri,
     val requestId: Long
@@ -126,10 +134,11 @@ class MainActivity : ComponentActivity() {
     private var incomingImport by mutableStateOf<
         IncomingImportRequest?
     >(null)
+    private var openUpdatesRequested by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        acceptImportIntent(intent)
+        acceptIntent(intent)
 
         setContent {
             ReaderLBTheme {
@@ -137,6 +146,10 @@ class MainActivity : ComponentActivity() {
                     incomingImport = incomingImport,
                     onImportConsumed = {
                         incomingImport = null
+                    },
+                    openUpdatesRequested = openUpdatesRequested,
+                    onOpenUpdatesConsumed = {
+                        openUpdatesRequested = false
                     }
                 )
             }
@@ -146,10 +159,19 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        acceptImportIntent(intent)
+        acceptIntent(intent)
     }
 
-    private fun acceptImportIntent(intent: Intent?) {
+    private fun acceptIntent(intent: Intent?) {
+        if (
+            intent?.getBooleanExtra(
+                EXTRA_OPEN_UPDATES,
+                false
+            ) == true
+        ) {
+            openUpdatesRequested = true
+        }
+
         val uri = incomingImportUri(intent)
             ?: return
 
@@ -211,7 +233,9 @@ private fun hasPersistedTreePermission(
 @Composable
 private fun ReaderLBRoot(
     incomingImport: IncomingImportRequest?,
-    onImportConsumed: () -> Unit
+    onImportConsumed: () -> Unit,
+    openUpdatesRequested: Boolean,
+    onOpenUpdatesConsumed: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember { Preferences(context) }
@@ -229,7 +253,9 @@ private fun ReaderLBRoot(
     } else {
         MainApp(
             incomingImport = incomingImport,
-            onImportConsumed = onImportConsumed
+            onImportConsumed = onImportConsumed,
+            openUpdatesRequested = openUpdatesRequested,
+            onOpenUpdatesConsumed = onOpenUpdatesConsumed
         )
     }
 }
@@ -461,7 +487,9 @@ private fun OnboardingArtwork(
 @Composable
 private fun MainApp(
     incomingImport: IncomingImportRequest?,
-    onImportConsumed: () -> Unit
+    onImportConsumed: () -> Unit,
+    openUpdatesRequested: Boolean,
+    onOpenUpdatesConsumed: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember { Preferences(context) }
@@ -558,6 +586,14 @@ private fun MainApp(
     var autoUpdateChecks by remember {
         mutableStateOf(preferences.autoUpdateChecks)
     }
+    var releaseNotificationsEnabled by remember {
+        mutableStateOf(
+            preferences.releaseNotificationsEnabled
+        )
+    }
+    var notificationMessage by remember {
+        mutableStateOf<String?>(null)
+    }
     var directImportEnabled by remember {
         mutableStateOf(
             preferences.directImportEnabled
@@ -566,6 +602,120 @@ private fun MainApp(
     var updateBusy by remember { mutableStateOf(false) }
     var updateMessage by remember {
         mutableStateOf<String?>(null)
+    }
+
+    fun subscribeReleaseNotifications() {
+        val messaging =
+            FirebaseMessaging.getInstance()
+        messaging.isAutoInitEnabled = true
+        notificationMessage =
+            "Подключаю уведомления…"
+
+        messaging
+            .subscribeToTopic(
+                RELEASE_TOPIC
+            )
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    preferences
+                        .releaseNotificationsEnabled =
+                        true
+                    releaseNotificationsEnabled =
+                        true
+                    notificationMessage =
+                        "Уведомления о стабильных релизах включены."
+                } else {
+                    preferences
+                        .releaseNotificationsEnabled =
+                        false
+                    releaseNotificationsEnabled =
+                        false
+                    messaging.isAutoInitEnabled =
+                        false
+                    notificationMessage =
+                        "Не удалось подключить уведомления. Проверьте Google Play Services и интернет."
+                }
+            }
+    }
+
+    val notificationPermissionLauncher =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts
+                    .RequestPermission()
+        ) { granted ->
+            if (granted) {
+                subscribeReleaseNotifications()
+            } else {
+                preferences
+                    .releaseNotificationsEnabled =
+                    false
+                releaseNotificationsEnabled =
+                    false
+                FirebaseMessaging
+                    .getInstance()
+                    .isAutoInitEnabled =
+                    false
+                notificationMessage =
+                    "Android не разрешил уведомления."
+            }
+        }
+
+    fun setReleaseNotifications(
+        enabled: Boolean
+    ) {
+        if (!enabled) {
+            preferences
+                .releaseNotificationsEnabled =
+                false
+            releaseNotificationsEnabled =
+                false
+            notificationMessage =
+                "Уведомления о релизах выключены."
+
+            val messaging =
+                FirebaseMessaging.getInstance()
+            messaging
+                .unsubscribeFromTopic(
+                    RELEASE_TOPIC
+                )
+                .addOnCompleteListener {
+                    messaging.deleteToken()
+                    messaging.isAutoInitEnabled =
+                        false
+                }
+            return
+        }
+
+        if (
+            Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission
+                    .POST_NOTIFICATIONS
+            ) != PackageManager
+                .PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher
+                .launch(
+                    Manifest.permission
+                        .POST_NOTIFICATIONS
+                )
+        } else {
+            subscribeReleaseNotifications()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (releaseNotificationsEnabled) {
+            val messaging =
+                FirebaseMessaging.getInstance()
+            messaging.isAutoInitEnabled = true
+            messaging.subscribeToTopic(
+                RELEASE_TOPIC
+            )
+        }
     }
 
     fun removeLocalTitleFromUi(
@@ -769,6 +919,14 @@ private fun MainApp(
         }
     }
 
+    LaunchedEffect(openUpdatesRequested) {
+        if (openUpdatesRequested) {
+            tab = AppTab.SETTINGS
+            checkForUpdates()
+            onOpenUpdatesConsumed()
+        }
+    }
+
     fun installLatestUpdate() {
         val update = latestUpdate ?: return
         if (updateBusy) return
@@ -952,12 +1110,18 @@ private fun MainApp(
                 folderUri = folderUri,
                 updateInfo = latestUpdate,
                 autoUpdateChecks = autoUpdateChecks,
+                releaseNotificationsEnabled =
+                    releaseNotificationsEnabled,
+                notificationMessage =
+                    notificationMessage,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
                 onAutoUpdateChecksChanged = { enabled ->
                     preferences.autoUpdateChecks = enabled
                     autoUpdateChecks = enabled
                 },
+                onReleaseNotificationsChanged =
+                    ::setReleaseNotifications,
                 onCheckUpdates = ::checkForUpdates,
                 onInstallUpdate = ::installLatestUpdate,
                 onRepeatHints = {
@@ -3149,9 +3313,12 @@ private fun SettingsScreen(
     folderUri: Uri?,
     updateInfo: UpdateInfo?,
     autoUpdateChecks: Boolean,
+    releaseNotificationsEnabled: Boolean,
+    notificationMessage: String?,
     updateBusy: Boolean,
     updateMessage: String?,
     onAutoUpdateChecksChanged: (Boolean) -> Unit,
+    onReleaseNotificationsChanged: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit,
     onInstallUpdate: () -> Unit,
     onRepeatHints: () -> Unit,
@@ -3276,6 +3443,48 @@ private fun SettingsScreen(
                                 onAutoUpdateChecksChanged
                         )
                     }
+
+                    Divider()
+
+                    Row(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        Column(
+                            Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Push о новых релизах",
+                                color = Ink,
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+                            Text(
+                                "Получать уведомление только при публикации стабильной версии ReaderLB. Функция выключена по умолчанию.",
+                                color = Muted,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
+                        }
+                        Switch(
+                            checked =
+                                releaseNotificationsEnabled,
+                            onCheckedChange =
+                                onReleaseNotificationsChanged
+                        )
+                    }
+
+                    notificationMessage?.let {
+                        Text(
+                            it,
+                            color = Muted,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
+
                     if (updateInfo != null) {
                         Text(
                             "Доступна версия " +
