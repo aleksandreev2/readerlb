@@ -57,11 +57,30 @@ jobs:
           fi
           echo "READERLB_DEBUG_KEYSTORE_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
 
+      - name: Preinstall Android emulator with retries
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+
+          for attempt in 1 2 3; do
+            if sdkmanager --install emulator --channel=0 > /dev/null; then
+              exit 0
+            fi
+
+            echo "::warning::Android emulator package install failed (attempt $attempt/3); retrying."
+            rm -rf "$HOME/.android/cache" "$ANDROID_HOME/.temp" || true
+            sleep $((attempt * 5))
+          done
+
+          echo "::error::Unable to install the Android emulator package after 3 attempts."
+          exit 1
+
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
+          target: google_apis
           profile: pixel_2
           disable-animations: true
           script: ./gradlew :app:connectedDebugAndroidTest --stacktrace
