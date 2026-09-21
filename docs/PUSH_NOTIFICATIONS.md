@@ -28,13 +28,13 @@ Never commit a Firebase Admin/service-account JSON.
 
 ## Server-side sender
 
-Release notifications should be sent by GitHub Actions after a stable GitHub Release is published.
+Release notifications are sent by the existing `.github/workflows/release.yml` after the stable GitHub Release has been published successfully.
 
-The sender must use a Firebase service account stored as a GitHub Actions secret, for example:
+The sender uses a Firebase service account stored as a GitHub Actions secret:
 
 `FIREBASE_SERVICE_ACCOUNT`
 
-The workflow should authenticate with Google, request an OAuth token for the FCM HTTP v1 API and publish a **data message** to topic `readerlb_releases`.
+If the secret is absent, the release still publishes normally and the push step is skipped. When configured, the workflow authenticates with Google, requests an OAuth token for the FCM HTTP v1 API and publishes a **data message** to topic `readerlb_releases`.
 
 Recommended data payload:
 
