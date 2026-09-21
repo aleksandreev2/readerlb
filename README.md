@@ -84,6 +84,7 @@ Push-уведомления о релизах выключены по умолч
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Privacy](PRIVACY.md)
+- [Open-source readiness](docs/OPEN_SOURCE_CHECKLIST.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Release process](docs/RELEASING.md)
 - [Signing migration](docs/SIGNING_MIGRATION.md)
