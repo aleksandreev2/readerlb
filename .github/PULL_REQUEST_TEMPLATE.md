@@ -5,6 +5,7 @@
 ## Проверка
 
 - [ ] Unit tests проходят
+- [ ] Android runtime tests проходят
 - [ ] Android Lint проходит
 - [ ] APK собирается
 - [ ] Для storage/update/signing изменений выполнен ручной smoke-test или указано, почему он не нужен
