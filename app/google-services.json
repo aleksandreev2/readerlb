@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1023912813295",
+    "project_id": "readerlb-448c6",
+    "storage_bucket": "readerlb-448c6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1023912813295:android:e8265b1c9d4e35cc39711a",
+        "android_client_info": {
+          "package_name": "com.readerlb.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCc3-HFn0U75kIsUWCc73m4_7WNfOWpe7o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
