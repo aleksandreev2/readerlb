@@ -1,0 +1,103 @@
+name: One-time history privacy rewrite
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/privacy-history-rewrite.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite:
+    if: github.repository == 'aleksandreev2/readerlb'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch all branches and tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' --prune
+
+          while IFS= read -r ref; do
+            branch="${ref#refs/remotes/origin/}"
+            if [ "$branch" = "HEAD" ] || [ "$branch" = "$(git branch --show-current)" ]; then
+              continue
+            fi
+            git branch -f "$branch" "$ref"
+          done < <(git for-each-ref --format='%(refname)' refs/remotes/origin/)
+
+      - name: Replace personal commit email with GitHub noreply
+        shell: bash
+        run: |
+          set -euo pipefail
+          export FILTER_BRANCH_SQUELCH_WARNING=1
+
+          git filter-branch -f --env-filter '
+            TARGET_NAME="aleksandreev2"
+            NOREPLY="302271325+aleksandreev2@users.noreply.github.com"
+
+            if [ "$GIT_AUTHOR_NAME" = "$TARGET_NAME" ]; then
+              export GIT_AUTHOR_EMAIL="$NOREPLY"
+            fi
+
+            if [ "$GIT_COMMITTER_NAME" = "$TARGET_NAME" ]; then
+              export GIT_COMMITTER_EMAIL="$NOREPLY"
+            fi
+          ' --tag-name-filter cat -- --all
+
+          git for-each-ref --format='delete %(refname)' refs/original/ |
+            git update-ref --stdin || true
+
+      - name: Verify rewritten metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git log --all --format='%an|%ae|%cn|%ce' |
+            awk -F'|' '
+              ($1 == "aleksandreev2" && $2 !~ /@users\.noreply\.github\.com$/) ||
+              ($3 == "aleksandreev2" && $4 !~ /@users\.noreply\.github\.com$/) {
+                bad = 1
+              }
+              END { exit bad }
+            '
+          then
+            echo "Author and committer metadata uses GitHub noreply."
+          else
+            echo "::error::Personal commit email still exists in rewritten refs."
+            exit 1
+          fi
+
+      - name: Force-push rewritten branches and tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin --force --all
+          git push origin --force --tags
+
+      - name: Remove this one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git checkout main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git rm .github/workflows/privacy-history-rewrite.yml
+          git commit -m "chore: remove one-time privacy history rewrite"
+          git push origin main
