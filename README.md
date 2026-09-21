@@ -12,7 +12,7 @@ ReaderLB — Android-приложение для импорта **EPUB, TXT и �
 
 Первая публичная стабильная версия ещё готовится. После её выпуска APK будет публиковаться только в [GitHub Releases](https://github.com/aleksandreev2/readerlb/releases).
 
-Тестовые сборки до первого стабильного релиза доступны в [GitHub Actions](https://github.com/aleksandreev2/readerlb/actions). Для обычного использования лучше выбирать артефакт **ReaderLB-optimized-test** из последней успешной сборки.
+Тестовые сборки до первого стабильного релиза доступны в [GitHub Actions](https://github.com/aleksandreev2/readerlb/actions). Если хотите попробовать ReaderLB уже сейчас, выбирайте артефакт **ReaderLB-optimized-test** из последней успешной сборки.
 
 ## Что умеет ReaderLB
 
