@@ -87,64 +87,83 @@ class UpdateManager(
         val digest = MessageDigest
             .getInstance("SHA-256")
 
-        val connection = open(info.downloadUrl)
-        connection.useConnection { http ->
-            require(http.responseCode in 200..299) {
-                "Не удалось скачать APK: HTTP " +
-                    http.responseCode
-            }
+        try {
+            val connection = open(info.downloadUrl)
+            connection.useConnection { http ->
+                require(http.responseCode in 200..299) {
+                    "Не удалось скачать APK: HTTP " +
+                        http.responseCode
+                }
 
-            http.inputStream.buffered().use { input ->
-                partial.outputStream().buffered().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        digest.update(
-                            buffer,
-                            0,
-                            count
-                        )
-                        output.write(
-                            buffer,
-                            0,
-                            count
-                        )
+                requireUpdateApkSizeWithinLimit(
+                    http.contentLengthLong
+                )
+
+                var downloadedBytes = 0L
+
+                http.inputStream.buffered().use { input ->
+                    partial.outputStream().buffered().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) continue
+
+                            downloadedBytes += count
+                            requireUpdateApkSizeWithinLimit(
+                                downloadedBytes
+                            )
+
+                            digest.update(
+                                buffer,
+                                0,
+                                count
+                            )
+                            output.write(
+                                buffer,
+                                0,
+                                count
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        require(partial.length() > 0L) {
-            "GitHub вернул пустой APK"
-        }
-
-        val actualSha = digest
-            .digest()
-            .joinToString("") {
-                "%02x".format(it)
+            require(partial.length() > 0L) {
+                "GitHub вернул пустой APK"
             }
 
-        info.sha256?.let { expected ->
+            val actualSha = digest
+                .digest()
+                .joinToString("") {
+                    "%02x".format(it)
+                }
+
+            info.sha256?.let { expected ->
+                require(
+                    actualSha.equals(
+                        expected,
+                        ignoreCase = true
+                    )
+                ) {
+                    "SHA-256 обновления не совпадает"
+                }
+            }
+
+            validateDownloadedPackage(partial)
+
             require(
-                actualSha.equals(
-                    expected,
-                    ignoreCase = true
-                )
+                partial.renameTo(target)
             ) {
-                "SHA-256 обновления не совпадает"
+                "Не удалось завершить загрузку APK"
             }
+
+            return target
+        } catch (throwable: Throwable) {
+            partial.delete()
+            target.delete()
+            throw throwable
         }
-
-        validateDownloadedPackage(partial)
-
-        require(
-            partial.renameTo(target)
-        ) {
-            "Не удалось завершить загрузку APK"
-        }
-
-        return target
     }
 
     fun canRequestInstallPackages(): Boolean =
@@ -512,6 +531,12 @@ internal fun friendlyUpdateDownloadError(
         ) ->
             "GitHub не отдал APK обновления. Попробуйте проверить обновления позже."
 
+        raw.contains(
+            "слишком большой",
+            ignoreCase = true
+        ) ->
+            "APK обновления имеет неожиданный размер. ReaderLB остановил загрузку."
+
         raw.isNotBlank() ->
             "Не удалось загрузить обновление: $raw"
 
@@ -519,6 +544,23 @@ internal fun friendlyUpdateDownloadError(
             "Не удалось загрузить обновление. Проверьте интернет и повторите попытку."
     }
 }
+
+internal fun requireUpdateApkSizeWithinLimit(
+    sizeBytes: Long
+) {
+    if (sizeBytes < 0L) {
+        return
+    }
+
+    require(
+        sizeBytes <= MAX_UPDATE_APK_BYTES
+    ) {
+        "APK обновления слишком большой"
+    }
+}
+
+internal const val MAX_UPDATE_APK_BYTES =
+    32L * 1024L * 1024L
 
 internal fun parseUpdateInfo(
     payload: String,
@@ -604,16 +646,30 @@ internal fun isVersionNewer(
     latest: String,
     current: String
 ): Boolean {
-    fun parts(value: String): List<Int> =
-        value
-            .substringBefore('-')
+    fun parts(
+        value: String
+    ): List<Int>? {
+        if (
+            !STABLE_VERSION_REGEX
+                .matches(value)
+        ) {
+            return null
+        }
+
+        return value
             .split('.')
             .map {
-                it.toIntOrNull() ?: 0
+                it.toIntOrNull()
+                    ?: return null
             }
+    }
 
-    val left = parts(latest)
-    val right = parts(current)
+    val left =
+        parts(latest)
+            ?: return false
+    val right =
+        parts(current)
+            ?: return false
     val count = maxOf(
         left.size,
         right.size
@@ -632,6 +688,11 @@ internal fun isVersionNewer(
 
     return false
 }
+
+private val STABLE_VERSION_REGEX =
+    Regex(
+        """^\d+\.\d+\.\d+$"""
+    )
 
 private inline fun <T> HttpURLConnection
     .useConnection(

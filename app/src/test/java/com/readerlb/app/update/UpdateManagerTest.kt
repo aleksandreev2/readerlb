@@ -101,6 +101,39 @@ class UpdateManagerTest {
     }
 
     @Test
+    fun updateDownloadSizeLimitAllowsUnknownOrExpectedSizes() {
+        requireUpdateApkSizeWithinLimit(-1L)
+        requireUpdateApkSizeWithinLimit(
+            MAX_UPDATE_APK_BYTES
+        )
+    }
+
+    @Test
+    fun updateDownloadSizeLimitRejectsOversizedApks() {
+        var failed = false
+
+        try {
+            requireUpdateApkSizeWithinLimit(
+                MAX_UPDATE_APK_BYTES + 1L
+            )
+        } catch (
+            expected:
+                IllegalArgumentException
+        ) {
+            failed = true
+        }
+
+        assertTrue(failed)
+        assertTrue(
+            friendlyUpdateDownloadError(
+                IllegalArgumentException(
+                    "APK обновления слишком большой"
+                )
+            ).contains("неожиданный размер")
+        )
+    }
+
+    @Test
     fun semanticVersionComparisonUsesNumericSegments() {
         assertTrue(
             isVersionNewer(
@@ -124,6 +157,18 @@ class UpdateManagerTest {
             isVersionNewer(
                 latest = "0.4.1",
                 current = "0.4.2"
+            )
+        )
+        assertFalse(
+            isVersionNewer(
+                latest = "1.0.0-beta",
+                current = "0.9.6"
+            )
+        )
+        assertFalse(
+            isVersionNewer(
+                latest = "nightly",
+                current = "0.9.6"
             )
         )
     }
