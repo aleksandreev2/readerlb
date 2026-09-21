@@ -90,3 +90,55 @@ jobs:
             "ReaderLB-${VERSION}.apk.sha256" \
             --title "ReaderLB ${VERSION}" \
             --generate-notes
+
+      - name: Check Firebase sender configuration
+        id: firebase
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "FCM sender is not configured; skipping release push."
+          fi
+
+      - name: Authenticate to Google for FCM
+        if: steps.firebase.outputs.configured == 'true'
+        id: google-auth
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/firebase.messaging
+
+      - name: Notify ReaderLB release subscribers
+        if: steps.firebase.outputs.configured == 'true'
+        env:
+          ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
+          VERSION: ${{ github.ref_name }}
+          FIREBASE_PROJECT_ID: readerlb-448c6
+        run: |
+          PAYLOAD="$(jq -n \
+            --arg version "$VERSION" \
+            '{
+              message: {
+                topic: "readerlb_releases",
+                data: {
+                  type: "release",
+                  version: $version,
+                  title: "Доступно обновление ReaderLB",
+                  body: ("ReaderLB " + $version + " уже доступна.")
+                },
+                android: {
+                  priority: "high"
+                }
+              }
+            }')"
+
+          curl --fail-with-body \
+            -X POST \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json; UTF-8" \
+            -d "$PAYLOAD" \
+            "https://fcm.googleapis.com/v1/projects/$FIREBASE_PROJECT_ID/messages:send"
