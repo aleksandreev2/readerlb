@@ -7,6 +7,10 @@ This document describes ReaderLB's current data behavior.
 ReaderLB processes imported EPUB/TXT files and the selected RanobeLib local
 library on the device.
 
+Android application backup is disabled for ReaderLB so the app's private
+preferences and cached local-library metadata are not copied into a cloud backup
+by ReaderLB's manifest configuration.
+
 ReaderLB does **not** upload:
 
 - book text;
@@ -16,6 +20,11 @@ ReaderLB does **not** upload:
 - import history.
 
 These values are used locally to build or inspect the RanobeLib offline format.
+
+## Network transport
+
+ReaderLB disables cleartext HTTP traffic at the Android application level.
+Network features are expected to use HTTPS.
 
 ## GitHub Releases
 
