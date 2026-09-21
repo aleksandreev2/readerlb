@@ -30,19 +30,26 @@ pre-release suffixes such as `-beta` or `-rc1`.
 Every build intended for testing must pass:
 
 - unit tests;
+- Android runtime-test compilation;
+- instrumented tests on API 29 and API 35 for app/runtime changes;
 - Android Lint;
 - debug APK build;
 - signing-certificate verification;
 - optimized APK build;
-- optimized APK size budget (currently <= 6 MiB).
+- optimized APK size budget (currently <= 6 MiB);
+- CodeQL security analysis.
 
 Every stable release must additionally pass:
 
 - release-key restoration from GitHub Actions secrets;
 - release signing-certificate verification;
 - version tag == `versionName`;
+- release tag commit contained in `main`;
+- Android 10 emulator smoke test;
 - release APK SHA-256 generation;
-- GitHub Release publication.
+- GitHub/Sigstore build-provenance attestation;
+- GitHub Release publication;
+- optional FCM notification delivery when configured.
 
 Before every stable release, manually smoke-test:
 
@@ -157,7 +164,7 @@ Planned work:
 - [x] chapter count/range and last local update;
 - [x] distinguish ReaderLB-created titles from other local titles where possible;
 - [x] refresh/reconnect actions;
-- [ ] safe title actions only after their storage semantics are fully tested.
+- [x] safe title actions after storage semantics were tested: delete with confirmation and portable share/install.
 
 Destructive actions such as deleting a local title must not be introduced
 without an explicit confirmation flow and dedicated tests.
@@ -200,6 +207,27 @@ Scope:
 - [x] copyable diagnostics limited to app/device/access state; no book titles, EPUB paths or reading-library content.
 
 No major new feature should enter 0.9.x.
+
+## Current pre-1.0 status — 0.9.6
+
+ReaderLB is now in hardening mode rather than feature expansion.
+
+Completed repository/application foundations include:
+
+- `main` is the canonical releasable branch;
+- reproducible Gradle Wrapper builds are committed;
+- CI covers unit tests, lint, APK builds, signing checks and CodeQL;
+- real instrumented tests run on API 29 and API 35;
+- portable `.readerlb.zip` packages have bounded manifest reads, path validation,
+  duplicate-entry rejection and package-range verification;
+- stable release workflow validates tags, signing, SHA-256 and build provenance;
+- opt-in FCM release notifications are wired into the stable release pipeline;
+- community, security, privacy, contribution and support documentation exists.
+
+The remaining 1.0 blockers are primarily owner/device validation items tracked in
+GitHub issue #20: license selection, repository protection settings, permanent
+release signing, Firebase sender secret, and real stable-to-stable upgrade
+verification on physical devices.
 
 ## 1.0.0 — Stable ReaderLB
 
