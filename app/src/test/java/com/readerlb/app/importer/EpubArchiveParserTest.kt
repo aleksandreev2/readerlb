@@ -7,6 +7,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.io.RandomAccessFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -1202,6 +1203,47 @@ class EpubArchiveParserTest {
         )
     }
 
+
+
+
+    @Test
+    fun rejectsOversizedEpubBeforeZipParsing() {
+        val epub = Files.createTempFile(
+            "readerlb_oversized_",
+            ".epub"
+        ).toFile()
+
+        RandomAccessFile(
+            epub,
+            "rw"
+        ).use {
+            it.setLength(
+                513L * 1024L * 1024L
+            )
+        }
+
+        try {
+            parser.parse(epub)
+            fail(
+                "Expected oversized EPUB to be rejected"
+            )
+        } catch (
+            error: Exception
+        ) {
+            assertTrue(
+                "Expected a clear size-limit error, got: " +
+                    error.message,
+                error.message
+                    .orEmpty()
+                    .contains(
+                        "слишком большой",
+                        ignoreCase = true
+                    )
+            )
+        } finally {
+            epub.delete()
+        }
+    }
 
 
     @Test
