@@ -1175,7 +1175,7 @@ class EpubArchiveParser {
         }
 
         if (assetDirectory != null) {
-            val spilled = runCatching {
+            val spilled = try {
                 streamFactory().use { input ->
                     spillImageToFile(
                         input = input,
@@ -1183,7 +1183,20 @@ class EpubArchiveParser {
                             assetDirectory
                     )
                 }
-            }.getOrElse {
+            } catch (
+                oversized:
+                    InlineImageTooLargeException
+            ) {
+                issues += ImportIssue(
+                    code = "INLINE_IMAGE_TOO_LARGE",
+                    message =
+                        "Иллюстрация EPUB превышает безопасный лимит " +
+                            "32 МиБ и была пропущена."
+                )
+                return null
+            } catch (
+                throwable: Throwable
+            ) {
                 issues += ImportIssue(
                     code = "INLINE_IMAGE_DATA_INVALID",
                     message = "Не удалось сохранить иллюстрацию EPUB " +
@@ -1224,11 +1237,24 @@ class EpubArchiveParser {
             )
         }
 
-        val bytes = runCatching {
+        val bytes = try {
             streamFactory().use {
-                it.readBytes()
+                readInlineImageBytes(it)
             }
-        }.getOrElse {
+        } catch (
+            oversized:
+                InlineImageTooLargeException
+        ) {
+            issues += ImportIssue(
+                code = "INLINE_IMAGE_TOO_LARGE",
+                message =
+                    "Иллюстрация EPUB превышает безопасный лимит " +
+                        "32 МиБ и была пропущена."
+            )
+            return null
+        } catch (
+            throwable: Throwable
+        ) {
             issues += ImportIssue(
                 code = "INLINE_IMAGE_DATA_INVALID",
                 message = "Не удалось прочитать иллюстрацию EPUB."
@@ -1325,12 +1351,19 @@ class EpubArchiveParser {
                                 copyCount
                         }
 
+                        total += count
+                        if (
+                            total >
+                            MAX_INLINE_IMAGE_BYTES
+                        ) {
+                            throw InlineImageTooLargeException()
+                        }
+
                         output.write(
                             buffer,
                             0,
                             count
                         )
-                        total += count
                     }
                 }
 
@@ -1347,6 +1380,43 @@ class EpubArchiveParser {
             throw throwable
         }
     }
+
+    private fun readInlineImageBytes(
+        input: InputStream
+    ): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        var total = 0L
+
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) {
+                break
+            }
+            if (count == 0) {
+                continue
+            }
+
+            total += count
+            if (
+                total >
+                MAX_INLINE_IMAGE_BYTES
+            ) {
+                throw InlineImageTooLargeException()
+            }
+
+            output.write(
+                buffer,
+                0,
+                count
+            )
+        }
+
+        return output.toByteArray()
+    }
+
+    private class InlineImageTooLargeException :
+        IllegalArgumentException()
 
     private fun imageExtension(
         hint: String,
@@ -1916,6 +1986,8 @@ class EpubArchiveParser {
             16 * 1024 * 1024
         const val MAX_COVER_ENTRY_BYTES =
             32 * 1024 * 1024
+        const val MAX_INLINE_IMAGE_BYTES =
+            32L * 1024L * 1024L
         const val DOM_NEKROMANTA_TEAM_URL =
             "https://ranobelib.me/ru/team/11969--dom-nekromanta"
 
