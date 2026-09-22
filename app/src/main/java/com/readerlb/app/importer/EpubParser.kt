@@ -42,7 +42,10 @@ class EpubParser(
                     sourceTemp.outputStream()
                         .buffered()
                         .use { output ->
-                            input.copyTo(output)
+                            copySourceWithLimit(
+                                input = input,
+                                output = output
+                            )
                         }
                 }
 
@@ -57,6 +60,48 @@ class EpubParser(
             throw throwable
         } finally {
             sourceTemp.delete()
+        }
+    }
+
+    private fun copySourceWithLimit(
+        input: java.io.InputStream,
+        output: java.io.OutputStream
+    ) {
+        val buffer = ByteArray(64 * 1024)
+        var total = 0L
+
+        while (true) {
+            if (
+                Thread.currentThread()
+                    .isInterrupted
+            ) {
+                throw InterruptedException(
+                    "Анализ EPUB отменён"
+                )
+            }
+
+            val count = input.read(buffer)
+            if (count < 0) {
+                break
+            }
+            if (count == 0) {
+                continue
+            }
+
+            total += count
+            require(
+                total <=
+                    EPUB_MAX_SOURCE_BYTES
+            ) {
+                "EPUB слишком большой для безопасного анализа. " +
+                    "Максимальный размер — 512 МиБ."
+            }
+
+            output.write(
+                buffer,
+                0,
+                count
+            )
         }
     }
 
