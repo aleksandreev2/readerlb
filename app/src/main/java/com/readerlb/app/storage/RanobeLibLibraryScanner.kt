@@ -10,6 +10,9 @@ import org.json.JSONObject
 import android.provider.DocumentsContract
 import java.io.StringReader
 
+private const val LOCAL_INFO_MAX_BYTES =
+    4 * 1024 * 1024
+
 data class LocalLibraryItem(
     val title: String,
     val slugUrl: String,
@@ -354,11 +357,43 @@ class RanobeLibLibraryScanner(
     ): String =
         context.contentResolver
             .openInputStream(uri)
-            ?.bufferedReader(
-                Charsets.UTF_8
-            )
-            ?.use {
-                it.readText()
+            ?.buffered()
+            ?.use { input ->
+                val output =
+                    java.io.ByteArrayOutputStream()
+                val buffer =
+                    ByteArray(32 * 1024)
+                var total = 0
+
+                while (true) {
+                    val count =
+                        input.read(buffer)
+                    if (count < 0) {
+                        break
+                    }
+                    if (count == 0) {
+                        continue
+                    }
+
+                    total += count
+                    require(
+                        total <=
+                            LOCAL_INFO_MAX_BYTES
+                    ) {
+                        "$displayName слишком большой " +
+                            "для безопасного чтения"
+                    }
+
+                    output.write(
+                        buffer,
+                        0,
+                        count
+                    )
+                }
+
+                output.toString(
+                    Charsets.UTF_8.name()
+                )
             }
             ?: error(
                 "Не удалось прочитать " +
@@ -649,6 +684,12 @@ internal fun parseLocalLibraryMetadata(
     chaptersText: String,
     folderName: String
 ): ParsedLocalLibraryMetadata {
+    require(
+        infoText.length <=
+            LOCAL_INFO_MAX_BYTES
+    ) {
+        "info.json слишком большой для безопасного чтения"
+    }
     val info = JSONObject(infoText)
     val media = info.getJSONObject("media")
     val chapters = JSONArray(chaptersText)
