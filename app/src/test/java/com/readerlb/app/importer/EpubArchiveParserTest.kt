@@ -12,6 +12,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.Random
 
 class EpubArchiveParserTest {
 
@@ -1204,6 +1206,108 @@ class EpubArchiveParserTest {
     }
 
 
+
+
+
+    @Test
+    fun interruptionDuringImageSpillIsNotSwallowed() {
+        val image =
+            ByteArray(
+                24 * 1024 * 1024
+            )
+        Random(7L).nextBytes(image)
+        image[0] = 0x89.toByte()
+        image[1] = 'P'.code.toByte()
+        image[2] = 'N'.code.toByte()
+        image[3] = 'G'.code.toByte()
+        image[4] = 13
+        image[5] = 10
+        image[6] = 26
+        image[7] = 10
+
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "chapter0001",
+                    "text/chapter0001.xhtml",
+                    "<h1>Глава 1</h1>" +
+                        "<p>Достаточно длинный текст главы.</p>" +
+                        "<img src=\"../images/slow.png\"/>"
+                )
+            ),
+            extraEntries = mapOf(
+                "OEBPS/images/slow.png" to image
+            )
+        )
+        val assets =
+            Files.createTempDirectory(
+                "readerlb_interrupt_assets_"
+            ).toFile()
+        val failure =
+            AtomicReference<Throwable?>()
+        val completed =
+            AtomicBoolean(false)
+
+        val worker = Thread {
+            try {
+                parser.parse(
+                    file = epub,
+                    assetDirectory = assets
+                )
+                completed.set(true)
+            } catch (
+                throwable: Throwable
+            ) {
+                failure.set(throwable)
+            }
+        }
+
+        try {
+            worker.start()
+
+            val deadline =
+                System.nanoTime() +
+                    5_000_000_000L
+            while (
+                worker.isAlive &&
+                assets.listFiles()
+                    .orEmpty()
+                    .isEmpty() &&
+                System.nanoTime() <
+                    deadline
+            ) {
+                Thread.sleep(1)
+            }
+
+            assertTrue(
+                "Parser never started spilling the inline image",
+                assets.listFiles()
+                    .orEmpty()
+                    .isNotEmpty()
+            )
+
+            worker.interrupt()
+            worker.join(5_000)
+
+            assertFalse(
+                "Interrupted image parsing must not complete normally",
+                completed.get()
+            )
+            assertTrue(
+                "Expected InterruptedException, got " +
+                    failure.get(),
+                failure.get() is
+                    InterruptedException
+            )
+        } finally {
+            if (worker.isAlive) {
+                worker.interrupt()
+                worker.join(1_000)
+            }
+            assets.deleteRecursively()
+            epub.delete()
+        }
+    }
 
 
     @Test
