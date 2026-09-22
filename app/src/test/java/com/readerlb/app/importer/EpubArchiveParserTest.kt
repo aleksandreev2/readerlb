@@ -1,6 +1,7 @@
 package com.readerlb.app.importer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -9,6 +10,7 @@ import java.nio.file.Files
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
+import java.util.concurrent.atomic.AtomicReference
 
 class EpubArchiveParserTest {
 
@@ -1198,6 +1200,60 @@ class EpubArchiveParserTest {
                 it.code.startsWith("INLINE_IMAGE_")
             }
         )
+    }
+
+
+
+    @Test
+    fun interruptedWorkerAbortsEpubParsing() {
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "chapter0001",
+                    "text/chapter0001.xhtml",
+                    "<h1>Глава 1</h1><p>Достаточно длинный текст главы.</p>"
+                )
+            )
+        )
+        val failure =
+            AtomicReference<Throwable?>()
+        var completed = false
+
+        val worker = Thread {
+            Thread.currentThread()
+                .interrupt()
+
+            try {
+                parser.parse(epub)
+                completed = true
+            } catch (
+                throwable: Throwable
+            ) {
+                failure.set(throwable)
+            }
+        }
+
+        try {
+            worker.start()
+            worker.join(5_000)
+
+            assertFalse(
+                "Interrupted EPUB parsing must not complete normally",
+                completed
+            )
+            assertTrue(
+                "Expected InterruptedException, got " +
+                    failure.get(),
+                failure.get() is
+                    InterruptedException
+            )
+        } finally {
+            if (worker.isAlive) {
+                worker.interrupt()
+                worker.join(1_000)
+            }
+            epub.delete()
+        }
     }
 
 
