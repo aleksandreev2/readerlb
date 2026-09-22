@@ -1,6 +1,8 @@
 package com.readerlb.app.storage
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class RanobeLibLibraryScannerTest {
@@ -56,6 +58,56 @@ class RanobeLibLibraryScannerTest {
         )
     }
 
+
+
+
+    @Test
+    fun rejectsUnreasonablyLargeInfoJson() {
+        val padding =
+            "x".repeat(
+                4 * 1024 * 1024
+            )
+        val info =
+            """{
+              "media": {
+                "name": "Тест",
+                "slugUrl": "123--test"
+              },
+              "padding": "$padding"
+            }"""
+
+        try {
+            parseLocalLibraryMetadata(
+                infoText = info,
+                chaptersText =
+                    """[{"number":"1"}]""",
+                folderName =
+                    "123--test"
+            )
+            fail(
+                "Expected oversized info.json to be rejected"
+            )
+        } catch (
+            error: Exception
+        ) {
+            assertTrue(
+                "Expected a clear info.json size-limit error, got: " +
+                    error.message,
+                error.message
+                    .orEmpty()
+                    .contains(
+                        "info.json",
+                        ignoreCase = true
+                    ) &&
+                    error.message
+                        .orEmpty()
+                        .contains(
+                            "слишком большой",
+                            ignoreCase = true
+                        )
+            )
+        }
+    }
 
 
     @Test
