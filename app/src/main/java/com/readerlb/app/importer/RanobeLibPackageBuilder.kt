@@ -310,6 +310,9 @@ class RanobeLibPackageBuilder(
         }
 
         val info = runCatching {
+            require(infoFile.length() <= com.readerlb.app.storage.MAX_INFO_JSON_BYTES) {
+                "info.json слишком большой"
+            }
             JSONObject(infoFile.readText(Charsets.UTF_8))
         }.getOrElse {
             errors += "info.json не является валидным JSON"

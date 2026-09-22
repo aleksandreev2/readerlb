@@ -354,11 +354,8 @@ class RanobeLibLibraryScanner(
     ): String =
         context.contentResolver
             .openInputStream(uri)
-            ?.bufferedReader(
-                Charsets.UTF_8
-            )
             ?.use {
-                it.readText()
+                readBoundedInfo(it)
             }
             ?: error(
                 "Не удалось прочитать " +
