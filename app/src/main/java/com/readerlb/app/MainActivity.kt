@@ -1635,7 +1635,7 @@ private fun ImportScreen(
                 title = transfer.title
             } else {
                 val book =
-                    withContext(
+                    runInterruptible(
                         Dispatchers.IO
                     ) {
                         repository.parse(
