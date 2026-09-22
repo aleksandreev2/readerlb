@@ -26,6 +26,8 @@ class EpubArchiveParser {
         sourceName: String? = null,
         assetDirectory: File? = null
     ): ParsedBook {
+        ensureImportNotInterrupted()
+
         assetDirectory?.let { directory ->
             require(
                 directory.isDirectory ||
@@ -146,6 +148,7 @@ class EpubArchiveParser {
                     )
                 }
                 .mapIndexedNotNull { spineIndex, item ->
+                    ensureImportNotInterrupted()
                     val contentPath = resolve(
                         opfBase,
                         item.href
@@ -441,6 +444,7 @@ class EpubArchiveParser {
         }
 
         navigationItems.forEach { item ->
+            ensureImportNotInterrupted()
             val navigationPath = resolve(
                 opfBase,
                 item.href
@@ -895,7 +899,9 @@ class EpubArchiveParser {
         }
 
         fun walk(element: Element) {
+            ensureImportNotInterrupted()
             element.children().forEach { child ->
+                ensureImportNotInterrupted()
                 when (
                     child.tagName()
                         .substringAfterLast(':')
@@ -1318,6 +1324,7 @@ class EpubArchiveParser {
                         ByteArray(64 * 1024)
 
                     while (true) {
+                        ensureImportNotInterrupted()
                         val count =
                             input.read(buffer)
 
@@ -1627,6 +1634,17 @@ class EpubArchiveParser {
             StandardCharsets.UTF_8.name()
         )
 
+    private fun ensureImportNotInterrupted() {
+        if (
+            Thread.currentThread()
+                .isInterrupted
+        ) {
+            throw InterruptedException(
+                "Анализ EPUB отменён"
+            )
+        }
+    }
+
     private fun readText(
         zip: ZipFile,
         path: String
@@ -1679,6 +1697,7 @@ class EpubArchiveParser {
                 var total = 0
 
                 while (true) {
+                    ensureImportNotInterrupted()
                     val count =
                         input.read(buffer)
                     if (count < 0) {
