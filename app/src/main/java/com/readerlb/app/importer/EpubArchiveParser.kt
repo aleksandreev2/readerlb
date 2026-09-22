@@ -13,6 +13,9 @@ import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.zip.ZipFile
 
+internal const val EPUB_MAX_SOURCE_BYTES =
+    512L * 1024L * 1024L
+
 /**
  * Pure EPUB parser.
  *
@@ -27,6 +30,14 @@ class EpubArchiveParser {
         assetDirectory: File? = null
     ): ParsedBook {
         ensureImportNotInterrupted()
+
+        require(
+            file.length() <=
+                EPUB_MAX_SOURCE_BYTES
+        ) {
+            "EPUB слишком большой для безопасного анализа. " +
+                "Максимальный размер — 512 МиБ."
+        }
 
         assetDirectory?.let { directory ->
             require(
