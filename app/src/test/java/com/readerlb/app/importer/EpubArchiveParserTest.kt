@@ -1200,6 +1200,74 @@ class EpubArchiveParserTest {
         )
     }
 
+
+    @Test
+    fun rejectsOversizedInlineImageAndCleansTemporaryAsset() {
+        val hugeImage =
+            ByteArray(
+                33 * 1024 * 1024
+            ).also { bytes ->
+                bytes[0] = 0x89.toByte()
+                bytes[1] = 'P'.code.toByte()
+                bytes[2] = 'N'.code.toByte()
+                bytes[3] = 'G'.code.toByte()
+                bytes[4] = 13
+                bytes[5] = 10
+                bytes[6] = 26
+                bytes[7] = 10
+            }
+
+        val epub = buildEpub(
+            docs = listOf(
+                Doc(
+                    "chapter0001",
+                    "text/chapter0001.xhtml",
+                    "<h1>Глава 1</h1>" +
+                        "<p>Текст главы достаточно длинный.</p>" +
+                        "<img src=\"../images/huge.png\"/>"
+                )
+            ),
+            extraEntries = mapOf(
+                "OEBPS/images/huge.png" to hugeImage
+            )
+        )
+        val assets =
+            Files.createTempDirectory(
+                "readerlb_assets_"
+            ).toFile()
+
+        try {
+            val book = parser.parse(
+                file = epub,
+                assetDirectory = assets
+            )
+
+            assertTrue(
+                book.issues.any {
+                    it.code ==
+                        "INLINE_IMAGE_TOO_LARGE"
+                }
+            )
+            assertTrue(
+                book.chapters
+                    .flatMap { it.blocks }
+                    .filterIsInstance<
+                        ReaderBlock.Image
+                    >()
+                    .isEmpty()
+            )
+            assertTrue(
+                assets.listFiles()
+                    .orEmpty()
+                    .isEmpty()
+            )
+        } finally {
+            assets.deleteRecursively()
+            epub.delete()
+        }
+    }
+
+
     @Test
     fun warnsWhenReferencedChapterImageFileIsMissing() {
         val epub = buildEpub(
