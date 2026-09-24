@@ -83,6 +83,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
+import com.readerlb.app.importer.DEFAULT_EPUB_IMAGE_LIMIT_MB
+import com.readerlb.app.importer.DEFAULT_EPUB_SOURCE_LIMIT_MB
+import com.readerlb.app.importer.DEFAULT_EPUB_TOTAL_IMAGE_LIMIT_MB
+import com.readerlb.app.importer.EpubImportLimits
 import com.readerlb.app.importer.ExportProgress
 import com.readerlb.app.importer.ExportStage
 import com.readerlb.app.importer.ImportRepository
@@ -609,6 +613,21 @@ private fun MainApp(
             preferences.directImportEnabled
         )
     }
+    var epubSourceLimitMb by remember {
+        mutableStateOf(
+            preferences.epubSourceLimitMb
+        )
+    }
+    var epubImageLimitMb by remember {
+        mutableStateOf(
+            preferences.epubImageLimitMb
+        )
+    }
+    var epubTotalImageLimitMb by remember {
+        mutableStateOf(
+            preferences.epubTotalImageLimitMb
+        )
+    }
     var updateBusy by remember { mutableStateOf(false) }
     var updateMessage by remember {
         mutableStateOf<String?>(null)
@@ -1072,6 +1091,16 @@ private fun MainApp(
                 folderUri = folderUri,
                 directImportEnabled =
                     directImportEnabled,
+                epubLimits =
+                    EpubImportLimits
+                        .fromMegabytes(
+                            sourceMb =
+                                epubSourceLimitMb,
+                            singleImageMb =
+                                epubImageLimitMb,
+                            totalImageMb =
+                                epubTotalImageLimitMb
+                        ),
                 onDirectImportChanged = {
                     enabled ->
                     preferences.directImportEnabled =
@@ -1134,6 +1163,47 @@ private fun MainApp(
                     notificationMessage,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
+                epubSourceLimitMb =
+                    epubSourceLimitMb,
+                epubImageLimitMb =
+                    epubImageLimitMb,
+                epubTotalImageLimitMb =
+                    epubTotalImageLimitMb,
+                onEpubSourceLimitChanged = {
+                    value ->
+                    preferences.epubSourceLimitMb =
+                        value
+                    epubSourceLimitMb = value
+                },
+                onEpubImageLimitChanged = {
+                    value ->
+                    preferences.epubImageLimitMb =
+                        value
+                    epubImageLimitMb = value
+                },
+                onEpubTotalImageLimitChanged = {
+                    value ->
+                    preferences
+                        .epubTotalImageLimitMb =
+                        value
+                    epubTotalImageLimitMb =
+                        value
+                },
+                onResetEpubLimits = {
+                    preferences.epubSourceLimitMb =
+                        DEFAULT_EPUB_SOURCE_LIMIT_MB
+                    preferences.epubImageLimitMb =
+                        DEFAULT_EPUB_IMAGE_LIMIT_MB
+                    preferences
+                        .epubTotalImageLimitMb =
+                        DEFAULT_EPUB_TOTAL_IMAGE_LIMIT_MB
+                    epubSourceLimitMb =
+                        DEFAULT_EPUB_SOURCE_LIMIT_MB
+                    epubImageLimitMb =
+                        DEFAULT_EPUB_IMAGE_LIMIT_MB
+                    epubTotalImageLimitMb =
+                        DEFAULT_EPUB_TOTAL_IMAGE_LIMIT_MB
+                },
                 onAutoUpdateChecksChanged = { enabled ->
                     preferences.autoUpdateChecks = enabled
                     autoUpdateChecks = enabled
@@ -1424,6 +1494,7 @@ private fun ImportScreen(
     modifier: Modifier,
     folderUri: Uri?,
     directImportEnabled: Boolean,
+    epubLimits: EpubImportLimits,
     onDirectImportChanged: (Boolean) -> Unit,
     initialImport: IncomingImportRequest?,
     onInitialImportConsumed: () -> Unit,
@@ -1662,7 +1733,8 @@ private fun ImportScreen(
                         Dispatchers.IO
                     ) {
                         repository.parse(
-                            uri
+                            uri,
+                            epubLimits
                         )
                     }
 
@@ -3329,6 +3401,42 @@ private fun LibrarySortPill(
 }
 
 @Composable
+private fun EpubLimitField(
+    label: String,
+    value: Long,
+    onValueChanged: (Long) -> Unit
+) {
+    var text by rememberSaveable(value) {
+        mutableStateOf(value.toString())
+    }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { raw ->
+            val filtered =
+                raw.filter(Char::isDigit)
+                    .take(12)
+
+            text = filtered
+
+            filtered
+                .toLongOrNull()
+                ?.let(onValueChanged)
+        },
+        modifier = Modifier.fillMaxWidth(),
+        label = {
+            Text(label)
+        },
+        singleLine = true,
+        keyboardOptions =
+            KeyboardOptions(
+                keyboardType =
+                    KeyboardType.Number
+            )
+    )
+}
+
+@Composable
 private fun SettingsScreen(
     modifier: Modifier,
     folderUri: Uri?,
@@ -3338,6 +3446,13 @@ private fun SettingsScreen(
     notificationMessage: String?,
     updateBusy: Boolean,
     updateMessage: String?,
+    epubSourceLimitMb: Long,
+    epubImageLimitMb: Long,
+    epubTotalImageLimitMb: Long,
+    onEpubSourceLimitChanged: (Long) -> Unit,
+    onEpubImageLimitChanged: (Long) -> Unit,
+    onEpubTotalImageLimitChanged: (Long) -> Unit,
+    onResetEpubLimits: () -> Unit,
     onAutoUpdateChecksChanged: (Boolean) -> Unit,
     onReleaseNotificationsChanged: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit,
@@ -3409,6 +3524,84 @@ private fun SettingsScreen(
                                 )
                         )
                     }
+                }
+            }
+        }
+        item {
+            Card(
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            MaterialTheme
+                                .colorScheme
+                                .surface
+                    ),
+                shape =
+                    RoundedCornerShape(16.dp),
+                border =
+                    androidx.compose.foundation
+                        .BorderStroke(
+                            1.dp,
+                            Line
+                        )
+            ) {
+                Column(
+                    modifier =
+                        Modifier.padding(18.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Лимиты EPUB",
+                        color = Ink,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                    Text(
+                        "Значения задаются в МБ. " +
+                            "0 отключает соответствующий лимит. " +
+                            "Слишком высокие значения или режим без лимита " +
+                            "могут увеличить расход памяти и места на устройстве.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                    EpubLimitField(
+                        label =
+                            "Максимальный размер EPUB, МБ",
+                        value =
+                            epubSourceLimitMb,
+                        onValueChanged =
+                            onEpubSourceLimitChanged
+                    )
+                    EpubLimitField(
+                        label =
+                            "Одна иллюстрация, МБ",
+                        value =
+                            epubImageLimitMb,
+                        onValueChanged =
+                            onEpubImageLimitChanged
+                    )
+                    EpubLimitField(
+                        label =
+                            "Все иллюстрации, МБ",
+                        value =
+                            epubTotalImageLimitMb,
+                        onValueChanged =
+                            onEpubTotalImageLimitChanged
+                    )
+                    Text(
+                        "Сбросить: 256 / 24 / 256 МБ",
+                        color = Blue,
+                        fontSize = 13.sp,
+                        fontWeight =
+                            FontWeight.SemiBold,
+                        modifier =
+                            Modifier.clickable(
+                                onClick =
+                                    onResetEpubLimits
+                            )
+                    )
                 }
             }
         }

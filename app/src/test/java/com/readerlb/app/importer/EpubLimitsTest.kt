@@ -1,7 +1,9 @@
 package com.readerlb.app.importer
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -11,6 +13,78 @@ import java.io.InputStream
 import java.nio.file.Files
 
 class EpubLimitsTest {
+    @Test
+    fun zeroMegabytesDisablesEveryLimit() {
+        val limits =
+            EpubImportLimits.fromMegabytes(
+                sourceMb = 0,
+                singleImageMb = 0,
+                totalImageMb = 0
+            )
+
+        assertNull(limits.sourceBytes)
+        assertNull(limits.singleImageBytes)
+        assertNull(limits.totalImageBytes)
+    }
+
+    @Test
+    fun customMegabytesAreConvertedToBytes() {
+        val limits =
+            EpubImportLimits.fromMegabytes(
+                sourceMb = 512,
+                singleImageMb = 64,
+                totalImageMb = 1024
+            )
+
+        assertEquals(
+            512L * 1024 * 1024,
+            limits.sourceBytes
+        )
+        assertEquals(
+            64L * 1024 * 1024,
+            limits.singleImageBytes
+        )
+        assertEquals(
+            1024L * 1024 * 1024,
+            limits.totalImageBytes
+        )
+    }
+
+    @Test
+    fun unlimitedSourceCopyPreservesInput() {
+        val target =
+            Files.createTempFile(
+                "epub_unlimited_",
+                ".epub"
+            ).toFile()
+        val bytes = ByteArray(32) { it.toByte() }
+
+        try {
+            copyEpubSource(
+                ByteArrayInputStream(bytes),
+                target,
+                null
+            )
+            assertArrayEquals(
+                bytes,
+                target.readBytes()
+            )
+        } finally {
+            target.delete()
+        }
+    }
+
+    @Test
+    fun unlimitedImageBudgetDoesNotReject() {
+        checkImageBudget(
+            alreadyExtracted = Long.MAX_VALUE / 4,
+            currentImage = 1024,
+            nextChunk = 1024,
+            singleLimit = null,
+            totalLimit = null
+        )
+    }
+
     @Test
     fun cumulativeImageBudgetRejectsNextImage() {
         checkImageBudget(7, 2, 1, singleLimit = 5, totalLimit = 10)
@@ -103,16 +177,29 @@ class EpubLimitsTest {
         }
     }
 
-    @Test fun archiveParserRejectsOversizedSourceBeforeOpeningZip() {
-        val source = Files.createTempFile("oversized_", ".epub").toFile()
+    @Test
+    fun archiveParserRejectsConfiguredSourceLimitBeforeOpeningZip() {
+        val source =
+            Files.createTempFile(
+                "oversized_",
+                ".epub"
+            ).toFile()
+        source.writeBytes(ByteArray(11))
+
+        val parser =
+            EpubArchiveParser(
+                EpubImportLimits(
+                    sourceBytes = 10,
+                    singleImageBytes = null,
+                    totalImageBytes = null
+                )
+            )
+
         try {
-            java.io.RandomAccessFile(source, "rw").use { it.setLength(MAX_EPUB_SOURCE_BYTES + 1) }
-            try {
-                EpubArchiveParser().parse(source)
-                fail("Expected source limit")
-            } catch (_: EpubLimitException) {
-                assertTrue(source.exists())
-            }
+            parser.parse(source)
+            fail("Expected source limit")
+        } catch (_: EpubLimitException) {
+            assertTrue(source.exists())
         } finally {
             source.delete()
         }

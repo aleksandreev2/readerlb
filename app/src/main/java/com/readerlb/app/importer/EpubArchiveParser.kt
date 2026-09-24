@@ -19,7 +19,10 @@ import java.util.zip.ZipFile
  * No Android dependencies are allowed here: exactly the same parser used by
  * the app is exercised by JVM regression and corpus tests.
  */
-class EpubArchiveParser {
+class EpubArchiveParser(
+    private val limits: EpubImportLimits =
+        EpubImportLimits.DEFAULT
+) {
     private var extractedImageBytes = 0L
 
     fun parse(
@@ -28,8 +31,15 @@ class EpubArchiveParser {
         assetDirectory: File? = null
     ): ParsedBook {
         checkEpubInterrupted()
-        if (file.length() > MAX_EPUB_SOURCE_BYTES) {
-            throw EpubLimitException("Исходный EPUB слишком большой")
+        val sourceLimit = limits.sourceBytes
+        if (
+            sourceLimit != null &&
+            file.length() > sourceLimit
+        ) {
+            throw EpubLimitException(
+                "Исходный EPUB превышает настроенный лимит " +
+                    "(${sourceLimit / 1024 / 1024} МБ)"
+            )
         }
         extractedImageBytes = 0L
         assetDirectory?.let { directory ->
@@ -1241,7 +1251,10 @@ class EpubArchiveParser {
 
         val bytes = runCatching {
             streamFactory().use {
-                readBoundedEpubImage(it)
+                readBoundedEpubImage(
+                    it,
+                    limits.singleImageBytes
+                )
             }
         }.getOrElse {
             if (it is EpubLimitException || it is java.io.InterruptedIOException) throw it
@@ -1260,7 +1273,16 @@ class EpubArchiveParser {
             return null
         }
 
-        checkImageBudget(extractedImageBytes, 0, bytes.size)
+        checkImageBudget(
+            alreadyExtracted =
+                extractedImageBytes,
+            currentImage = 0,
+            nextChunk = bytes.size,
+            singleLimit =
+                limits.singleImageBytes,
+            totalLimit =
+                limits.totalImageBytes
+        )
         val extension = imageExtension(
             hint = extensionHint,
             bytes = bytes
@@ -1345,7 +1367,16 @@ class EpubArchiveParser {
                                 copyCount
                         }
 
-                        checkImageBudget(extractedImageBytes, total, count)
+                        checkImageBudget(
+                            alreadyExtracted =
+                                extractedImageBytes,
+                            currentImage = total,
+                            nextChunk = count,
+                            singleLimit =
+                                limits.singleImageBytes,
+                            totalLimit =
+                                limits.totalImageBytes
+                        )
                         output.write(
                             buffer,
                             0,
@@ -1587,14 +1618,14 @@ class EpubArchiveParser {
             zip = zip,
             path = path,
             maxBytes =
-                MAX_TEXT_ENTRY_BYTES
+                limits.sourceBytes
         ).toString(Charsets.UTF_8)
 
     private fun readBytes(
         zip: ZipFile,
         path: String,
-        maxBytes: Int =
-            MAX_COVER_ENTRY_BYTES
+        maxBytes: Long? =
+            limits.singleImageBytes
     ): ByteArray {
         val entry = zip.getEntry(path)
             ?: error(
@@ -1602,6 +1633,7 @@ class EpubArchiveParser {
             )
 
         if (
+            maxBytes != null &&
             entry.size >= 0L &&
             entry.size > maxBytes
         ) {
@@ -1618,7 +1650,15 @@ class EpubArchiveParser {
                 val initialSize =
                     entry.size
                         .takeIf {
-                            it in 1..maxBytes.toLong()
+                            it > 0L &&
+                                it <=
+                                    minOf(
+                                        maxBytes
+                                            ?: Int.MAX_VALUE
+                                                .toLong(),
+                                        Int.MAX_VALUE
+                                            .toLong()
+                                    )
                         }
                         ?.toInt()
                         ?: 8 * 1024
@@ -1628,7 +1668,7 @@ class EpubArchiveParser {
                     )
                 val buffer =
                     ByteArray(32 * 1024)
-                var total = 0
+                var total = 0L
 
                 while (true) {
                     checkEpubInterrupted()
@@ -1642,7 +1682,10 @@ class EpubArchiveParser {
                     }
 
                     total += count
-                    if (total > maxBytes) {
+                    if (
+                        maxBytes != null &&
+                        total > maxBytes
+                    ) {
                         throw EpubLimitException(
                             "Файл $path внутри EPUB слишком большой " +
                                 "для безопасного анализа"
@@ -1935,10 +1978,6 @@ class EpubArchiveParser {
     private companion object {
         const val MIN_CHAPTER_TEXT = 20
         const val MAX_GAP_SCAN = 10_000
-        const val MAX_TEXT_ENTRY_BYTES =
-            16 * 1024 * 1024
-        const val MAX_COVER_ENTRY_BYTES =
-            24 * 1024 * 1024
         const val DOM_NEKROMANTA_TEAM_URL =
             "https://ranobelib.me/ru/team/11969--dom-nekromanta"
 

@@ -5,11 +5,13 @@ import android.net.Uri
 import java.io.File
 
 class EpubParser(
-    private val context: Context
+    private val context: Context,
+    private val limits: EpubImportLimits =
+        EpubImportLimits.DEFAULT
 ) {
 
     private val archiveParser =
-        EpubArchiveParser()
+        EpubArchiveParser(limits)
 
     fun parse(
         uri: Uri,
@@ -38,7 +40,11 @@ class EpubParser(
                     requireNotNull(input) {
                         "Не удалось открыть файл"
                     }
-                    copyEpubSource(input, sourceTemp)
+                    copyEpubSource(
+                        input,
+                        sourceTemp,
+                        limits.sourceBytes
+                    )
                 }
 
             parseEpubArchiveWithCleanup(
