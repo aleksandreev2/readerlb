@@ -142,6 +142,14 @@ class MainActivitySmokeTest {
             .onNodeWithText("Настройки")
             .performClick()
 
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithText(
+                "Настройки",
+                useUnmergedTree = true
+            )
+            .fetchSemanticsNode()
+
         composeRule.activity.runOnUiThread {
             composeRule.activity
                 .onBackPressedDispatcher
@@ -173,6 +181,13 @@ class MainActivitySmokeTest {
                 substring = true
             )[0]
             .performClick()
+
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithTag(
+                "import-file-hero"
+            )
+            .fetchSemanticsNode()
 
         composeRule.activity.runOnUiThread {
             composeRule.activity
