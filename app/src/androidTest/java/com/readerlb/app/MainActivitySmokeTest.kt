@@ -125,4 +125,65 @@ class MainActivitySmokeTest {
         )
     }
 
+    @Test
+    fun systemBackReturnsFromSettingsToHome() {
+        if (
+            composeRule
+                .onAllNodesWithText("Пропустить")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        ) {
+            composeRule
+                .onNodeWithText("Пропустить")
+                .performClick()
+        }
+
+        composeRule
+            .onNodeWithText("Настройки")
+            .performClick()
+
+        composeRule.activity.runOnUiThread {
+            composeRule.activity
+                .onBackPressedDispatcher
+                .onBackPressed()
+        }
+        composeRule.waitForIdle()
+
+        composeRule
+            .onNodeWithText("Импортер глав для")
+            .fetchSemanticsNode()
+    }
+
+    @Test
+    fun systemBackReturnsFromImportToHome() {
+        if (
+            composeRule
+                .onAllNodesWithText("Пропустить")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        ) {
+            composeRule
+                .onNodeWithText("Пропустить")
+                .performClick()
+        }
+
+        composeRule
+            .onAllNodesWithText(
+                "Добавить новеллу",
+                substring = true
+            )[0]
+            .performClick()
+
+        composeRule.activity.runOnUiThread {
+            composeRule.activity
+                .onBackPressedDispatcher
+                .onBackPressed()
+        }
+        composeRule.waitForIdle()
+
+        composeRule
+            .onNodeWithText("Импортер глав для")
+            .fetchSemanticsNode()
+    }
+
 }
