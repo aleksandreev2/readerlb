@@ -146,10 +146,7 @@ class MainActivitySmokeTest {
 
         composeRule.waitForIdle()
         composeRule
-            .onNodeWithText(
-                "Настройки",
-                useUnmergedTree = true
-            )
+            .onNodeWithText("Лимиты EPUB")
             .fetchSemanticsNode()
 
         composeRule.activity.runOnUiThread {
