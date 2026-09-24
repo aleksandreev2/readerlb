@@ -11,7 +11,7 @@ internal const val DEFAULT_EPUB_TOTAL_IMAGE_LIMIT_MB = 256L
 
 private const val MEBIBYTE_BYTES = 1024L * 1024L
 
-internal data class EpubImportLimits(
+data class EpubImportLimits(
     val sourceBytes: Long?,
     val singleImageBytes: Long?,
     val totalImageBytes: Long?
