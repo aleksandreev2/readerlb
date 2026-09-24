@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.0
+
+First stable ReaderLB release candidate.
+
+- Finalized EPUB import hardening, configurable limits, cancellation and temporary-file cleanup.
+- Kept Android 11+ imports safe by using persisted RanobeLib access when available and portable ZIP fallback otherwise.
+- Fixed Android system Back navigation across settings, import, title details and onboarding.
+- Added explicit regression coverage for chapter 0 with embedded illustrations.
+- Added PackageInstaller session runtime smoke coverage on supported Android API levels.
+- Added an automated release-signed in-place upgrade smoke on Android 15 to verify the permanent signing chain before stable publication.
+- Release-candidate APKs remain SHA-256 verified and are retained as short-lived CI artifacts.
+
 ## 0.9.6
 
 Portable-package integrity hardening.

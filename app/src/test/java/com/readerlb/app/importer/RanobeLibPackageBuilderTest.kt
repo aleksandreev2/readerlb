@@ -609,4 +609,112 @@ class RanobeLibPackageBuilderTest {
                 )
             )
         )
+    @Test
+    fun chapterZeroWithIllustrationBuildsAndVerifies() {
+        val imageBytes = byteArrayOf(
+            0x89.toByte(),
+            'P'.code.toByte(),
+            'N'.code.toByte(),
+            'G'.code.toByte(),
+            13,
+            10,
+            26,
+            10,
+            7,
+            8,
+            9
+        )
+        val book = ParsedBook(
+            title = "Нулевая глава",
+            chapters = listOf(
+                ParsedChapter(
+                    number = "0",
+                    title = "Пролог",
+                    blocks = listOf(
+                        ReaderBlock.Paragraph(
+                            "Текст нулевой главы"
+                        ),
+                        ReaderBlock.Image(
+                            bytes = imageBytes,
+                            extension = "png",
+                            description = "Иллюстрация нулевой главы"
+                        )
+                    )
+                )
+            )
+        )
+        val root = Files
+            .createTempDirectory(
+                "readerlb_chapter_zero_"
+            )
+            .toFile()
+
+        try {
+            val built = builder.build(
+                book = book,
+                rootDir = root
+            )
+
+            assertEquals("0", built.firstChapter)
+            assertEquals("0", built.lastChapter)
+            assertEquals(1, built.chapterCount)
+
+            val chapterZip = built.titleDir
+                .listFiles()
+                .orEmpty()
+                .single {
+                    it.name.startsWith("v1-n0-") &&
+                        it.extension == "zip"
+                }
+
+            ZipFile(chapterZip).use { archive ->
+                val dataEntry = archive.getEntry("data.txt")
+                assertTrue(dataEntry != null)
+
+                val document = JSONObject(
+                    archive
+                        .getInputStream(dataEntry)
+                        .use {
+                            it.readBytes()
+                                .toString(Charsets.UTF_8)
+                        }
+                )
+                val nodes = document
+                    .getJSONArray("content")
+                val imageNode = (0 until nodes.length())
+                    .map { nodes.getJSONObject(it) }
+                    .single {
+                        it.getString("type") == "image"
+                    }
+                val imageId = imageNode
+                    .getJSONObject("attrs")
+                    .getJSONArray("images")
+                    .getJSONObject(0)
+                    .getString("image")
+                val storedImage = archive.getEntry(
+                    "$imageId.png"
+                )
+
+                assertTrue(storedImage != null)
+                assertTrue(
+                    archive
+                        .getInputStream(storedImage)
+                        .use { it.readBytes() }
+                        .contentEquals(imageBytes)
+                )
+            }
+
+            assertTrue(
+                builder.verify(
+                    built = built,
+                    expectedChapterNumbers =
+                        listOf("0")
+                ).isValid
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+
 }
