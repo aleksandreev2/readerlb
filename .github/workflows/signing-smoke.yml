@@ -172,7 +172,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
 
             adb install dist/ReaderLB-upgrade-baseline.apk
 
