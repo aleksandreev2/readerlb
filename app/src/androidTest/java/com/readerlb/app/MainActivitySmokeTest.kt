@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import kotlin.math.abs
@@ -16,6 +17,21 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {
+
+    @Test
+    fun modernAndroidShowsPortableFallbackWithoutBlockedFolderPicker() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (composeRule.onAllNodesWithText("Пропустить").fetchSemanticsNodes().isNotEmpty()) {
+            composeRule.onNodeWithText("Пропустить").performClick()
+        }
+        composeRule.onNodeWithText("Настройки").performClick()
+        assertTrue(
+            composeRule.onAllNodesWithText("Не подключено. Без доступа ReaderLB сохраняет готовый ZIP в Downloads.").fetchSemanticsNodes().isNotEmpty()
+        )
+        assertTrue(
+            composeRule.onAllNodesWithText("Подключить RanobeLib").fetchSemanticsNodes().isEmpty()
+        )
+    }
 
     @get:Rule
     val composeRule =
