@@ -231,6 +231,18 @@ private fun hasPersistedTreePermission(
                 permission.isWritePermission
         }
 
+private fun findPersistedRanobeLibTree(context: android.content.Context): Uri? =
+    context.contentResolver.persistedUriPermissions
+        .firstOrNull { permission ->
+            permission.isReadPermission && permission.isWritePermission &&
+                runCatching {
+                    android.provider.DocumentsContract.getTreeDocumentId(permission.uri)
+                        .replace('\\', '/')
+                        .endsWith("Android/data/ru.libappc/files/book")
+                }.getOrDefault(false)
+        }
+        ?.uri
+
 @Composable
 private fun ReaderLBRoot(
     incomingImport: IncomingImportRequest?,
@@ -558,6 +570,8 @@ private fun MainApp(
     val savedFolderUri =
         remember {
             preferences.ranobeLibBookTree
+                ?.takeIf { hasPersistedTreePermission(context, it) }
+                ?: findPersistedRanobeLibTree(context)
         }
     var folderUri by remember {
         mutableStateOf(
@@ -571,12 +585,7 @@ private fun MainApp(
     }
 
     LaunchedEffect(Unit) {
-        if (
-            savedFolderUri != null &&
-            folderUri == null
-        ) {
-            preferences.ranobeLibBookTree = null
-        }
+        preferences.ranobeLibBookTree = folderUri
     }
     var importHintsDone by remember {
         mutableStateOf(preferences.importHintsDone)
@@ -857,6 +866,14 @@ private fun MainApp(
                     libraryError =
                         it.message
                             ?: "Не удалось прочитать библиотеку RanobeLib"
+                    if (it is SecurityException || !hasPersistedTreePermission(context, tree)) {
+                        preferences.ranobeLibBookTree = null
+                        preferences.localLibraryCacheTree = null
+                        preferences.localLibraryCacheJson = null
+                        localLibrary = emptyList()
+                        folderUri = null
+                        libraryError = "Доступ к RanobeLib потерян. Импорт сохранит переносимый ZIP."
+                    }
                 }
 
                 libraryLoading = false
@@ -1475,8 +1492,14 @@ private fun ImportScreen(
     }
     var direct by rememberSaveable {
         mutableStateOf(
-            directImportEnabled
+            directImportEnabled &&
+                (folderUri != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R)
         )
+    }
+    LaunchedEffect(folderUri) {
+        if (folderUri == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            direct = false
+        }
     }
     var busy by remember {
         mutableStateOf(false)
@@ -1635,7 +1658,7 @@ private fun ImportScreen(
                 title = transfer.title
             } else {
                 val book =
-                    withContext(
+                    runInterruptible(
                         Dispatchers.IO
                     ) {
                         repository.parse(
@@ -2116,6 +2139,7 @@ private fun ImportScreen(
                         }
                         Switch(
                             checked = direct,
+                            enabled = folderUri != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R,
                             onCheckedChange = {
                                 enabled ->
                                 direct = enabled
@@ -2132,7 +2156,8 @@ private fun ImportScreen(
         if (
             parsed != null &&
             direct &&
-            folderUri == null
+            folderUri == null &&
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.R
         ) {
             item {
                 Card(
@@ -2146,7 +2171,7 @@ private fun ImportScreen(
                             color = Ink
                         )
                         Text(
-                            "Выберите Android/data/ru.libappc/files/book. На Android 11+ системный проводник может запретить этот путь — тогда выключите прямое добавление, и ReaderLB сохранит готовый ZIP в Downloads/ReaderLB.",
+                            "Выберите папку book в системном окне Android.",
                             color = Muted,
                             fontSize = 12.sp,
                             lineHeight = 18.sp,
@@ -2920,7 +2945,17 @@ private fun LibraryScreen(
             }
         }
 
-        if (!connected) {
+        if (!connected && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            item {
+                Text(
+                    "Нет доступа к локальной библиотеке RanobeLib. На Android 11+ импорт сохраняет переносимый ZIP в Downloads/ReaderLB.",
+                    color = Muted,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+        if (!connected && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(
@@ -3356,14 +3391,12 @@ private fun SettingsScreen(
                                 bottom = 14.dp
                             )
                     )
-                    OutlineAction(
-                        if (folderUri == null) {
-                            "Подключить RanobeLib"
-                        } else {
-                            "Изменить доступ"
-                        },
-                        onPickFolder
-                    )
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                        OutlineAction(
+                            if (folderUri == null) "Подключить RanobeLib" else "Изменить доступ",
+                            onPickFolder
+                        )
+                    }
                     if (folderUri != null) {
                         Text(
                             "Отключить RanobeLib",
