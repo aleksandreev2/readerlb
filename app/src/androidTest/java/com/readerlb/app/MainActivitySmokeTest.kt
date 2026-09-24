@@ -125,4 +125,79 @@ class MainActivitySmokeTest {
         )
     }
 
+    @Test
+    fun systemBackReturnsFromSettingsToHome() {
+        if (
+            composeRule
+                .onAllNodesWithText("Пропустить")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        ) {
+            composeRule
+                .onNodeWithText("Пропустить")
+                .performClick()
+        }
+
+        composeRule
+            .onNodeWithContentDescription(
+                "Настройки"
+            )
+            .performClick()
+
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithText("Лимиты EPUB")
+            .fetchSemanticsNode()
+
+        composeRule.activity.runOnUiThread {
+            composeRule.activity
+                .onBackPressedDispatcher
+                .onBackPressed()
+        }
+        composeRule.waitForIdle()
+
+        composeRule
+            .onNodeWithText("Импортер глав для")
+            .fetchSemanticsNode()
+    }
+
+    @Test
+    fun systemBackReturnsFromImportToHome() {
+        if (
+            composeRule
+                .onAllNodesWithText("Пропустить")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        ) {
+            composeRule
+                .onNodeWithText("Пропустить")
+                .performClick()
+        }
+
+        composeRule
+            .onAllNodesWithText(
+                "Добавить новеллу",
+                substring = true
+            )[0]
+            .performClick()
+
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithTag(
+                "import-file-hero"
+            )
+            .fetchSemanticsNode()
+
+        composeRule.activity.runOnUiThread {
+            composeRule.activity
+                .onBackPressedDispatcher
+                .onBackPressed()
+        }
+        composeRule.waitForIdle()
+
+        composeRule
+            .onNodeWithText("Импортер глав для")
+            .fetchSemanticsNode()
+    }
+
 }

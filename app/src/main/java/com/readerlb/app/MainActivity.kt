@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Base64
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -281,6 +282,10 @@ private fun ReaderLBRoot(
 private fun Onboarding(onDone: () -> Unit) {
     var page by remember { mutableIntStateOf(0) }
     val pageCount = 3
+
+    BackHandler(enabled = page > 0) {
+        page -= 1
+    }
     val uriHandler =
         androidx.compose.ui.platform.LocalUriHandler.current
 
@@ -998,6 +1003,10 @@ private fun MainApp(
         }
     }
 
+    BackHandler(enabled = tab != AppTab.HOME) {
+        tab = AppTab.HOME
+    }
+
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -1260,6 +1269,10 @@ private fun HomeScreen(
         localLibrary.firstOrNull {
             it.slugUrl == selectedSlug
         }
+
+    BackHandler(enabled = selectedItem != null) {
+        selectedSlug = null
+    }
 
     if (selectedItem != null) {
         LibraryTitleDetail(
@@ -2896,6 +2909,10 @@ private fun LibraryScreen(
 
     val selectedItem = items.firstOrNull {
         it.slugUrl == selectedSlug
+    }
+
+    BackHandler(enabled = selectedItem != null) {
+        selectedSlug = null
     }
 
     if (selectedItem != null) {
