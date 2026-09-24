@@ -2,6 +2,7 @@ package com.readerlb.app.importer
 
 import android.content.Context
 import androidx.documentfile.provider.DocumentFile
+import com.readerlb.app.storage.MAX_INFO_JSON_BYTES
 
 /**
  * SAF-backed storage for one already installed RanobeLib title directory.
@@ -34,7 +35,12 @@ class RanobeLibDocumentStorage(
                 requireNotNull(input) {
                     "Не удалось открыть $name"
                 }
-                input.readBytes()
+                if (name == "info.json") {
+                    val bytes = input.readBytesLimited(MAX_INFO_JSON_BYTES)
+                    bytes
+                } else {
+                    input.readBytes()
+                }
             }
     }
 
@@ -111,4 +117,16 @@ class RanobeLibDocumentStorage(
             "webp" -> "image/webp"
             else -> "application/octet-stream"
         }
+}
+
+private fun java.io.InputStream.readBytesLimited(limit: Int): ByteArray {
+    val output = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    while (true) {
+        val count = read(buffer)
+        if (count < 0) break
+        require(output.size() + count <= limit) { "info.json слишком большой" }
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
 }
