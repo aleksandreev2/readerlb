@@ -1,5 +1,6 @@
 package com.readerlb.app
 
+import android.os.Build
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -7,7 +8,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import kotlin.math.abs
@@ -75,6 +75,7 @@ class MainActivitySmokeTest {
             addNovelNodes.isNotEmpty()
         )
     }
+
     @Test
     fun emptyImportHeroIsCenteredInTheScreen() {
         val skipNodes =
