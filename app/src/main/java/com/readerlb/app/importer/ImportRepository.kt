@@ -15,13 +15,27 @@ class ImportRepository(private val context: Context) {
         return uri.lastPathSegment ?: "book.epub"
     }
 
-    fun parse(uri: Uri): ParsedBook {
+    fun parse(
+        uri: Uri,
+        epubLimits: EpubImportLimits =
+            EpubImportLimits.DEFAULT
+    ): ParsedBook {
         val name = displayName(uri)
         val ext = name.substringAfterLast('.', "").lowercase()
         return when (ext) {
-            "epub" -> EpubParser(context).parse(uri, name)
+            "epub" ->
+                EpubParser(
+                    context,
+                    epubLimits
+                ).parse(uri, name)
             "txt" -> PlainTextParser(context).parse(uri, name.substringBeforeLast('.'))
-            "zip" -> runCatching { EpubParser(context).parse(uri, name) }
+            "zip" ->
+                runCatching {
+                    EpubParser(
+                        context,
+                        epubLimits
+                    ).parse(uri, name)
+                }
                 .getOrElse { error("ZIP пока поддерживается только если внутри находится EPUB-структура") }
             "docx" -> error("DOCX будет добавлен следующим этапом. Сейчас используйте EPUB или TXT.")
             else -> error("Формат .$ext пока не поддерживается")
