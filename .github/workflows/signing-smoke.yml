@@ -79,6 +79,28 @@ jobs:
 
           echo "Release signing smoke test passed."
 
+      - name: Prepare release candidate artifact
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk \
+            dist/ReaderLB-release-candidate.apk
+          (
+            cd dist
+            sha256sum ReaderLB-release-candidate.apk \
+              > ReaderLB-release-candidate.apk.sha256
+          )
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: ReaderLB-release-candidate-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            dist/ReaderLB-release-candidate.apk
+            dist/ReaderLB-release-candidate.apk.sha256
+
       - name: Remove keystore
         if: always()
         run: rm -f release.keystore
