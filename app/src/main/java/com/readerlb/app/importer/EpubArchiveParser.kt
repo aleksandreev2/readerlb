@@ -20,12 +20,18 @@ import java.util.zip.ZipFile
  * the app is exercised by JVM regression and corpus tests.
  */
 class EpubArchiveParser {
+    private var extractedImageBytes = 0L
 
     fun parse(
         file: File,
         sourceName: String? = null,
         assetDirectory: File? = null
     ): ParsedBook {
+        checkEpubInterrupted()
+        if (file.length() > MAX_EPUB_SOURCE_BYTES) {
+            throw EpubLimitException("Исходный EPUB слишком большой")
+        }
+        extractedImageBytes = 0L
         assetDirectory?.let { directory ->
             require(
                 directory.isDirectory ||
@@ -114,7 +120,10 @@ class EpubArchiveParser {
                         zip,
                         resolve(opfBase, item.href)
                     )
-                }.getOrNull()
+                }.getOrElse {
+                    if (it is java.io.InterruptedIOException || it is EpubLimitException) throw it
+                    null
+                }
             }
             val coverExtension = coverItem
                 ?.href
@@ -146,6 +155,7 @@ class EpubArchiveParser {
                     )
                 }
                 .mapIndexedNotNull { spineIndex, item ->
+                    checkEpubInterrupted()
                     val contentPath = resolve(
                         opfBase,
                         item.href
@@ -449,6 +459,7 @@ class EpubArchiveParser {
             val raw = runCatching {
                 readText(zip, navigationPath)
             }.getOrElse {
+                if (it is java.io.InterruptedIOException || it is EpubLimitException) throw it
                 issues += ImportIssue(
                     code = "BROKEN_NAVIGATION",
                     message = "Не удалось прочитать оглавление EPUB: " +
@@ -584,6 +595,7 @@ class EpubArchiveParser {
                 contentPath
             )
         }.getOrElse {
+            if (it is java.io.InterruptedIOException || it is EpubLimitException) throw it
             issues += ImportIssue(
                 code = "MISSING_CONTENT_FILE",
                 message = "В EPUB отсутствует файл главы: " +
@@ -1184,6 +1196,7 @@ class EpubArchiveParser {
                     )
                 }
             }.getOrElse {
+                if (it is EpubLimitException || it is java.io.InterruptedIOException) throw it
                 issues += ImportIssue(
                     code = "INLINE_IMAGE_DATA_INVALID",
                     message = "Не удалось сохранить иллюстрацию EPUB " +
@@ -1194,6 +1207,7 @@ class EpubArchiveParser {
 
             if (spilled.size == 0L) {
                 spilled.file.delete()
+                extractedImageBytes -= spilled.size
                 issues += ImportIssue(
                     code = "INLINE_IMAGE_EMPTY",
                     message = "В EPUB найдена пустая иллюстрация."
@@ -1208,6 +1222,7 @@ class EpubArchiveParser {
 
             if (extension == null) {
                 spilled.file.delete()
+                extractedImageBytes -= spilled.size
                 issues += ImportIssue(
                     code = "INLINE_IMAGE_FORMAT_UNSUPPORTED",
                     message = "Формат одной из иллюстраций EPUB " +
@@ -1226,9 +1241,10 @@ class EpubArchiveParser {
 
         val bytes = runCatching {
             streamFactory().use {
-                it.readBytes()
+                readBoundedEpubImage(it)
             }
         }.getOrElse {
+            if (it is EpubLimitException || it is java.io.InterruptedIOException) throw it
             issues += ImportIssue(
                 code = "INLINE_IMAGE_DATA_INVALID",
                 message = "Не удалось прочитать иллюстрацию EPUB."
@@ -1244,6 +1260,7 @@ class EpubArchiveParser {
             return null
         }
 
+        checkImageBudget(extractedImageBytes, 0, bytes.size)
         val extension = imageExtension(
             hint = extensionHint,
             bytes = bytes
@@ -1257,6 +1274,8 @@ class EpubArchiveParser {
             )
             return null
         }
+
+        extractedImageBytes += bytes.size
 
         return ReaderBlock.Image(
             bytes = bytes,
@@ -1292,6 +1311,7 @@ class EpubArchiveParser {
                         ByteArray(64 * 1024)
 
                     while (true) {
+                        checkEpubInterrupted()
                         val count =
                             input.read(buffer)
 
@@ -1325,6 +1345,7 @@ class EpubArchiveParser {
                                 copyCount
                         }
 
+                        checkImageBudget(extractedImageBytes, total, count)
                         output.write(
                             buffer,
                             0,
@@ -1334,6 +1355,7 @@ class EpubArchiveParser {
                     }
                 }
 
+            extractedImageBytes += total
             return SpilledImage(
                 file = file,
                 header =
@@ -1583,7 +1605,7 @@ class EpubArchiveParser {
             entry.size >= 0L &&
             entry.size > maxBytes
         ) {
-            error(
+            throw EpubLimitException(
                 "Файл $path внутри EPUB слишком большой " +
                     "для безопасного анализа"
             )
@@ -1609,6 +1631,7 @@ class EpubArchiveParser {
                 var total = 0
 
                 while (true) {
+                    checkEpubInterrupted()
                     val count =
                         input.read(buffer)
                     if (count < 0) {
@@ -1620,7 +1643,7 @@ class EpubArchiveParser {
 
                     total += count
                     if (total > maxBytes) {
-                        error(
+                        throw EpubLimitException(
                             "Файл $path внутри EPUB слишком большой " +
                                 "для безопасного анализа"
                         )
@@ -1915,7 +1938,7 @@ class EpubArchiveParser {
         const val MAX_TEXT_ENTRY_BYTES =
             16 * 1024 * 1024
         const val MAX_COVER_ENTRY_BYTES =
-            32 * 1024 * 1024
+            24 * 1024 * 1024
         const val DOM_NEKROMANTA_TEAM_URL =
             "https://ranobelib.me/ru/team/11969--dom-nekromanta"
 

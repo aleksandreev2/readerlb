@@ -32,6 +32,15 @@ A runtime failure is treated as a real regression until the test or application
 behavior is understood. CI setup failures such as transient emulator downloads
 should be fixed in the workflow rather than hidden by disabling the test.
 
+Before the release candidate, verify these flows on a small screen and on Android 11+:
+
+1. Open a corrupt EPUB, see the analysis error, and use “Повторить анализ”. Then choose a valid EPUB and confirm that the preview appears.
+2. Cancel analysis of a large EPUB, confirm that progress stops, and check that temporary EPUB and image files are removed from app cache.
+3. Remove the saved RanobeLib folder permission, restart ReaderLB, and confirm that import offers a portable ZIP without opening a blocked `Android/data` folder picker.
+4. With an existing persisted RanobeLib permission, restart ReaderLB and confirm that direct import and the local library still work.
+5. On Redmi 9 dimensions, check the empty import screen, preview, warning, error, library, settings, and update controls for clipping and reachable actions.
+6. Install a release-signed update over the previous release-signed build; verify SHA-256, certificate identity, and the in-app updater result.
+
 ## Portable package checks
 
 Portable `.readerlb.zip` regression coverage includes:

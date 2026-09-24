@@ -28,29 +28,24 @@ class EpubParser(
                 System.nanoTime()
         )
 
-        require(assetDirectory.mkdirs()) {
-            "Не удалось создать временную папку EPUB"
-        }
-
         return try {
+            require(assetDirectory.mkdirs()) {
+                "Не удалось создать временную папку EPUB"
+            }
             context.contentResolver
                 .openInputStream(uri)
                 .use { input ->
                     requireNotNull(input) {
                         "Не удалось открыть файл"
                     }
-                    sourceTemp.outputStream()
-                        .buffered()
-                        .use { output ->
-                            input.copyTo(output)
-                        }
+                    copyEpubSource(input, sourceTemp)
                 }
 
-            archiveParser.parse(
+            parseEpubArchiveWithCleanup(
                 file = sourceTemp,
                 sourceName = sourceName,
-                assetDirectory =
-                    assetDirectory
+                assetDirectory = assetDirectory,
+                parser = archiveParser
             )
         } catch (throwable: Throwable) {
             assetDirectory.deleteRecursively()
@@ -66,6 +61,10 @@ class EpubParser(
             nowMillis =
                 System.currentTimeMillis()
         )
+        cleanupStaleEpubSourceFiles(
+            cacheDir = context.cacheDir,
+            nowMillis = System.currentTimeMillis()
+        )
     }
 
     private companion object {
@@ -74,11 +73,32 @@ class EpubParser(
     }
 }
 
+internal fun parseEpubArchiveWithCleanup(
+    file: File,
+    sourceName: String?,
+    assetDirectory: File,
+    parser: EpubArchiveParser
+): ParsedBook = try {
+    parser.parse(file, sourceName, assetDirectory)
+} catch (error: Throwable) {
+    assetDirectory.deleteRecursively()
+    throw error
+}
+
 internal const val EPUB_ASSET_DIRECTORY_PREFIX =
     "readerlb_epub_assets_"
 
 internal const val EPUB_ASSET_MAX_AGE_MILLIS =
     24L * 60L * 60L * 1000L
+
+internal fun cleanupStaleEpubSourceFiles(cacheDir: File, nowMillis: Long): Int {
+    val cutoff = nowMillis - EPUB_ASSET_MAX_AGE_MILLIS
+    return cacheDir.listFiles().orEmpty().count { file ->
+        file.isFile && file.name.startsWith("readerlb_") &&
+            file.name.endsWith(".epub") &&
+            file.lastModified() in 1 until cutoff && file.delete()
+    }
+}
 
 internal fun cleanupStaleEpubAssetDirectories(
     cacheDir: File,

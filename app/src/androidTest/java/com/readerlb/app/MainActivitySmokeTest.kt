@@ -1,5 +1,6 @@
 package com.readerlb.app
 
+import android.os.Build
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -16,6 +17,21 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {
+
+    @Test
+    fun modernAndroidShowsPortableFallbackWithoutBlockedFolderPicker() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (composeRule.onAllNodesWithText("Пропустить").fetchSemanticsNodes().isNotEmpty()) {
+            composeRule.onNodeWithText("Пропустить").performClick()
+        }
+        composeRule.onNodeWithText("Настройки").performClick()
+        assertTrue(
+            composeRule.onAllNodesWithText("Не подключено. Без доступа ReaderLB сохраняет готовый ZIP в Downloads.").fetchSemanticsNodes().isNotEmpty()
+        )
+        assertTrue(
+            composeRule.onAllNodesWithText("Подключить RanobeLib").fetchSemanticsNodes().isEmpty()
+        )
+    }
 
     @get:Rule
     val composeRule =
@@ -59,6 +75,7 @@ class MainActivitySmokeTest {
             addNovelNodes.isNotEmpty()
         )
     }
+
     @Test
     fun emptyImportHeroIsCenteredInTheScreen() {
         val skipNodes =
