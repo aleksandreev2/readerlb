@@ -139,7 +139,9 @@ class MainActivitySmokeTest {
         }
 
         composeRule
-            .onNodeWithText("Настройки")
+            .onNodeWithContentDescription(
+                "Настройки"
+            )
             .performClick()
 
         composeRule.waitForIdle()
