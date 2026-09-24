@@ -2,6 +2,9 @@ package com.readerlb.app.storage
 
 import android.content.Context
 import android.net.Uri
+import com.readerlb.app.importer.DEFAULT_EPUB_IMAGE_LIMIT_MB
+import com.readerlb.app.importer.DEFAULT_EPUB_SOURCE_LIMIT_MB
+import com.readerlb.app.importer.DEFAULT_EPUB_TOTAL_IMAGE_LIMIT_MB
 
 class Preferences(context: Context) {
     private val prefs = context.getSharedPreferences("readerlb", Context.MODE_PRIVATE)
@@ -93,4 +96,46 @@ class Preferences(context: Context) {
         set(value) = prefs.edit()
             .putBoolean("import_hints_done", value)
             .apply()
+
+    var epubSourceLimitMb: Long
+        get() =
+            prefs.getLong(
+                "epub_source_limit_mb",
+                DEFAULT_EPUB_SOURCE_LIMIT_MB
+            )
+        set(value) =
+            prefs.edit()
+                .putLong(
+                    "epub_source_limit_mb",
+                    value.coerceAtLeast(0L)
+                )
+                .apply()
+
+    var epubImageLimitMb: Long
+        get() =
+            prefs.getLong(
+                "epub_image_limit_mb",
+                DEFAULT_EPUB_IMAGE_LIMIT_MB
+            )
+        set(value) =
+            prefs.edit()
+                .putLong(
+                    "epub_image_limit_mb",
+                    value.coerceAtLeast(0L)
+                )
+                .apply()
+
+    var epubTotalImageLimitMb: Long
+        get() =
+            prefs.getLong(
+                "epub_total_image_limit_mb",
+                DEFAULT_EPUB_TOTAL_IMAGE_LIMIT_MB
+            )
+        set(value) =
+            prefs.edit()
+                .putLong(
+                    "epub_total_image_limit_mb",
+                    value.coerceAtLeast(0L)
+                )
+                .apply()
 }
