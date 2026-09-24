@@ -202,22 +202,10 @@ class UpdateManager(
         val installer =
             context.packageManager.packageInstaller
         val params =
-            PackageInstaller.SessionParams(
-                PackageInstaller.SessionParams.MODE_FULL_INSTALL
-            ).apply {
-                setAppPackageName(context.packageName)
-                setSize(apk.length())
-
-                if (
-                    Build.VERSION.SDK_INT >=
-                    Build.VERSION_CODES.S
-                ) {
-                    setRequireUserAction(
-                        PackageInstaller.SessionParams
-                            .USER_ACTION_NOT_REQUIRED
-                    )
-                }
-            }
+            createUpdateInstallSessionParams(
+                packageName = context.packageName,
+                apkSize = apk.length()
+            )
 
         val sessionId =
             installer.createSession(params)
@@ -393,6 +381,28 @@ class UpdateManager(
             )
         }
 }
+
+
+internal fun createUpdateInstallSessionParams(
+    packageName: String,
+    apkSize: Long
+): PackageInstaller.SessionParams =
+    PackageInstaller.SessionParams(
+        PackageInstaller.SessionParams.MODE_FULL_INSTALL
+    ).apply {
+        setAppPackageName(packageName)
+        setSize(apkSize)
+
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.S
+        ) {
+            setRequireUserAction(
+                PackageInstaller.SessionParams
+                    .USER_ACTION_NOT_REQUIRED
+            )
+        }
+    }
 
 class UpdateInstallReceiver : BroadcastReceiver() {
 
