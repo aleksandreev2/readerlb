@@ -3401,6 +3401,42 @@ private fun LibrarySortPill(
 }
 
 @Composable
+private fun EpubLimitField(
+    label: String,
+    value: Long,
+    onValueChanged: (Long) -> Unit
+) {
+    var text by rememberSaveable(value) {
+        mutableStateOf(value.toString())
+    }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { raw ->
+            val filtered =
+                raw.filter(Char::isDigit)
+                    .take(12)
+
+            text = filtered
+
+            filtered
+                .toLongOrNull()
+                ?.let(onValueChanged)
+        },
+        modifier = Modifier.fillMaxWidth(),
+        label = {
+            Text(label)
+        },
+        singleLine = true,
+        keyboardOptions =
+            KeyboardOptions(
+                keyboardType =
+                    KeyboardType.Number
+            )
+    )
+}
+
+@Composable
 private fun SettingsScreen(
     modifier: Modifier,
     folderUri: Uri?,
@@ -3488,6 +3524,84 @@ private fun SettingsScreen(
                                 )
                         )
                     }
+                }
+            }
+        }
+        item {
+            Card(
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            MaterialTheme
+                                .colorScheme
+                                .surface
+                    ),
+                shape =
+                    RoundedCornerShape(16.dp),
+                border =
+                    androidx.compose.foundation
+                        .BorderStroke(
+                            1.dp,
+                            Line
+                        )
+            ) {
+                Column(
+                    modifier =
+                        Modifier.padding(18.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Лимиты EPUB",
+                        color = Ink,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                    Text(
+                        "Значения задаются в МБ. " +
+                            "0 отключает соответствующий лимит. " +
+                            "Слишком высокие значения или режим без лимита " +
+                            "могут увеличить расход памяти и места на устройстве.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                    EpubLimitField(
+                        label =
+                            "Максимальный размер EPUB, МБ",
+                        value =
+                            epubSourceLimitMb,
+                        onValueChanged =
+                            onEpubSourceLimitChanged
+                    )
+                    EpubLimitField(
+                        label =
+                            "Одна иллюстрация, МБ",
+                        value =
+                            epubImageLimitMb,
+                        onValueChanged =
+                            onEpubImageLimitChanged
+                    )
+                    EpubLimitField(
+                        label =
+                            "Все иллюстрации, МБ",
+                        value =
+                            epubTotalImageLimitMb,
+                        onValueChanged =
+                            onEpubTotalImageLimitChanged
+                    )
+                    Text(
+                        "Сбросить: 256 / 24 / 256 МБ",
+                        color = Blue,
+                        fontSize = 13.sp,
+                        fontWeight =
+                            FontWeight.SemiBold,
+                        modifier =
+                            Modifier.clickable(
+                                onClick =
+                                    onResetEpubLimits
+                            )
+                    )
                 }
             }
         }
