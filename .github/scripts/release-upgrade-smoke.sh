@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
 
 adb install dist/ReaderLB-upgrade-baseline.apk
 
@@ -16,6 +16,7 @@ UID_BEFORE="$(
     head -n 1
 )"
 
+echo "Baseline package: versionCode=$BASELINE_CODE uid=$UID_BEFORE"
 test "$BASELINE_CODE" = "$READERLB_SMOKE_BASELINE_CODE"
 test -n "$UID_BEFORE"
 
@@ -36,6 +37,7 @@ UID_AFTER="$(
     head -n 1
 )"
 
+echo "Updated package: versionCode=$CURRENT_CODE uid=$UID_AFTER"
 test "$CURRENT_CODE" = "$READERLB_SMOKE_CURRENT_CODE"
 test "$UID_AFTER" = "$UID_BEFORE"
 
