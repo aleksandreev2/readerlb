@@ -309,12 +309,25 @@ class RanobeLibPackageBuilder(
             errors += "chapters.json отсутствует или пуст"
         }
 
-        val info = runCatching {
-            JSONObject(infoFile.readText(Charsets.UTF_8))
-        }.getOrElse {
-            errors += "info.json не является валидным JSON"
-            null
-        }
+        val info =
+            when {
+                !infoFile.isFile ||
+                    infoFile.length() == 0L -> null
+
+                infoFile.length() >
+                    com.readerlb.app.storage.MAX_INFO_JSON_BYTES -> {
+                    errors += "info.json слишком большой"
+                    null
+                }
+
+                else ->
+                    runCatching {
+                        JSONObject(infoFile.readText(Charsets.UTF_8))
+                    }.getOrElse {
+                        errors += "info.json не является валидным JSON"
+                        null
+                    }
+            }
 
         val chapters = runCatching {
             JSONArray(chaptersFile.readText(Charsets.UTF_8))
