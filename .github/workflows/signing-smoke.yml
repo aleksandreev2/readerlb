@@ -7,6 +7,7 @@ on:
     paths:
       - "app/**"
       - ".github/workflows/signing-smoke.yml"
+      - ".github/scripts/release-upgrade-smoke.sh"
   workflow_dispatch:
 
 permissions:
