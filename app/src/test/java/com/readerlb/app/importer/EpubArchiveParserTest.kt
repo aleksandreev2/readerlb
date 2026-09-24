@@ -15,6 +15,24 @@ class EpubArchiveParserTest {
     private val parser = EpubArchiveParser()
 
     @Test
+    fun oversizedIllustrationFailsAndRemovesSpilledAssets() {
+        val epub = buildEpub(
+            docs = listOf(Doc("ch1", "text/ch1.xhtml", "<h1>Глава 1</h1><p>Достаточно длинный текст главы.</p><img src=\"../images/huge.jpg\"/>")),
+            extraEntries = mapOf("OEBPS/images/huge.jpg" to ByteArray((MAX_EPUB_IMAGE_BYTES + 1).toInt()) { 7 })
+        )
+        val assets = Files.createTempDirectory("oversized_assets_").toFile()
+        try {
+            parseEpubArchiveWithCleanup(epub, null, assets, parser)
+            fail("Expected illustration limit")
+        } catch (_: EpubLimitException) {
+            assertTrue(!assets.exists())
+        } finally {
+            epub.delete()
+            assets.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsTruncatedEpubInsteadOfGuessing() {
         val epub = Files.createTempFile(
             "readerlb_truncated_",
