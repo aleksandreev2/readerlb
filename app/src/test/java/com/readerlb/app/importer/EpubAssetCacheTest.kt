@@ -8,6 +8,32 @@ import java.nio.file.Files
 class EpubAssetCacheTest {
 
     @Test
+    fun removesOnlyStaleSourceCopies() {
+        val root = Files.createTempDirectory("epub_source_cleanup_").toFile()
+        val now = 2_000_000_000_000L
+        val stale = root.resolve("readerlb_stale.epub").apply {
+            writeText("old")
+            setLastModified(now - EPUB_ASSET_MAX_AGE_MILLIS - 1000)
+        }
+        val recent = root.resolve("readerlb_recent.epub").apply {
+            writeText("new")
+            setLastModified(now - 60_000)
+        }
+        val unrelated = root.resolve("other.epub").apply {
+            writeText("other")
+            setLastModified(now - EPUB_ASSET_MAX_AGE_MILLIS - 1000)
+        }
+        try {
+            assertEquals(1, cleanupStaleEpubSourceFiles(root, now))
+            assertTrue(!stale.exists())
+            assertTrue(recent.exists())
+            assertTrue(unrelated.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun removesOnlyStaleReaderLbAssetDirectories() {
         val root = Files
             .createTempDirectory(
