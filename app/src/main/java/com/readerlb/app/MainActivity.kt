@@ -134,6 +134,7 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
+import java.util.Locale
 
 internal const val EXTRA_OPEN_UPDATES = "readerlb.open_updates"
 private const val RELEASE_TOPIC = "readerlb_releases"
@@ -3831,8 +3832,8 @@ private fun SettingsScreen(
                             Text(
                                 "Проверять новые стабильные версии " +
                                     "не чаще одного раза в сутки. " +
-                                    "Установка запускается только после " +
-                                    "нажатия «Обновить».",
+                                    "Скачивание и установка запускаются " +
+                                    "только после вашего подтверждения.",
                                 color = Muted,
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
@@ -5462,12 +5463,14 @@ private fun formatUpdateFileSize(
         value >= megabyte
     ) {
         String.format(
+            Locale.getDefault(),
             "%.1f МБ",
             value / megabyte
         )
     } else {
         val kilobyte = 1024.0
         String.format(
+            Locale.getDefault(),
             "%.0f КБ",
             value / kilobyte
         )
