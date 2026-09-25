@@ -242,6 +242,43 @@ Release only when:
 - optimized APK remains within the size budget;
 - first-run flow no longer requires project-specific knowledge.
 
+## 1.0.1 — In-app updater UX polish
+
+Goal: make the already secure stable updater clear and pleasant for ordinary users.
+
+Scope:
+
+- dedicated update dialog shared by Home, Settings and release-notification entry points;
+- show installed and target versions, release notes and APK size when available;
+- real APK download progress;
+- explicit verification state before installation;
+- keep SHA-256, package-name and signing-certificate verification mandatory;
+- only request Android's unknown-source install permission when a verified APK is ready;
+- use real Compose/Material icons instead of text characters pretending to be icons;
+- preserve Android PackageInstaller as the final installation authority.
+
+Acceptance criteria:
+
+- a user can check for an update, understand what is being downloaded and see real progress;
+- a downloaded APK is never offered for installation before integrity/package/signing checks pass;
+- cancellation removes the partial APK;
+- API 29 and API 35 runtime tests stay green;
+- stable 1.0.0 -> 1.0.1 update is verified with the permanent release signing key.
+
+## 1.1.0 — Local-library export
+
+Goal: make the actual local RanobeLib library exportable to standard reading formats.
+
+Planned scope is tracked in GitHub issue #56 and includes:
+
+- read complete content from ReaderLB-created and ordinary local RanobeLib titles;
+- EPUB 3, TXT, PDF and FB2 export for novels;
+- source badges and library filtering;
+- streamed large-book export with cancellation and bounded memory use;
+- image-oriented formats such as CBZ only for supported, user-accessible graphic sources.
+
+This is a minor feature release, not a 1.0.x patch.
+
 ## Update policy after 1.0
 
 Versioning:
