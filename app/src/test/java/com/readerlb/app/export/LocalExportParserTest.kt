@@ -476,4 +476,146 @@ class LocalExportParserTest {
         )
     }
 
+    @Test
+    fun parsesJsonEncodedRanobeLibHtmlChapter() {
+        val html =
+            """
+                <p><strong>Уровни культивации</strong><br>Первый уровень</p>
+                <blockquote><p>Цитата из главы</p></blockquote>
+                <hr>
+                <p style="text-align: center">По центру</p>
+            """.trimIndent()
+        val chapter =
+            parseLocalChapterDocument(
+                number = "1",
+                title = "HTML",
+                dataText =
+                    org.json.JSONObject
+                        .quote(html),
+                archiveEntryNames =
+                    setOf("data.txt")
+            )
+
+        assertEquals(
+            4,
+            chapter.blocks.size
+        )
+        assertEquals(
+            "Уровни культивации\nПервый уровень",
+            (
+                chapter.blocks[0]
+                    as LocalExportBlock
+                        .Paragraph
+                ).text
+        )
+        assertEquals(
+            listOf(
+                "Цитата из главы"
+            ),
+            (
+                chapter.blocks[1]
+                    as LocalExportBlock
+                        .Quote
+                ).lines
+        )
+        assertTrue(
+            chapter.blocks[2] ===
+                LocalExportBlock
+                    .HorizontalRule
+        )
+        assertTrue(
+            (
+                chapter.blocks[3]
+                    as LocalExportBlock
+                        .Paragraph
+                ).centered
+        )
+    }
+
+    @Test
+    fun parsesRawRanobeLibHtmlAndResolvesLocalImage() {
+        val chapter =
+            parseLocalChapterDocument(
+                number = "2",
+                title = "",
+                dataText = """
+                    <div>
+                      <p>До картинки</p>
+                      <figure>
+                        <img src="https://example.invalid/path/image-id.webp?token=1" alt="Арт">
+                      </figure>
+                      <p>После картинки</p>
+                    </div>
+                """.trimIndent(),
+                archiveEntryNames =
+                    setOf(
+                        "data.txt",
+                        "image-id.webp"
+                    )
+            )
+
+        assertEquals(
+            3,
+            chapter.blocks.size
+        )
+        assertEquals(
+            "До картинки",
+            (
+                chapter.blocks[0]
+                    as LocalExportBlock
+                        .Paragraph
+                ).text
+        )
+        assertEquals(
+            "image-id.webp",
+            (
+                chapter.blocks[1]
+                    as LocalExportBlock
+                        .Image
+                ).entryName
+        )
+        assertEquals(
+            "Арт",
+            (
+                chapter.blocks[1]
+                    as LocalExportBlock
+                        .Image
+                ).description
+        )
+        assertEquals(
+            "После картинки",
+            (
+                chapter.blocks[2]
+                    as LocalExportBlock
+                        .Paragraph
+                ).text
+        )
+    }
+
+    @Test
+    fun parsesObjectWhoseContentIsLegacyHtmlString() {
+        val chapter =
+            parseLocalChapterDocument(
+                number = "3",
+                title = "",
+                dataText = """
+                    {
+                      "content":
+                        "<p><strong>Уровни</strong> и описание</p>"
+                    }
+                """.trimIndent(),
+                archiveEntryNames =
+                    setOf("data.txt")
+            )
+
+        assertEquals(
+            "Уровни и описание",
+            (
+                chapter.blocks.single()
+                    as LocalExportBlock
+                        .Paragraph
+                ).text
+        )
+    }
+
 }

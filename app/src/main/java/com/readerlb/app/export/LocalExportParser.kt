@@ -2,6 +2,11 @@ package com.readerlb.app.export
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
 
 internal fun parseLocalExportBook(
     infoText: String,
@@ -251,7 +256,96 @@ internal fun parseLocalChapterDocument(
     dataText: String,
     archiveEntryNames: Set<String>
 ): LocalExportChapter {
-    val root = JSONObject(dataText)
+    val trimmed =
+        dataText.trim()
+
+    require(
+        trimmed.isNotEmpty()
+    ) {
+        "Локальная глава пуста"
+    }
+
+    if (
+        looksLikeHtml(
+            trimmed
+        )
+    ) {
+        return parseLegacyHtmlChapter(
+            number = number,
+            title = title,
+            html = trimmed,
+            archiveEntryNames =
+                archiveEntryNames
+        )
+    }
+
+    val parsed =
+        runCatching {
+            JSONTokener(
+                trimmed
+            ).nextValue()
+        }.getOrNull()
+
+    return when (parsed) {
+        is JSONObject -> {
+            val contentValue =
+                parsed.opt("content")
+
+            if (
+                contentValue is String
+            ) {
+                parseLegacyHtmlChapter(
+                    number = number,
+                    title = title,
+                    html = contentValue,
+                    archiveEntryNames =
+                        archiveEntryNames
+                )
+            } else {
+                parseJsonChapterDocument(
+                    number = number,
+                    title = title,
+                    root = parsed,
+                    archiveEntryNames =
+                        archiveEntryNames
+                )
+            }
+        }
+
+        is String -> {
+            parseLegacyHtmlChapter(
+                number = number,
+                title = title,
+                html = parsed,
+                archiveEntryNames =
+                    archiveEntryNames
+            )
+        }
+
+        else -> {
+            LocalExportChapter(
+                number = number,
+                title = title,
+                blocks = listOf(
+                    LocalExportBlock
+                        .Paragraph(
+                            trimmed
+                        )
+                ),
+                warnings = listOf(
+                    "Глава использует неизвестный текстовый формат; содержимое сохранено как обычный текст"
+                )
+            )
+        }
+    }
+}
+
+private fun parseJsonChapterDocument(
+    number: String,
+    title: String,
+    root: JSONObject,
+    archiveEntryNames: Set<String>
+): LocalExportChapter {
     val content = root
         .optJSONArray("content")
         ?: JSONArray()
@@ -261,9 +355,14 @@ internal fun parseLocalChapterDocument(
     val warnings =
         mutableListOf<String>()
 
-    for (index in 0 until content.length()) {
+    for (
+        index
+        in 0 until content.length()
+    ) {
         val node =
-            content.optJSONObject(index)
+            content.optJSONObject(
+                index
+            )
                 ?: continue
         parseBlock(
             node = node,
@@ -281,6 +380,465 @@ internal fun parseLocalChapterDocument(
         warnings = warnings
     )
 }
+
+private fun parseLegacyHtmlChapter(
+    number: String,
+    title: String,
+    html: String,
+    archiveEntryNames: Set<String>
+): LocalExportChapter {
+    val document =
+        Jsoup.parseBodyFragment(
+            html
+        )
+    val blocks =
+        mutableListOf<LocalExportBlock>()
+    val warnings =
+        mutableListOf<String>()
+
+    document.body()
+        .childNodes()
+        .forEach {
+                node ->
+            parseHtmlNode(
+                node = node,
+                archiveEntryNames =
+                    archiveEntryNames,
+                output = blocks,
+                warnings = warnings
+            )
+        }
+
+    if (
+        blocks.isEmpty()
+    ) {
+        val fallback =
+            document.body()
+                .text()
+                .trim()
+        if (
+            fallback.isNotBlank()
+        ) {
+            blocks +=
+                LocalExportBlock
+                    .Paragraph(
+                        fallback
+                    )
+        }
+    }
+
+    return LocalExportChapter(
+        number = number,
+        title = title,
+        blocks = blocks,
+        warnings = warnings
+    )
+}
+
+private fun parseHtmlNode(
+    node: Node,
+    archiveEntryNames: Set<String>,
+    output: MutableList<LocalExportBlock>,
+    warnings: MutableList<String>
+) {
+    when (node) {
+        is TextNode -> {
+            val text =
+                node.text()
+                    .trim()
+            if (
+                text.isNotBlank()
+            ) {
+                output +=
+                    LocalExportBlock
+                        .Paragraph(
+                            text
+                        )
+            }
+        }
+
+        is Element -> {
+            when (
+                node.normalName()
+            ) {
+                "p",
+                "h1",
+                "h2",
+                "h3",
+                "h4",
+                "h5",
+                "h6",
+                "center" -> {
+                    addHtmlParagraph(
+                        element = node,
+                        output = output
+                    )
+                }
+
+                "blockquote" -> {
+                    val lines =
+                        node.children()
+                            .filter {
+                                it.normalName() in
+                                    HTML_TEXT_BLOCK_TAGS
+                            }
+                            .map {
+                                collectHtmlText(
+                                    it
+                                )
+                                    .trim()
+                            }
+                            .filter(
+                                String::isNotBlank
+                            )
+                            .ifEmpty {
+                                listOf(
+                                    collectHtmlText(
+                                        node
+                                    )
+                                        .trim()
+                                )
+                                    .filter(
+                                        String::isNotBlank
+                                    )
+                            }
+
+                    if (
+                        lines.isNotEmpty()
+                    ) {
+                        output +=
+                            LocalExportBlock
+                                .Quote(
+                                    lines
+                                )
+                    }
+                }
+
+                "hr" -> {
+                    output +=
+                        LocalExportBlock
+                            .HorizontalRule
+                }
+
+                "img" -> {
+                    parseHtmlImage(
+                        element = node,
+                        archiveEntryNames =
+                            archiveEntryNames,
+                        output = output,
+                        warnings = warnings
+                    )
+                }
+
+                "figure" -> {
+                    val images =
+                        node.select(
+                            "img"
+                        )
+                    if (
+                        images.isNotEmpty()
+                    ) {
+                        images.forEach {
+                                image ->
+                            parseHtmlImage(
+                                element =
+                                    image,
+                                archiveEntryNames =
+                                    archiveEntryNames,
+                                output = output,
+                                warnings =
+                                    warnings
+                            )
+                        }
+                    } else {
+                        addHtmlParagraph(
+                            element = node,
+                            output = output
+                        )
+                    }
+                }
+
+                "div",
+                "section",
+                "article",
+                "main",
+                "body" -> {
+                    val blockChildren =
+                        node.children()
+                            .any {
+                                it.normalName() in
+                                    HTML_BLOCK_TAGS
+                            }
+
+                    if (
+                        blockChildren
+                    ) {
+                        node.childNodes()
+                            .forEach {
+                                    child ->
+                                parseHtmlNode(
+                                    node = child,
+                                    archiveEntryNames =
+                                        archiveEntryNames,
+                                    output = output,
+                                    warnings =
+                                        warnings
+                                )
+                            }
+                    } else {
+                        addHtmlParagraph(
+                            element = node,
+                            output = output
+                        )
+                    }
+                }
+
+                "br" -> Unit
+
+                else -> {
+                    val blockChildren =
+                        node.children()
+                            .any {
+                                it.normalName() in
+                                    HTML_BLOCK_TAGS
+                            }
+
+                    if (
+                        blockChildren
+                    ) {
+                        node.childNodes()
+                            .forEach {
+                                    child ->
+                                parseHtmlNode(
+                                    node = child,
+                                    archiveEntryNames =
+                                        archiveEntryNames,
+                                    output = output,
+                                    warnings =
+                                        warnings
+                                )
+                            }
+                    } else {
+                        addHtmlParagraph(
+                            element = node,
+                            output = output
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun addHtmlParagraph(
+    element: Element,
+    output: MutableList<LocalExportBlock>
+) {
+    val text =
+        collectHtmlText(
+            element
+        )
+            .trim()
+
+    if (
+        text.isBlank()
+    ) {
+        return
+    }
+
+    val centered =
+        element.normalName() ==
+            "center" ||
+            element.attr(
+                "align"
+            )
+                .equals(
+                    "center",
+                    ignoreCase = true
+                ) ||
+            element.attr(
+                "style"
+            )
+                .contains(
+                    "text-align",
+                    ignoreCase = true
+                ) &&
+            element.attr(
+                "style"
+            )
+                .contains(
+                    "center",
+                    ignoreCase = true
+                )
+
+    output +=
+        LocalExportBlock
+            .Paragraph(
+                text = text,
+                centered = centered
+            )
+}
+
+private fun collectHtmlText(
+    node: Node
+): String =
+    buildString {
+        node.childNodes()
+            .forEach {
+                    child ->
+                when (child) {
+                    is TextNode -> {
+                        append(
+                            child.text()
+                        )
+                    }
+
+                    is Element -> {
+                        if (
+                            child.normalName() ==
+                            "br"
+                        ) {
+                            append('\n')
+                        } else {
+                            append(
+                                collectHtmlText(
+                                    child
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+    }
+
+private fun parseHtmlImage(
+    element: Element,
+    archiveEntryNames: Set<String>,
+    output: MutableList<LocalExportBlock>,
+    warnings: MutableList<String>
+) {
+    val source =
+        sequenceOf(
+            element.attr("src"),
+            element.attr("data-src"),
+            element.attr("data-original"),
+            element.attr("data-image")
+        )
+            .map(String::trim)
+            .firstOrNull(
+                String::isNotBlank
+            )
+            .orEmpty()
+
+    if (
+        source.isBlank()
+    ) {
+        warnings +=
+            "У HTML-иллюстрации нет ссылки на файл"
+        return
+    }
+
+    val sourceName =
+        source
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .trim()
+    val sourceStem =
+        sourceName.substringBeforeLast(
+            '.',
+            missingDelimiterValue =
+                sourceName
+        )
+
+    val entryName =
+        archiveEntryNames
+            .firstOrNull {
+                it == sourceName
+            }
+            ?: archiveEntryNames
+                .firstOrNull {
+                    it.substringBeforeLast(
+                        '.',
+                        missingDelimiterValue =
+                            it
+                    ) == sourceStem
+                }
+
+    if (
+        entryName == null
+    ) {
+        warnings +=
+            "Не найден файл HTML-иллюстрации $sourceName"
+        return
+    }
+
+    val extension =
+        entryName
+            .substringAfterLast(
+                '.',
+                ""
+            )
+            .lowercase()
+    val description =
+        sequenceOf(
+            element.attr("alt"),
+            element.attr("title")
+        )
+            .map(String::trim)
+            .firstOrNull(
+                String::isNotBlank
+            )
+
+    output +=
+        LocalExportBlock
+            .Image(
+                entryName = entryName,
+                extension = extension,
+                description =
+                    description
+            )
+}
+
+private fun looksLikeHtml(
+    value: String
+): Boolean {
+    val trimmed =
+        value.trimStart()
+
+    return trimmed.startsWith(
+        "<"
+    ) &&
+        trimmed.contains(
+            ">"
+        )
+}
+
+private val HTML_TEXT_BLOCK_TAGS =
+    setOf(
+        "p",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6"
+    )
+
+private val HTML_BLOCK_TAGS =
+    HTML_TEXT_BLOCK_TAGS +
+        setOf(
+            "blockquote",
+            "hr",
+            "figure",
+            "img",
+            "section",
+            "article",
+            "main",
+            "center"
+        )
 
 private fun parseBlock(
     node: JSONObject,

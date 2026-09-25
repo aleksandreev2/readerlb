@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — 1.1.0
+## Unreleased — 1.1.1
+
+RanobeLib local-export compatibility hotfix.
+
+- Fixed export crashes for ordinary RanobeLib-downloaded chapters whose `data.txt` stores JSON-encoded HTML instead of ReaderLB's ProseMirror JSON object.
+- Added legacy HTML parsing for paragraphs, headings, line breaks, blockquotes, separators, centered text and local chapter images.
+- Added raw-HTML and object-with-HTML-content fallbacks so supported chapter text is preserved instead of failing with a JSON object conversion error.
+- Bumped Android versionCode to 19 so the hotfix installs over ReaderLB 1.1.0.
+
+## 1.1.0
 
 Local-library export.
 
