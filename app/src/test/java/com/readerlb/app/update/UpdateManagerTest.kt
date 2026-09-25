@@ -22,7 +22,8 @@ class UpdateManagerTest {
                     {
                       "name": "ReaderLB-0.5.1.apk",
                       "browser_download_url": "https://example.invalid/readerlb.apk",
-                      "digest": "sha256:ABCDEF"
+                      "digest": "sha256:ABCDEF",
+                      "size": 3250800
                     }
                   ]
                 }
@@ -36,6 +37,41 @@ class UpdateManagerTest {
                 "https://example.invalid/readerlb.apk"
         )
         assertTrue(update?.sha256 == "abcdef")
+        assertEquals(
+            3250800L,
+            update?.sizeBytes
+        )
+    }
+
+    @Test
+    fun updateProgressCalculatesKnownFractionAndKeepsUnknownIndeterminate() {
+        assertEquals(
+            0.5f,
+            UpdateDownloadProgress(
+                stage =
+                    UpdateDownloadStage.DOWNLOADING,
+                downloadedBytes = 50L,
+                totalBytes = 100L
+            ).fraction
+        )
+        assertEquals(
+            null,
+            UpdateDownloadProgress(
+                stage =
+                    UpdateDownloadStage.DOWNLOADING,
+                downloadedBytes = 50L,
+                totalBytes = null
+            ).fraction
+        )
+        assertEquals(
+            1.0f,
+            UpdateDownloadProgress(
+                stage =
+                    UpdateDownloadStage.VERIFYING,
+                downloadedBytes = 120L,
+                totalBytes = 100L
+            ).fraction
+        )
     }
 
     @Test
