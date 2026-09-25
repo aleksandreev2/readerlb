@@ -339,4 +339,76 @@ class LocalExportParserTest {
             resolved
         )
     }
+    @Test
+    fun exportOptionsSelectChapterRangeAndCanDropCover() {
+        val book =
+            LocalExportBook(
+                title = "Книга",
+                author = "",
+                description = "",
+                languageLabel = "",
+                slugUrl = "book",
+                coverName = "cover.jpg",
+                chapters = listOf(
+                    "0",
+                    "0.5",
+                    "1",
+                    "2",
+                    "3"
+                ).mapIndexed {
+                        index,
+                        number ->
+                    LocalExportChapterRef(
+                        number = number,
+                        title = "",
+                        volume = "1",
+                        chapterId =
+                            index.toLong(),
+                        archiveName =
+                            "chapter-$index.zip"
+                    )
+                }
+            )
+
+        val selected =
+            selectLocalExportBook(
+                book = book,
+                options =
+                    LocalExportOptions(
+                        firstChapter =
+                            "0.5",
+                        lastChapter =
+                            "2",
+                        includeCover =
+                            false
+                    )
+            )
+
+        assertEquals(
+            listOf(
+                "0.5",
+                "1",
+                "2"
+            ),
+            selected.chapters
+                .map {
+                    it.number
+                }
+        )
+        assertEquals(
+            null,
+            selected.coverName
+        )
+    }
+
+    @Test
+    fun exportFileNameRemovesUnsafeCharacters() {
+        assertEquals(
+            "Название_ книги_ тест",
+            safeExportFileName(
+                "  Название: книги/ тест.  "
+            )
+        )
+    }
+
 }
