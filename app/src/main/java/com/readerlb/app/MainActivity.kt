@@ -3064,6 +3064,12 @@ private enum class LibrarySortMode {
     CHAPTERS
 }
 
+private enum class LibrarySourceFilter {
+    ALL,
+    READERLB,
+    RANOBELIB
+}
+
 @Composable
 private fun LibraryScreen(
     modifier: Modifier,
@@ -3085,6 +3091,9 @@ private fun LibraryScreen(
         mutableStateOf("")
     }
     var sortIndex by rememberSaveable {
+        mutableIntStateOf(0)
+    }
+    var sourceFilterIndex by rememberSaveable {
         mutableIntStateOf(0)
     }
     var selectedSlug by rememberSaveable {
@@ -3120,21 +3129,49 @@ private fun LibraryScreen(
             )
         ]
 
+    val sourceFilter =
+        LibrarySourceFilter.entries[
+            sourceFilterIndex.coerceIn(
+                0,
+                LibrarySourceFilter
+                    .entries
+                    .lastIndex
+            )
+        ]
+
     val visibleItems = remember(
         items,
         query,
-        sortMode
+        sortMode,
+        sourceFilter
     ) {
         val filtered = items.filter { item ->
-            query.isBlank() ||
-                item.title.contains(
-                    query.trim(),
-                    ignoreCase = true
-                ) ||
-                item.slugUrl.contains(
-                    query.trim(),
-                    ignoreCase = true
-                )
+            val matchesQuery =
+                query.isBlank() ||
+                    item.title.contains(
+                        query.trim(),
+                        ignoreCase = true
+                    ) ||
+                    item.slugUrl.contains(
+                        query.trim(),
+                        ignoreCase = true
+                    )
+            val matchesSource =
+                when (
+                    sourceFilter
+                ) {
+                    LibrarySourceFilter
+                        .ALL -> true
+                    LibrarySourceFilter
+                        .READERLB ->
+                        item.createdByReaderLB
+                    LibrarySourceFilter
+                        .RANOBELIB ->
+                        !item.createdByReaderLB
+                }
+
+            matchesQuery &&
+                matchesSource
         }
 
         when (sortMode) {
@@ -3421,11 +3458,80 @@ private fun LibraryScreen(
                 }
 
                 item {
+                    Row(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        horizontalArrangement =
+                            Arrangement.spacedBy(
+                                8.dp
+                            )
+                    ) {
+                        LibrarySortPill(
+                            modifier =
+                                Modifier.weight(
+                                    1f
+                                ),
+                            text = "Все",
+                            selected =
+                                sourceFilter ==
+                                    LibrarySourceFilter
+                                        .ALL,
+                            onClick = {
+                                sourceFilterIndex =
+                                    LibrarySourceFilter
+                                        .ALL
+                                        .ordinal
+                            }
+                        )
+                        LibrarySortPill(
+                            modifier =
+                                Modifier.weight(
+                                    1f
+                                ),
+                            text = "ReaderLB",
+                            selected =
+                                sourceFilter ==
+                                    LibrarySourceFilter
+                                        .READERLB,
+                            onClick = {
+                                sourceFilterIndex =
+                                    LibrarySourceFilter
+                                        .READERLB
+                                        .ordinal
+                            }
+                        )
+                        LibrarySortPill(
+                            modifier =
+                                Modifier.weight(
+                                    1f
+                                ),
+                            text = "RanobeLib",
+                            selected =
+                                sourceFilter ==
+                                    LibrarySourceFilter
+                                        .RANOBELIB,
+                            onClick = {
+                                sourceFilterIndex =
+                                    LibrarySourceFilter
+                                        .RANOBELIB
+                                        .ordinal
+                            }
+                        )
+                    }
+                }
+
+                item {
                     Text(
-                        if (query.isBlank()) {
-                            "Тайтлов: " + items.size
+                        if (
+                            query.isBlank() &&
+                            sourceFilter ==
+                                LibrarySourceFilter
+                                    .ALL
+                        ) {
+                            "Тайтлов: " +
+                                items.size
                         } else {
-                            "Найдено: " +
+                            "Показано: " +
                                 visibleItems.size +
                                 " из " +
                                 items.size
@@ -5733,30 +5839,36 @@ private fun LocalLibraryCard(
                             FontWeight.SemiBold
                     )
 
-                    if (item.createdByReaderLB) {
-                        Box(
-                            modifier = Modifier
-                                .clip(
-                                    RoundedCornerShape(
-                                        99.dp
-                                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(
+                                RoundedCornerShape(
+                                    99.dp
                                 )
-                                .background(
-                                    MaterialTheme.colorScheme.primaryContainer
-                                )
-                                .padding(
-                                    horizontal = 7.dp,
-                                    vertical = 2.dp
-                                )
-                        ) {
-                            Text(
-                                "ReaderLB",
-                                color = Blue,
-                                fontSize = 10.sp,
-                                fontWeight =
-                                    FontWeight.SemiBold
                             )
-                        }
+                            .background(
+                                MaterialTheme
+                                    .colorScheme
+                                    .primaryContainer
+                            )
+                            .padding(
+                                horizontal = 7.dp,
+                                vertical = 2.dp
+                            )
+                    ) {
+                        Text(
+                            if (
+                                item.createdByReaderLB
+                            ) {
+                                "ReaderLB"
+                            } else {
+                                "RanobeLib"
+                            },
+                            color = Blue,
+                            fontSize = 10.sp,
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
                     }
                 }
             }
