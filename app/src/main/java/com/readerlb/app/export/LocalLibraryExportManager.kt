@@ -487,3 +487,7 @@ internal fun safeExportFileName(
             "ReaderLB-book"
         }
 }
+
+
+private const val MAX_EXPORTED_WARNING_MESSAGES =
+    12
