@@ -2,6 +2,8 @@ package com.readerlb.app.export
 
 import java.io.ByteArrayOutputStream
 import java.util.Base64
+import javax.xml.parsers.DocumentBuilderFactory
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -125,6 +127,24 @@ class LocalBookFb2WriterTest {
                         )
                     )
             )
+        )
+        val parsed =
+            DocumentBuilderFactory
+                .newInstance()
+                .apply {
+                    isNamespaceAware =
+                        true
+                }
+                .newDocumentBuilder()
+                .parse(
+                    output
+                        .toByteArray()
+                        .inputStream()
+                )
+        assertEquals(
+            "FictionBook",
+            parsed.documentElement
+                .localName
         )
     }
 }
