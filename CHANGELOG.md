@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-First stable ReaderLB release candidate.
+First stable ReaderLB release.
 
 - Finalized EPUB import hardening, configurable limits, cancellation and temporary-file cleanup.
 - Kept Android 11+ imports safe by using persisted RanobeLib access when available and portable ZIP fallback otherwise.
