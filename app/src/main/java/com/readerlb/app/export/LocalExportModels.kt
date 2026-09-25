@@ -48,3 +48,39 @@ data class LocalExportProgress(
     val completedChapters: Int,
     val totalChapters: Int
 )
+
+enum class LocalBookExportFormat(
+    val displayName: String,
+    val extension: String,
+    val mimeType: String
+) {
+    EPUB(
+        displayName = "EPUB",
+        extension = "epub",
+        mimeType =
+            "application/epub+zip"
+    ),
+    PDF(
+        displayName = "PDF",
+        extension = "pdf",
+        mimeType = "application/pdf"
+    ),
+    FB2(
+        displayName = "FB2",
+        extension = "fb2",
+        mimeType =
+            "application/x-fictionbook+xml"
+    ),
+    TXT(
+        displayName = "TXT",
+        extension = "txt",
+        mimeType = "text/plain"
+    )
+}
+
+data class LocalExportOptions(
+    val firstChapter: String? = null,
+    val lastChapter: String? = null,
+    val includeCover: Boolean = true,
+    val includeImages: Boolean = true
+)
