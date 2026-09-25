@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import com.readerlb.app.storage.LocalLibraryItem
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.io.OutputStream
 import java.util.zip.ZipInputStream
 
@@ -248,7 +249,7 @@ class RanobeLibLocalBookReader(
 
     private fun inspectChapterArchive(
         uri: Uri
-    ): InspectedChapterArchive {
+    ): LocalChapterArchiveData {
         val input =
             context.contentResolver
                 .openInputStream(uri)
@@ -256,81 +257,9 @@ class RanobeLibLocalBookReader(
                     "Android не дал прочитать локальную главу"
                 )
 
-        val names =
-            LinkedHashSet<String>()
-        var dataText: String? = null
-
-        ZipInputStream(
-            input.buffered()
-        ).use { zip ->
-            while (true) {
-                val entry =
-                    zip.nextEntry
-                        ?: break
-
-                requireSafeZipEntryName(
-                    entry.name
-                )
-
-                require(
-                    names.size <
-                        MAX_CHAPTER_ARCHIVE_ENTRIES
-                ) {
-                    "В архиве главы слишком много файлов"
-                }
-
-                require(
-                    names.add(
-                        entry.name
-                    )
-                ) {
-                    "В архиве главы повторяется файл ${entry.name}"
-                }
-
-                if (
-                    !entry.isDirectory &&
-                    entry.name ==
-                        "data.txt"
-                ) {
-                    dataText =
-                        readBoundedZipText(
-                            zip
-                        )
-                }
-
-                zip.closeEntry()
-            }
-        }
-
-        return InspectedChapterArchive(
-            dataText =
-                dataText
-                    ?: error(
-                        "Локальная глава не содержит data.txt"
-                    ),
-            entryNames = names
+        return inspectLocalChapterArchive(
+            input
         )
-    }
-
-    private fun readBoundedZipText(
-        zip: ZipInputStream
-    ): String {
-        val output =
-            ByteArrayOutputStream()
-
-        copyBounded(
-            input = zip,
-            output = output,
-            limitBytes =
-                MAX_CHAPTER_DATA_BYTES,
-            label = "data.txt"
-        )
-
-        return output
-            .toByteArray()
-            .toString(
-                Charsets.UTF_8
-            )
     }
 
     private fun readBoundedText(
@@ -462,10 +391,94 @@ class RanobeLibLocalBookReader(
         val uri: Uri
     )
 
-    private data class InspectedChapterArchive(
-        val dataText: String,
-        val entryNames: Set<String>
+}
+
+
+internal data class LocalChapterArchiveData(
+    val dataText: String,
+    val entryNames: Set<String>
+)
+
+internal fun inspectLocalChapterArchive(
+    input: InputStream
+): LocalChapterArchiveData {
+    val names =
+        LinkedHashSet<String>()
+    var dataText: String? = null
+
+    ZipInputStream(
+        input.buffered()
+    ).use { zip ->
+        while (true) {
+            checkLocalExportInterrupted()
+
+            val entry =
+                zip.nextEntry
+                    ?: break
+
+            requireSafeZipEntryName(
+                entry.name
+            )
+
+            require(
+                names.size <
+                    MAX_CHAPTER_ARCHIVE_ENTRIES
+            ) {
+                "В архиве главы слишком много файлов"
+            }
+
+            require(
+                names.add(
+                    entry.name
+                )
+            ) {
+                "В архиве главы повторяется файл ${entry.name}"
+            }
+
+            if (
+                !entry.isDirectory &&
+                entry.name ==
+                    "data.txt"
+            ) {
+                dataText =
+                    readBoundedZipText(
+                        zip
+                    )
+            }
+
+            zip.closeEntry()
+        }
+    }
+
+    return LocalChapterArchiveData(
+        dataText =
+            dataText
+                ?: error(
+                    "Локальная глава не содержит data.txt"
+                ),
+        entryNames = names
     )
+}
+
+private fun readBoundedZipText(
+    zip: ZipInputStream
+): String {
+    val output =
+        ByteArrayOutputStream()
+
+    copyBounded(
+        input = zip,
+        output = output,
+        limitBytes =
+            MAX_CHAPTER_DATA_BYTES,
+        label = "data.txt"
+    )
+
+    return output
+        .toByteArray()
+        .toString(
+            Charsets.UTF_8
+        )
 }
 
 private fun copyBounded(
