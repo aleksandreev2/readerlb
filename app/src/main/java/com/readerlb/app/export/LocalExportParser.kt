@@ -265,6 +265,20 @@ internal fun parseLocalChapterDocument(
         "Локальная глава пуста"
     }
 
+    if (
+        looksLikeHtml(
+            trimmed
+        )
+    ) {
+        return parseLegacyHtmlChapter(
+            number = number,
+            title = title,
+            html = trimmed,
+            archiveEntryNames =
+                archiveEntryNames
+        )
+    }
+
     val parsed =
         runCatching {
             JSONTokener(
@@ -309,33 +323,19 @@ internal fun parseLocalChapterDocument(
         }
 
         else -> {
-            if (
-                looksLikeHtml(
-                    trimmed
+            LocalExportChapter(
+                number = number,
+                title = title,
+                blocks = listOf(
+                    LocalExportBlock
+                        .Paragraph(
+                            trimmed
+                        )
+                ),
+                warnings = listOf(
+                    "Глава использует неизвестный текстовый формат; содержимое сохранено как обычный текст"
                 )
-            ) {
-                parseLegacyHtmlChapter(
-                    number = number,
-                    title = title,
-                    html = trimmed,
-                    archiveEntryNames =
-                        archiveEntryNames
-                )
-            } else {
-                LocalExportChapter(
-                    number = number,
-                    title = title,
-                    blocks = listOf(
-                        LocalExportBlock
-                            .Paragraph(
-                                trimmed
-                            )
-                    ),
-                    warnings = listOf(
-                        "Глава использует неизвестный текстовый формат; содержимое сохранено как обычный текст"
-                    )
-                )
-            }
+            )
         }
     }
 }
