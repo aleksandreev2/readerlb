@@ -16,20 +16,6 @@ Local-library export.
 - Added regressions for chapter `0`, `0.5`, `001`, corrupt/unsafe chapter ZIPs, missing images, cancellation, ReaderLB package round-trips and a streamed 2600-chapter EPUB.
 - Added Android runtime coverage for PDF generation with illustrations and successful/failed MediaStore publication on API 29 and API 35.
 
-## 1.1.0
-
-Local-library export.
-
-- Added export of local ReaderLB and ordinary RanobeLib titles to EPUB 3, PDF, FB2 and UTF-8 TXT.
-- Export can use all chapters or a numeric range while preserving source chapter numbers such as 0, 0.5 and 001.
-- EPUB includes metadata, clickable navigation, per-chapter XHTML, cover and streamed illustrations.
-- PDF uses a mobile-oriented paginator with bounded image decoding instead of loading the whole book into memory.
-- FB2 includes chapter sections and embedded images; generated output is covered by XML well-formedness tests.
-- Local titles now show ReaderLB/RanobeLib source badges and can be filtered by source.
-- Added a mobile bottom-sheet export flow with format/content controls, progress, cancellation, preview, warnings, open and share actions.
-- Finished files are published atomically to Downloads/ReaderLB through MediaStore; partial output is removed after errors or cancellation.
-- Added regressions for ReaderLB package round-trips, exact chapter numbering, corrupt chapter ZIPs, missing images, 2600-chapter EPUB export, PDF illustrations, and MediaStore cleanup on API 29/35.
-
 ## 1.0.1
 
 In-app update experience polish.
