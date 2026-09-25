@@ -23,8 +23,8 @@ android {
         applicationId = "com.readerlb.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.0.0"
+        versionCode = 17
+        versionName = "1.0.1"
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
     }
