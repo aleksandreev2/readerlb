@@ -132,6 +132,7 @@ class LocalBookEpubWriter {
                 .forEachIndexed {
                         index,
                         reference ->
+                    checkLocalExportInterrupted()
                     val chapter =
                         readChapter(
                             reference
@@ -156,6 +157,7 @@ class LocalBookEpubWriter {
                         .forEachIndexed {
                                 imageIndex,
                                 image ->
+                            checkLocalExportInterrupted()
                             val extension =
                                 image.extension
                                     .lowercase()
