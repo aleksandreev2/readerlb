@@ -411,4 +411,69 @@ class LocalExportParserTest {
         )
     }
 
+    @Test
+    fun preservesChapterOrderAndExactSourceNumbers() {
+        val book =
+            parseLocalExportBook(
+                infoText = """
+                    {
+                      "media":{
+                        "rusName":"Нумерация",
+                        "slugUrl":"numbers"
+                      }
+                    }
+                """.trimIndent(),
+                chaptersText = """
+                    [
+                      {
+                        "id":10,
+                        "volume":"1",
+                        "number":"0",
+                        "name":"Пролог"
+                      },
+                      {
+                        "id":11,
+                        "volume":"1",
+                        "number":"0.5",
+                        "name":"Интерлюдия"
+                      },
+                      {
+                        "id":12,
+                        "volume":"1",
+                        "number":"001",
+                        "name":"Глава с нулями"
+                      }
+                    ]
+                """.trimIndent(),
+                folderName = "numbers",
+                availableFileNames =
+                    setOf(
+                        "v1-n0-10.zip",
+                        "v1-n0.5-11.zip",
+                        "v1-n001-12.zip"
+                    )
+            )
+
+        assertEquals(
+            listOf(
+                "0",
+                "0.5",
+                "001"
+            ),
+            book.chapters.map {
+                it.number
+            }
+        )
+        assertEquals(
+            listOf(
+                "v1-n0-10.zip",
+                "v1-n0.5-11.zip",
+                "v1-n001-12.zip"
+            ),
+            book.chapters.map {
+                it.archiveName
+            }
+        )
+    }
+
 }
