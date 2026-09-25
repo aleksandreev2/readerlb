@@ -41,7 +41,7 @@ ReaderLB не является отдельной онлайн-читалкой 
 
 **[Открыть последнюю версию ReaderLB](https://github.com/aleksandreev2/readerlb/releases/latest)**
 
-Текущая стабильная версия: **1.0.1**.
+Текущая стабильная версия: **1.1.0**.
 
 Минимальная версия системы: **Android 10**.
 
@@ -187,11 +187,11 @@ ReaderLB не отправляет на сервер:
 
 Для каждого стабильного релиза публикуется файл SHA-256 рядом с APK.
 
-Например, для версии 1.0.1:
+Например, для версии 1.1.0:
 
 ```text
-ReaderLB-1.0.1.apk
-ReaderLB-1.0.1.apk.sha256
+ReaderLB-1.1.0.apk
+ReaderLB-1.1.0.apk.sha256
 ```
 
 Релизные APK также собираются в GitHub Actions постоянным release-ключом и получают GitHub build provenance attestation.
