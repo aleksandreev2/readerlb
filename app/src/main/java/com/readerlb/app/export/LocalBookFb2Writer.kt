@@ -75,21 +75,20 @@ class LocalBookFb2Writer {
             "</book-title>\n"
         )
 
-        if (
-            book.author.isNotBlank()
-        ) {
-            writer.append(
-                "      <author><nickname>"
+        writer.append(
+            "      <author><nickname>"
+        )
+        writer.append(
+            escapeXml(
+                book.author
+                    .ifBlank {
+                        "Неизвестный автор"
+                    }
             )
-            writer.append(
-                escapeXml(
-                    book.author
-                )
-            )
-            writer.append(
-                "</nickname></author>\n"
-            )
-        }
+        )
+        writer.append(
+            "</nickname></author>\n"
+        )
 
         if (
             book.description.isNotBlank()
@@ -135,7 +134,7 @@ class LocalBookFb2Writer {
             "    </title-info>\n"
         )
         writer.append(
-            "    <document-info><program-used>ReaderLB</program-used><id>"
+            "    <document-info><author><nickname>ReaderLB</nickname></author><program-used>ReaderLB</program-used><id>"
         )
         writer.append(
             escapeXml(
@@ -175,6 +174,7 @@ class LocalBookFb2Writer {
             .forEachIndexed {
                     chapterIndex,
                     reference ->
+                checkLocalExportInterrupted()
                 val chapter =
                     readChapter(
                         reference
@@ -201,24 +201,35 @@ class LocalBookFb2Writer {
                     .forEachIndexed {
                             blockIndex,
                             block ->
+                        checkLocalExportInterrupted()
                         when (block) {
                             is LocalExportBlock
                                 .Paragraph -> {
-                                writer.append(
-                                    "      <p>"
-                                )
-                                writer.append(
-                                    escapeXml(
-                                        block.text
-                                    )
-                                        .replace(
-                                            "\n",
-                                            "<br/>"
-                                        )
-                                )
-                                writer.append(
-                                    "</p>\n"
-                                )
+                                block.text
+                                    .lineSequence()
+                                    .forEach {
+                                            line ->
+                                        checkLocalExportInterrupted()
+                                        if (
+                                            line.isBlank()
+                                        ) {
+                                            writer.append(
+                                                "      <empty-line/>\n"
+                                            )
+                                        } else {
+                                            writer.append(
+                                                "      <p>"
+                                            )
+                                            writer.append(
+                                                escapeXml(
+                                                    line
+                                                )
+                                            )
+                                            writer.append(
+                                                "</p>\n"
+                                            )
+                                        }
+                                    }
                             }
 
                             is LocalExportBlock
@@ -313,6 +324,7 @@ class LocalBookFb2Writer {
 
         binaries.forEach {
                 binary ->
+            checkLocalExportInterrupted()
             writer.append(
                 "  <binary id=\""
             )
