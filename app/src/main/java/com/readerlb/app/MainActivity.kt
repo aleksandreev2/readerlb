@@ -36,12 +36,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -74,6 +77,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -365,8 +369,18 @@ private fun Onboarding(onDone: () -> Unit) {
                 text = if (page == pageCount - 1) {
                     "Понятно"
                 } else {
-                    "Следующее  →"
+                    "Следующее"
                 },
+                trailingIcon =
+                    if (
+                        page ==
+                        pageCount - 1
+                    ) {
+                        null
+                    } else {
+                        Icons.Default
+                            .ArrowForward
+                    },
                 onClick = {
                     if (page == pageCount - 1) {
                         onDone()
@@ -1457,7 +1471,9 @@ private fun HomeScreen(
 
         item {
             GradientButton(
-                text = "＋  Добавить новеллу",
+                text = "Добавить новеллу",
+                leadingIcon =
+                    Icons.Default.Add,
                 onClick = onAdd
             )
         }
@@ -2963,14 +2979,59 @@ private fun ParsedPreview(book: ParsedBook) {
             if (book.issues.isNotEmpty()) {
                 Divider(modifier = Modifier.padding(vertical = 12.dp))
                 book.issues.take(4).forEach { issue ->
-                    val warning = issue.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING
-                    Text(
-                        text = (if (warning) "⚠ " else "ℹ ") + issue.message,
-                        color = if (warning) Color(0xFFE1B95B) else Muted,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        modifier = Modifier.padding(vertical = 3.dp)
-                    )
+                    val warning =
+                        issue.severity ==
+                            com.readerlb.app.importer
+                                .ImportIssueSeverity
+                                .WARNING
+                    Row(
+                        modifier =
+                            Modifier.padding(
+                                vertical = 3.dp
+                            ),
+                        verticalAlignment =
+                            Alignment.Top
+                    ) {
+                        Icon(
+                            imageVector =
+                                if (warning) {
+                                    Icons.Default.Warning
+                                } else {
+                                    Icons.Default.Info
+                                },
+                            contentDescription =
+                                null,
+                            tint =
+                                if (warning) {
+                                    Color(
+                                        0xFFE1B95B
+                                    )
+                                } else {
+                                    Muted
+                                },
+                            modifier =
+                                Modifier.size(
+                                    18.dp
+                                )
+                        )
+                        Text(
+                            text = issue.message,
+                            color =
+                                if (warning) {
+                                    Color(
+                                        0xFFE1B95B
+                                    )
+                                } else {
+                                    Muted
+                                },
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            modifier =
+                                Modifier.padding(
+                                    start = 7.dp
+                                )
+                        )
+                    }
                 }
                 if (book.issues.size > 4) {
                     Text(
@@ -4853,37 +4914,89 @@ private fun HistoryCard(item: ImportHistoryItem) {
                 Box(
                     modifier = Modifier
                         .padding(top = 7.dp)
-                        .clip(RoundedCornerShape(99.dp))
-                        .background(
-                            if (item.installedDirectly) MaterialTheme.colorScheme.tertiaryContainer
-                            else MaterialTheme.colorScheme.primaryContainer
+                        .clip(
+                            RoundedCornerShape(
+                                99.dp
+                            )
                         )
-                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                        .background(
+                            if (
+                                item.installedDirectly
+                            ) {
+                                MaterialTheme
+                                    .colorScheme
+                                    .tertiaryContainer
+                            } else {
+                                MaterialTheme
+                                    .colorScheme
+                                    .primaryContainer
+                            }
+                        )
+                        .padding(
+                            horizontal = 9.dp,
+                            vertical = 4.dp
+                        )
                 ) {
-                    Text(
+                    val statusText =
                         when {
                             item.updatedExisting &&
-                                item.addedChapterCount > 0 -> {
-                                "✓ Обновлено +${item.addedChapterCount}"
-                            }
-                            item.updatedExisting -> {
-                                "✓ Уже актуально"
-                            }
-                            item.installedDirectly -> {
-                                "✓ В RanobeLib"
-                            }
-                            else -> {
+                                item.addedChapterCount > 0 ->
+                                "Обновлено +${item.addedChapterCount}"
+
+                            item.updatedExisting ->
+                                "Уже актуально"
+
+                            item.installedDirectly ->
+                                "В RanobeLib"
+
+                            else ->
                                 "ZIP подготовлен"
-                            }
-                        },
-                        color = if (item.installedDirectly) {
-                            MaterialTheme.colorScheme.onTertiaryContainer
-                        } else {
-                            Blue
-                        },
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                        }
+
+                    Row(
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        if (
+                            item.installedDirectly
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription =
+                                    null,
+                                tint =
+                                    MaterialTheme
+                                        .colorScheme
+                                        .onTertiaryContainer,
+                                modifier =
+                                    Modifier.size(
+                                        14.dp
+                                    )
+                            )
+                            Spacer(
+                                Modifier.width(
+                                    4.dp
+                                )
+                            )
+                        }
+
+                        Text(
+                            statusText,
+                            color =
+                                if (
+                                    item.installedDirectly
+                                ) {
+                                    MaterialTheme
+                                        .colorScheme
+                                        .onTertiaryContainer
+                                } else {
+                                    Blue
+                                },
+                            fontSize = 11.sp,
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
@@ -5482,27 +5595,94 @@ private fun DangerAction(
 private fun GradientButton(
     text: String,
     enabled: Boolean = true,
+    leadingIcon: ImageVector? = null,
+    trailingIcon: ImageVector? = null,
     onClick: () -> Unit
 ) {
-    val colors = if (enabled) listOf(Blue, Color(0xFF09A8F2)) else listOf(
-        Color(0xFF3C4652),
-        Color(0xFF46515E)
-    )
+    val colors =
+        if (enabled) {
+            listOf(
+                Blue,
+                Color(
+                    0xFF09A8F2
+                )
+            )
+        } else {
+            listOf(
+                Color(
+                    0xFF3C4652
+                ),
+                Color(
+                    0xFF46515E
+                )
+            )
+        }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
-            .clip(RoundedCornerShape(15.dp))
-            .background(Brush.horizontalGradient(colors))
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
+            .clip(
+                RoundedCornerShape(
+                    15.dp
+                )
+            )
+            .background(
+                Brush.horizontalGradient(
+                    colors
+                )
+            )
+            .clickable(
+                enabled = enabled,
+                onClick = onClick
+            ),
+        contentAlignment =
+            Alignment.Center
     ) {
-        Text(
-            text,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 17.sp
-        )
+        Row(
+            verticalAlignment =
+                Alignment.CenterVertically,
+            horizontalArrangement =
+                Arrangement.spacedBy(
+                    8.dp
+                )
+        ) {
+            if (leadingIcon != null) {
+                Icon(
+                    imageVector =
+                        leadingIcon,
+                    contentDescription =
+                        null,
+                    tint = Color.White,
+                    modifier =
+                        Modifier.size(
+                            20.dp
+                        )
+                )
+            }
+
+            Text(
+                text,
+                color = Color.White,
+                fontWeight =
+                    FontWeight.Bold,
+                fontSize = 17.sp
+            )
+
+            if (trailingIcon != null) {
+                Icon(
+                    imageVector =
+                        trailingIcon,
+                    contentDescription =
+                        null,
+                    tint = Color.White,
+                    modifier =
+                        Modifier.size(
+                            20.dp
+                        )
+                )
+            }
+        }
     }
 }
 
