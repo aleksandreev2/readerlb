@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.1
+
+In-app update experience polish.
+
+- Added a dedicated update dialog shared by Home, Settings and release-notification entry points.
+- Added real APK download progress and a separate verification stage before installation.
+- New-version details now show the installed version, target version, release notes and APK size when GitHub provides it.
+- Downloaded updates remain protected by SHA-256, package-name and signing-certificate verification before Android receives the APK.
+- Installation permission is requested only when the verified APK is ready to install.
+- Replaced text characters used as pseudo-icons in touched UI with real Material icons.
+
 ## 1.0.0
 
 First stable ReaderLB release.

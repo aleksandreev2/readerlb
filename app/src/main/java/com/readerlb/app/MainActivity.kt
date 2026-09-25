@@ -36,12 +36,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,6 +52,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -73,6 +77,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -106,6 +111,8 @@ import com.readerlb.app.storage.Preferences
 import com.readerlb.app.storage.RanobeLibLibraryScanner
 import com.readerlb.app.storage.decodeLocalLibraryCache
 import com.readerlb.app.storage.encodeLocalLibraryCache
+import com.readerlb.app.update.UpdateDownloadProgress
+import com.readerlb.app.update.UpdateDownloadStage
 import com.readerlb.app.update.UpdateInfo
 import com.readerlb.app.update.UpdateManager
 import com.readerlb.app.ui.theme.Blue
@@ -126,6 +133,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.io.File
+import java.util.Locale
 
 internal const val EXTRA_OPEN_UPDATES = "readerlb.open_updates"
 private const val RELEASE_TOPIC = "readerlb_releases"
@@ -361,8 +370,18 @@ private fun Onboarding(onDone: () -> Unit) {
                 text = if (page == pageCount - 1) {
                     "Понятно"
                 } else {
-                    "Следующее  →"
+                    "Следующее"
                 },
+                trailingIcon =
+                    if (
+                        page ==
+                        pageCount - 1
+                    ) {
+                        null
+                    } else {
+                        Icons.Default
+                            .ArrowForward
+                    },
                 onClick = {
                     if (page == pageCount - 1) {
                         onDone()
@@ -636,6 +655,18 @@ private fun MainApp(
     var updateBusy by remember { mutableStateOf(false) }
     var updateMessage by remember {
         mutableStateOf<String?>(null)
+    }
+    var updateDownloadProgress by remember {
+        mutableStateOf<UpdateDownloadProgress?>(null)
+    }
+    var downloadedUpdateApk by remember {
+        mutableStateOf<File?>(null)
+    }
+    var showUpdateDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var updateJob by remember {
+        mutableStateOf<Job?>(null)
     }
 
     fun subscribeReleaseNotifications() {
@@ -945,19 +976,31 @@ private fun MainApp(
             }
             preferences.lastUpdateCheckMillis =
                 System.currentTimeMillis()
+            updateBusy = false
             result.onSuccess { update ->
+                if (
+                    update?.versionName !=
+                    latestUpdate?.versionName
+                ) {
+                    downloadedUpdateApk = null
+                    updateDownloadProgress = null
+                }
+
                 latestUpdate = update
                 updateMessage = if (update == null) {
                     "Установлена актуальная версия ReaderLB."
                 } else {
                     "Доступна ReaderLB ${update.versionName}."
                 }
+
+                if (update != null) {
+                    showUpdateDialog = true
+                }
             }.onFailure {
                 updateMessage =
                     "Не удалось проверить обновления: " +
                         (it.message ?: "ошибка сети")
             }
-            updateBusy = false
         }
     }
 
@@ -969,38 +1012,93 @@ private fun MainApp(
         }
     }
 
-    fun installLatestUpdate() {
+    fun openLatestUpdate() {
+        if (latestUpdate != null) {
+            showUpdateDialog = true
+        }
+    }
+
+    fun downloadLatestUpdate() {
         val update = latestUpdate ?: return
         if (updateBusy) return
 
-        if (!updateManager.canRequestInstallPackages()) {
+        downloadedUpdateApk = null
+        updateDownloadProgress =
+            UpdateDownloadProgress(
+                stage =
+                    UpdateDownloadStage.DOWNLOADING,
+                downloadedBytes = 0L,
+                totalBytes =
+                    update.sizeBytes
+            )
+        updateBusy = true
+        updateMessage = null
+
+        updateJob = scope.launch {
+            try {
+                val apk = runInterruptible(
+                    Dispatchers.IO
+                ) {
+                    updateManager.download(
+                        info = update,
+                        onProgress = {
+                                progress ->
+                            updateDownloadProgress =
+                                progress
+                        }
+                    )
+                }
+
+                downloadedUpdateApk = apk
+                updateMessage = null
+            } catch (
+                cancelled:
+                    CancellationException
+            ) {
+                downloadedUpdateApk = null
+                updateDownloadProgress = null
+                updateMessage =
+                    "Загрузка обновления отменена."
+            } catch (throwable: Throwable) {
+                downloadedUpdateApk = null
+                updateDownloadProgress = null
+                updateMessage =
+                    com.readerlb.app.update
+                        .friendlyUpdateDownloadError(
+                            throwable
+                        )
+            } finally {
+                updateBusy = false
+                updateJob = null
+            }
+        }
+    }
+
+    fun cancelUpdateDownload() {
+        updateJob?.cancel()
+    }
+
+    fun installDownloadedUpdate() {
+        val apk =
+            downloadedUpdateApk
+                ?: return
+
+        if (
+            !updateManager
+                .canRequestInstallPackages()
+        ) {
             context.startActivity(
-                updateManager.unknownSourcesSettingsIntent()
+                updateManager
+                    .unknownSourcesSettingsIntent()
             )
             updateMessage =
-                "Разрешите ReaderLB устанавливать обновления, " +
-                    "затем нажмите «Обновить» ещё раз."
+                "Разрешите ReaderLB устанавливать приложения из этого источника, затем вернитесь и нажмите «Установить»."
             return
         }
 
-        updateBusy = true
-        updateMessage = "Загрузка обновления…"
-        scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    updateManager.download(update)
-                }
-            }.onSuccess { apk ->
-                updateMessage =
-                    "Обновление загружено. Передаю установку Android…"
-                updateManager.requestInstall(apk)
-            }.onFailure {
-                updateMessage =
-                    com.readerlb.app.update
-                        .friendlyUpdateDownloadError(it)
-            }
-            updateBusy = false
-        }
+        updateMessage = null
+        showUpdateDialog = false
+        updateManager.requestInstall(apk)
     }
 
     BackHandler(enabled = tab != AppTab.HOME) {
@@ -1041,6 +1139,34 @@ private fun MainApp(
                     null
                 }
         }
+    }
+
+    if (
+        showUpdateDialog &&
+        latestUpdate != null
+    ) {
+        ReaderLbUpdateDialog(
+            info = requireNotNull(
+                latestUpdate
+            ),
+            busy = updateBusy,
+            progress =
+                updateDownloadProgress,
+            readyToInstall =
+                downloadedUpdateApk != null,
+            message = updateMessage,
+            onDownload =
+                ::downloadLatestUpdate,
+            onInstall =
+                ::installDownloadedUpdate,
+            onCancel =
+                ::cancelUpdateDownload,
+            onDismiss = {
+                if (!updateBusy) {
+                    showUpdateDialog = false
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -1089,7 +1215,7 @@ private fun MainApp(
                 updateInfo = latestUpdate,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
-                onUpdate = ::installLatestUpdate,
+                onUpdate = ::openLatestUpdate,
                 onAdd = { tab = AppTab.IMPORT },
                 onOpenLibrary = { tab = AppTab.LIBRARY },
                 onSettings = { tab = AppTab.SETTINGS },
@@ -1220,7 +1346,7 @@ private fun MainApp(
                 onReleaseNotificationsChanged =
                     ::setReleaseNotifications,
                 onCheckUpdates = ::checkForUpdates,
-                onInstallUpdate = ::installLatestUpdate,
+                onInstallUpdate = ::openLatestUpdate,
                 onRepeatHints = {
                     preferences.importHintsDone = false
                     importHintsDone = false
@@ -1346,7 +1472,9 @@ private fun HomeScreen(
 
         item {
             GradientButton(
-                text = "＋  Добавить новеллу",
+                text = "Добавить новеллу",
+                leadingIcon =
+                    Icons.Default.Add,
                 onClick = onAdd
             )
         }
@@ -2852,14 +2980,59 @@ private fun ParsedPreview(book: ParsedBook) {
             if (book.issues.isNotEmpty()) {
                 Divider(modifier = Modifier.padding(vertical = 12.dp))
                 book.issues.take(4).forEach { issue ->
-                    val warning = issue.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING
-                    Text(
-                        text = (if (warning) "⚠ " else "ℹ ") + issue.message,
-                        color = if (warning) Color(0xFFE1B95B) else Muted,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        modifier = Modifier.padding(vertical = 3.dp)
-                    )
+                    val warning =
+                        issue.severity ==
+                            com.readerlb.app.importer
+                                .ImportIssueSeverity
+                                .WARNING
+                    Row(
+                        modifier =
+                            Modifier.padding(
+                                vertical = 3.dp
+                            ),
+                        verticalAlignment =
+                            Alignment.Top
+                    ) {
+                        Icon(
+                            imageVector =
+                                if (warning) {
+                                    Icons.Default.Warning
+                                } else {
+                                    Icons.Default.Info
+                                },
+                            contentDescription =
+                                null,
+                            tint =
+                                if (warning) {
+                                    Color(
+                                        0xFFE1B95B
+                                    )
+                                } else {
+                                    Muted
+                                },
+                            modifier =
+                                Modifier.size(
+                                    18.dp
+                                )
+                        )
+                        Text(
+                            text = issue.message,
+                            color =
+                                if (warning) {
+                                    Color(
+                                        0xFFE1B95B
+                                    )
+                                } else {
+                                    Muted
+                                },
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            modifier =
+                                Modifier.padding(
+                                    start = 7.dp
+                                )
+                        )
+                    }
                 }
                 if (book.issues.size > 4) {
                     Text(
@@ -3659,8 +3832,8 @@ private fun SettingsScreen(
                             Text(
                                 "Проверять новые стабильные версии " +
                                     "не чаще одного раза в сутки. " +
-                                    "Установка запускается только после " +
-                                    "нажатия «Обновить».",
+                                    "Скачивание и установка запускаются " +
+                                    "только после вашего подтверждения.",
                                 color = Muted,
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
@@ -3719,14 +3892,17 @@ private fun SettingsScreen(
                             "Доступна версия " +
                                 updateInfo.versionName,
                             color = Blue,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+                        Text(
+                            "Откройте карточку обновления, чтобы посмотреть изменения, скачать APK и проверить его перед установкой.",
+                            color = Muted,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
                         )
                         OutlineAction(
-                            if (updateBusy) {
-                                "Загрузка…"
-                            } else {
-                                "Обновить"
-                            },
+                            "Посмотреть обновление",
                             onInstallUpdate
                         )
                     } else {
@@ -4739,37 +4915,89 @@ private fun HistoryCard(item: ImportHistoryItem) {
                 Box(
                     modifier = Modifier
                         .padding(top = 7.dp)
-                        .clip(RoundedCornerShape(99.dp))
-                        .background(
-                            if (item.installedDirectly) MaterialTheme.colorScheme.tertiaryContainer
-                            else MaterialTheme.colorScheme.primaryContainer
+                        .clip(
+                            RoundedCornerShape(
+                                99.dp
+                            )
                         )
-                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                        .background(
+                            if (
+                                item.installedDirectly
+                            ) {
+                                MaterialTheme
+                                    .colorScheme
+                                    .tertiaryContainer
+                            } else {
+                                MaterialTheme
+                                    .colorScheme
+                                    .primaryContainer
+                            }
+                        )
+                        .padding(
+                            horizontal = 9.dp,
+                            vertical = 4.dp
+                        )
                 ) {
-                    Text(
+                    val statusText =
                         when {
                             item.updatedExisting &&
-                                item.addedChapterCount > 0 -> {
-                                "✓ Обновлено +${item.addedChapterCount}"
-                            }
-                            item.updatedExisting -> {
-                                "✓ Уже актуально"
-                            }
-                            item.installedDirectly -> {
-                                "✓ В RanobeLib"
-                            }
-                            else -> {
+                                item.addedChapterCount > 0 ->
+                                "Обновлено +${item.addedChapterCount}"
+
+                            item.updatedExisting ->
+                                "Уже актуально"
+
+                            item.installedDirectly ->
+                                "В RanobeLib"
+
+                            else ->
                                 "ZIP подготовлен"
-                            }
-                        },
-                        color = if (item.installedDirectly) {
-                            MaterialTheme.colorScheme.onTertiaryContainer
-                        } else {
-                            Blue
-                        },
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                        }
+
+                    Row(
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        if (
+                            item.installedDirectly
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription =
+                                    null,
+                                tint =
+                                    MaterialTheme
+                                        .colorScheme
+                                        .onTertiaryContainer,
+                                modifier =
+                                    Modifier.size(
+                                        14.dp
+                                    )
+                            )
+                            Spacer(
+                                Modifier.width(
+                                    4.dp
+                                )
+                            )
+                        }
+
+                        Text(
+                            statusText,
+                            color =
+                                if (
+                                    item.installedDirectly
+                                ) {
+                                    MaterialTheme
+                                        .colorScheme
+                                        .onTertiaryContainer
+                                } else {
+                                    Blue
+                                },
+                            fontSize = 11.sp,
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
@@ -4901,7 +5129,10 @@ private fun UpdateAvailableCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor =
+                MaterialTheme
+                    .colorScheme
+                    .primaryContainer
         ),
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -4916,19 +5147,373 @@ private fun UpdateAvailableCard(
                 color = Ink
             )
             Text(
-                "ReaderLB сам скачает APK и передаст обновление Android. " +
-                    "На некоторых версиях системы понадобится подтверждение.",
+                "Новая стабильная версия готова. " +
+                    "ReaderLB скачает APK, проверит его " +
+                    "целостность и подпись перед установкой.",
                 color = Muted,
                 fontSize = 12.sp,
                 lineHeight = 17.sp
             )
             OutlineAction(
-                if (busy) "Загрузка…" else "Обновить",
+                if (busy) {
+                    "Обновление открыто"
+                } else {
+                    "Посмотреть обновление"
+                },
                 onUpdate
             )
         }
     }
 }
+
+@Composable
+private fun ReaderLbUpdateDialog(
+    info: UpdateInfo,
+    busy: Boolean,
+    progress: UpdateDownloadProgress?,
+    readyToInstall: Boolean,
+    message: String?,
+    onDownload: () -> Unit,
+    onInstall: () -> Unit,
+    onCancel: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val notes =
+        updateNotesPreview(
+            info.notes
+        )
+    val sizeText =
+        formatUpdateFileSize(
+            info.sizeBytes
+        )
+    val verifying =
+        progress?.stage ==
+            UpdateDownloadStage.VERIFYING
+    val fraction =
+        progress?.fraction
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!busy) {
+                onDismiss()
+            }
+        },
+        title = {
+            Row(
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+                ReaderLogo(52.dp)
+                Spacer(
+                    Modifier.width(12.dp)
+                )
+                Column {
+                    Text(
+                        "Обновление ReaderLB",
+                        color = Ink,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                    Text(
+                        "Доступна версия " +
+                            info.versionName,
+                        color = Blue,
+                        fontSize = 13.sp,
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        12.dp
+                    )
+            ) {
+                Card(
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor =
+                                MaterialTheme
+                                    .colorScheme
+                                    .surface
+                        ),
+                    shape =
+                        RoundedCornerShape(
+                            14.dp
+                        ),
+                    border =
+                        androidx.compose
+                            .foundation
+                            .BorderStroke(
+                                1.dp,
+                                Line
+                            )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement =
+                            Arrangement.spacedBy(
+                                6.dp
+                            )
+                    ) {
+                        Text(
+                            "Установлена версия " +
+                                BuildConfig.VERSION_NAME,
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            "Новая версия " +
+                                info.versionName,
+                            color = Ink,
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+                        if (
+                            sizeText != null
+                        ) {
+                            Text(
+                                "Размер APK " +
+                                    sizeText,
+                                color = Muted,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+
+                if (
+                    notes.isNotBlank() &&
+                    !busy
+                ) {
+                    Text(
+                        "Что нового",
+                        color = Ink,
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+                    Text(
+                        notes,
+                        color = Muted,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+
+                if (busy) {
+                    Text(
+                        if (verifying) {
+                            "Проверяю обновление"
+                        } else {
+                            "Скачиваю обновление"
+                        },
+                        color = Ink,
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+
+                    if (
+                        !verifying &&
+                        fraction != null
+                    ) {
+                        LinearProgressIndicator(
+                            progress = {
+                                fraction
+                            },
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            color = Blue
+                        )
+                        Text(
+                            "Загружено " +
+                                ((fraction * 100f)
+                                    .toInt()
+                                    .coerceIn(
+                                        0,
+                                        100
+                                    )) +
+                                "%",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            color = Blue
+                        )
+                    }
+
+                    if (verifying) {
+                        Text(
+                            "Проверяю SHA-256, пакет ReaderLB и сертификат подписи.",
+                            color = Muted,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
+                }
+
+                if (
+                    readyToInstall &&
+                    !busy
+                ) {
+                    Row(
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription =
+                                null,
+                            tint = Success,
+                            modifier =
+                                Modifier.size(
+                                    20.dp
+                                )
+                        )
+                        Text(
+                            "APK скачан и проверен. Можно устанавливать.",
+                            color = Ink,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            modifier =
+                                Modifier.padding(
+                                    start = 8.dp
+                                )
+                        )
+                    }
+                }
+
+                message?.let {
+                    Text(
+                        it,
+                        color =
+                            if (
+                                readyToInstall
+                            ) {
+                                Muted
+                            } else {
+                                MaterialTheme
+                                    .colorScheme
+                                    .error
+                            },
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            when {
+                busy -> {
+                    TextButton(
+                        onClick = onCancel
+                    ) {
+                        Text("Отменить")
+                    }
+                }
+
+                readyToInstall -> {
+                    TextButton(
+                        onClick = onInstall
+                    ) {
+                        Text("Установить")
+                    }
+                }
+
+                else -> {
+                    TextButton(
+                        onClick = onDownload
+                    ) {
+                        Text(
+                            "Скачать обновление"
+                        )
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            if (!busy) {
+                TextButton(
+                    onClick = onDismiss
+                ) {
+                    Text("Позже")
+                }
+            }
+        }
+    )
+}
+
+private fun formatUpdateFileSize(
+    bytes: Long?
+): String? {
+    val value =
+        bytes?.takeIf { it > 0L }
+            ?: return null
+    val megabyte =
+        1024.0 * 1024.0
+
+    return if (
+        value >= megabyte
+    ) {
+        String.format(
+            Locale.getDefault(),
+            "%.1f МБ",
+            value / megabyte
+        )
+    } else {
+        val kilobyte = 1024.0
+        String.format(
+            Locale.getDefault(),
+            "%.0f КБ",
+            value / kilobyte
+        )
+    }
+}
+
+private fun updateNotesPreview(
+    raw: String
+): String =
+    raw.lineSequence()
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .map { line ->
+            line
+                .replace(
+                    Regex(
+                        """^#{1,6}\s*"""
+                    ),
+                    ""
+                )
+                .replace(
+                    Regex(
+                        """^[-*]\s+"""
+                    ),
+                    ""
+                )
+                .replace(
+                    Regex(
+                        """\[([^]]+)]\([^)]+\)"""
+                    ),
+                    "$1"
+                )
+                .trim()
+        }
+        .filter {
+            it.isNotBlank() &&
+                !it.startsWith(
+                    "Full Changelog",
+                    ignoreCase = true
+                )
+        }
+        .take(4)
+        .joinToString("\n")
 
 @Composable
 private fun StatusCard(message: String, success: Boolean) {
@@ -5013,27 +5598,94 @@ private fun DangerAction(
 private fun GradientButton(
     text: String,
     enabled: Boolean = true,
+    leadingIcon: ImageVector? = null,
+    trailingIcon: ImageVector? = null,
     onClick: () -> Unit
 ) {
-    val colors = if (enabled) listOf(Blue, Color(0xFF09A8F2)) else listOf(
-        Color(0xFF3C4652),
-        Color(0xFF46515E)
-    )
+    val colors =
+        if (enabled) {
+            listOf(
+                Blue,
+                Color(
+                    0xFF09A8F2
+                )
+            )
+        } else {
+            listOf(
+                Color(
+                    0xFF3C4652
+                ),
+                Color(
+                    0xFF46515E
+                )
+            )
+        }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
-            .clip(RoundedCornerShape(15.dp))
-            .background(Brush.horizontalGradient(colors))
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
+            .clip(
+                RoundedCornerShape(
+                    15.dp
+                )
+            )
+            .background(
+                Brush.horizontalGradient(
+                    colors
+                )
+            )
+            .clickable(
+                enabled = enabled,
+                onClick = onClick
+            ),
+        contentAlignment =
+            Alignment.Center
     ) {
-        Text(
-            text,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 17.sp
-        )
+        Row(
+            verticalAlignment =
+                Alignment.CenterVertically,
+            horizontalArrangement =
+                Arrangement.spacedBy(
+                    8.dp
+                )
+        ) {
+            if (leadingIcon != null) {
+                Icon(
+                    imageVector =
+                        leadingIcon,
+                    contentDescription =
+                        null,
+                    tint = Color.White,
+                    modifier =
+                        Modifier.size(
+                            20.dp
+                        )
+                )
+            }
+
+            Text(
+                text,
+                color = Color.White,
+                fontWeight =
+                    FontWeight.Bold,
+                fontSize = 17.sp
+            )
+
+            if (trailingIcon != null) {
+                Icon(
+                    imageVector =
+                        trailingIcon,
+                    contentDescription =
+                        null,
+                    tint = Color.White,
+                    modifier =
+                        Modifier.size(
+                            20.dp
+                        )
+                )
+            }
+        }
     }
 }
 

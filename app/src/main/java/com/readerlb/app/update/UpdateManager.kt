@@ -23,8 +23,29 @@ data class UpdateInfo(
     val tagName: String,
     val downloadUrl: String,
     val sha256: String?,
-    val notes: String
+    val notes: String,
+    val sizeBytes: Long?
 )
+
+enum class UpdateDownloadStage {
+    DOWNLOADING,
+    VERIFYING
+}
+
+data class UpdateDownloadProgress(
+    val stage: UpdateDownloadStage,
+    val downloadedBytes: Long,
+    val totalBytes: Long?
+) {
+    val fraction: Float?
+        get() = totalBytes
+            ?.takeIf { it > 0L }
+            ?.let { total ->
+                (downloadedBytes.toDouble() / total.toDouble())
+                    .coerceIn(0.0, 1.0)
+                    .toFloat()
+            }
+}
 
 class UpdateManager(
     private val context: Context
@@ -59,7 +80,10 @@ class UpdateManager(
     }
 
     fun download(
-        info: UpdateInfo
+        info: UpdateInfo,
+        onProgress: (
+            UpdateDownloadProgress
+        ) -> Unit = {}
     ): File {
         val directory = File(
             context.cacheDir,
@@ -95,11 +119,23 @@ class UpdateManager(
                         http.responseCode
                 }
 
-                requireUpdateApkSizeWithinLimit(
+                val totalBytes =
                     http.contentLengthLong
+                        .takeIf { it >= 0L }
+
+                requireUpdateApkSizeWithinLimit(
+                    totalBytes ?: -1L
                 )
 
                 var downloadedBytes = 0L
+                onProgress(
+                    UpdateDownloadProgress(
+                        stage =
+                            UpdateDownloadStage.DOWNLOADING,
+                        downloadedBytes = 0L,
+                        totalBytes = totalBytes
+                    )
+                )
 
                 http.inputStream.buffered().use { input ->
                     partial.outputStream().buffered().use { output ->
@@ -124,9 +160,31 @@ class UpdateManager(
                                 0,
                                 count
                             )
+
+                            onProgress(
+                                UpdateDownloadProgress(
+                                    stage =
+                                        UpdateDownloadStage.DOWNLOADING,
+                                    downloadedBytes =
+                                        downloadedBytes,
+                                    totalBytes =
+                                        totalBytes
+                                )
+                            )
                         }
                     }
                 }
+
+                onProgress(
+                    UpdateDownloadProgress(
+                        stage =
+                            UpdateDownloadStage.VERIFYING,
+                        downloadedBytes =
+                            downloadedBytes,
+                        totalBytes =
+                            totalBytes
+                    )
+                )
             }
 
             require(partial.length() > 0L) {
@@ -643,12 +701,20 @@ internal fun parseUpdateInfo(
         ?.substringAfter(':')
         ?.lowercase()
 
+    val sizeBytes = apk
+        .optLong(
+            "size",
+            -1L
+        )
+        .takeIf { it > 0L }
+
     return UpdateInfo(
         versionName = versionName,
         tagName = tagName,
         downloadUrl = downloadUrl,
         sha256 = digest,
-        notes = json.optString("body")
+        notes = json.optString("body"),
+        sizeBytes = sizeBytes
     )
 }
 
