@@ -13,7 +13,9 @@ data class ExportedLocalBookFile(
     val uri: Uri,
     val displayName: String,
     val chapterCount: Int,
-    val format: LocalBookExportFormat
+    val format: LocalBookExportFormat,
+    val warningCount: Int = 0,
+    val warnings: List<String> = emptyList()
 )
 
 class LocalLibraryExportManager(
@@ -64,6 +66,40 @@ class LocalLibraryExportManager(
             ) +
                 "." +
                 format.extension
+        var warningCount = 0
+        val warnings =
+            mutableListOf<String>()
+
+        fun readForExport(
+            reference: LocalExportChapterRef
+        ): LocalExportChapter {
+            val chapter =
+                readChapter(
+                    opened = opened,
+                    reference =
+                        reference,
+                    includeImages =
+                        options
+                            .includeImages
+                )
+
+            chapter.warnings.forEach {
+                    warning ->
+                warningCount += 1
+                if (
+                    warnings.size <
+                    MAX_EXPORTED_WARNING_MESSAGES
+                ) {
+                    warnings +=
+                        "Глава " +
+                            reference.number +
+                            ": " +
+                            warning
+                }
+            }
+
+            return chapter
+        }
 
         return writeDownload(
             displayName =
@@ -77,18 +113,8 @@ class LocalLibraryExportManager(
                     txtWriter.write(
                         book = selectedBook,
                         output = output,
-                        readChapter = {
-                                reference ->
-                            readChapter(
-                                opened =
-                                    opened,
-                                reference =
-                                    reference,
-                                includeImages =
-                                    options
-                                        .includeImages
-                            )
-                        },
+                        readChapter =
+                            ::readForExport,
                         onProgress =
                             onProgress
                     )
@@ -99,18 +125,8 @@ class LocalLibraryExportManager(
                     epubWriter.write(
                         book = selectedBook,
                         output = output,
-                        readChapter = {
-                                reference ->
-                            readChapter(
-                                opened =
-                                    opened,
-                                reference =
-                                    reference,
-                                includeImages =
-                                    options
-                                        .includeImages
-                            )
-                        },
+                        readChapter =
+                            ::readForExport,
                         copyCover =
                             coverCopy(
                                 opened
@@ -142,18 +158,8 @@ class LocalLibraryExportManager(
                     fb2Writer.write(
                         book = selectedBook,
                         output = output,
-                        readChapter = {
-                                reference ->
-                            readChapter(
-                                opened =
-                                    opened,
-                                reference =
-                                    reference,
-                                includeImages =
-                                    options
-                                        .includeImages
-                            )
-                        },
+                        readChapter =
+                            ::readForExport,
                         copyCover =
                             coverCopy(
                                 opened
@@ -185,18 +191,8 @@ class LocalLibraryExportManager(
                     pdfWriter.write(
                         book = selectedBook,
                         output = output,
-                        readChapter = {
-                                reference ->
-                            readChapter(
-                                opened =
-                                    opened,
-                                reference =
-                                    reference,
-                                includeImages =
-                                    options
-                                        .includeImages
-                            )
-                        },
+                        readChapter =
+                            ::readForExport,
                         copyCover =
                             coverCopy(
                                 opened
@@ -231,7 +227,11 @@ class LocalLibraryExportManager(
                 chapterCount =
                     selectedBook
                         .chapters.size,
-                format = format
+                format = format,
+                warningCount =
+                    warningCount,
+                warnings =
+                    warnings.toList()
             )
         }
     }
