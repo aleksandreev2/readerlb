@@ -84,3 +84,14 @@ data class LocalExportOptions(
     val includeCover: Boolean = true,
     val includeImages: Boolean = true
 )
+
+internal fun checkLocalExportInterrupted() {
+    if (
+        Thread.currentThread()
+            .isInterrupted
+    ) {
+        throw InterruptedException(
+            "Экспорт отменён"
+        )
+    }
+}
