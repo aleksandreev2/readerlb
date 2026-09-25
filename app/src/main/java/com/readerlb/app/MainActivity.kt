@@ -4530,8 +4530,8 @@ private fun LibraryTitleDetail(
                                         .deleteTitle(
                                             treeUri =
                                                 tree,
-                                            slugUrl =
-                                                item.slugUrl
+                                            folderName =
+                                                item.folderName
                                         )
                                 }
                             }.onSuccess {
