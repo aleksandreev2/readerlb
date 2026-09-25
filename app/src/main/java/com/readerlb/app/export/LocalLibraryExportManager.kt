@@ -25,6 +25,8 @@ class LocalLibraryExportManager(
         LocalBookTxtWriter()
     private val epubWriter =
         LocalBookEpubWriter()
+    private val fb2Writer =
+        LocalBookFb2Writer()
 
     fun exportTxt(
         treeUri: Uri,
@@ -152,6 +154,87 @@ class LocalLibraryExportManager(
                     opened.book
                         .chapters.size,
                 format = "EPUB"
+            )
+        }
+    }
+
+    fun exportFb2(
+        treeUri: Uri,
+        item: LocalLibraryItem,
+        onProgress: (
+            LocalExportProgress
+        ) -> Unit = {}
+    ): ExportedLocalBookFile {
+        val opened =
+            reader.open(
+                treeUri = treeUri,
+                item = item
+            )
+        val displayName =
+            safeExportFileName(
+                opened.book.title
+            ) + ".fb2"
+
+        return writeDownload(
+            displayName =
+                displayName,
+            mimeType =
+                "application/x-fictionbook+xml"
+        ) { output ->
+            fb2Writer.write(
+                book = opened.book,
+                output = output,
+                readChapter = {
+                        reference ->
+                    reader.readChapter(
+                        opened = opened,
+                        reference =
+                            reference
+                    )
+                },
+                copyCover =
+                    opened.book.coverName
+                        ?.let {
+                                coverName ->
+                            {
+                                    coverOutput:
+                                        java.io.OutputStream ->
+                                reader.copyTitleFile(
+                                    opened =
+                                        opened,
+                                    fileName =
+                                        coverName,
+                                    output =
+                                        coverOutput
+                                )
+                            }
+                        },
+                copyChapterImage = {
+                        reference,
+                        image,
+                        imageOutput ->
+                    reader.copyChapterImage(
+                        opened = opened,
+                        reference =
+                            reference,
+                        entryName =
+                            image.entryName,
+                        output =
+                            imageOutput
+                    )
+                },
+                onProgress =
+                    onProgress
+            )
+
+            ExportedLocalBookFile(
+                uri = Uri.EMPTY,
+                displayName =
+                    displayName,
+                chapterCount =
+                    opened.book
+                        .chapters.size,
+                format = "FB2"
             )
         }
     }
