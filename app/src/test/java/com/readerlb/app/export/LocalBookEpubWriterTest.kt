@@ -2,6 +2,7 @@ package com.readerlb.app.export
 
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import org.junit.Assert.assertEquals
@@ -297,4 +298,101 @@ class LocalBookEpubWriterTest {
                 names
         )
     }
+    @Test
+    fun streamsTwoThousandSixHundredChapters() {
+        val chapters =
+            (1..2600).map {
+                    number ->
+                LocalExportChapterRef(
+                    number =
+                        number.toString(),
+                    title = "",
+                    volume = "1",
+                    chapterId =
+                        number.toLong(),
+                    archiveName =
+                        "v1-n$number-$number.zip"
+                )
+            }
+        val book =
+            LocalExportBook(
+                title = "Большая книга",
+                author = "",
+                description = "",
+                languageLabel = "",
+                slugUrl = "large-book",
+                coverName = null,
+                chapters = chapters
+            )
+        var lastProgress =
+            LocalExportProgress(
+                completedChapters = -1,
+                totalChapters = -1
+            )
+        val output =
+            CountingOutputStream()
+
+        LocalBookEpubWriter().write(
+            book = book,
+            output = output,
+            readChapter = {
+                    reference ->
+                LocalExportChapter(
+                    number =
+                        reference.number,
+                    title = "",
+                    blocks = listOf(
+                        LocalExportBlock
+                            .Paragraph(
+                                "Короткий текст"
+                            )
+                    )
+                )
+            },
+            copyCover = null,
+            copyChapterImage = {
+                    _,
+                    _,
+                    _ ->
+            },
+            onProgress = {
+                lastProgress = it
+            }
+        )
+
+        assertEquals(
+            2600,
+            lastProgress
+                .completedChapters
+        )
+        assertEquals(
+            2600,
+            lastProgress
+                .totalChapters
+        )
+        assertTrue(
+            output.count > 0L
+        )
+    }
+
+    private class CountingOutputStream :
+        OutputStream() {
+        var count: Long = 0L
+            private set
+
+        override fun write(
+            value: Int
+        ) {
+            count += 1L
+        }
+
+        override fun write(
+            buffer: ByteArray,
+            offset: Int,
+            length: Int
+        ) {
+            count += length
+        }
+    }
+
 }
