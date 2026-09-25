@@ -4351,8 +4351,11 @@ private fun LibraryTitleDetail(
                                         exportIncludeImages
                                 ),
                             onProgress = {
-                                exportProgress =
-                                    it
+                                    progress ->
+                                scope.launch {
+                                    exportProgress =
+                                        progress
+                                }
                             }
                         )
                     }
@@ -5308,6 +5311,64 @@ private fun LocalBookExportDialog(
                         )
                     }
 
+                    item {
+                        Card(
+                            colors =
+                                CardDefaults.cardColors(
+                                    containerColor =
+                                        MaterialTheme
+                                            .colorScheme
+                                            .surface
+                                ),
+                            shape =
+                                RoundedCornerShape(
+                                    12.dp
+                                ),
+                            border =
+                                androidx.compose.foundation
+                                    .BorderStroke(
+                                        1.dp,
+                                        Line
+                                    )
+                        ) {
+                            Text(
+                                (
+                                    if (
+                                        useRange
+                                    ) {
+                                        "Главы " +
+                                            firstChapter +
+                                            "–" +
+                                            lastChapter
+                                    } else {
+                                        item.chapterCount
+                                            .toString() +
+                                            " глав"
+                                    }
+                                    ) +
+                                    " · " +
+                                    selectedFormat
+                                        .displayName +
+                                    " · " +
+                                    if (
+                                        includeImages
+                                    ) {
+                                        "с иллюстрациями"
+                                    } else {
+                                        "без иллюстраций"
+                                    },
+                                color = Ink,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = 12.dp,
+                                        vertical = 10.dp
+                                    )
+                            )
+                        }
+                    }
+
                     if (busy) {
                         item {
                             Column(
@@ -5412,6 +5473,85 @@ private fun LocalBookExportDialog(
                                     lineHeight =
                                         17.sp
                                 )
+                            }
+                        }
+                    }
+
+                    if (
+                        result.warningCount > 0
+                    ) {
+                        item {
+                            Card(
+                                colors =
+                                    CardDefaults.cardColors(
+                                        containerColor =
+                                            MaterialTheme
+                                                .colorScheme
+                                                .surface
+                                    ),
+                                shape =
+                                    RoundedCornerShape(
+                                        12.dp
+                                    ),
+                                border =
+                                    androidx.compose.foundation
+                                        .BorderStroke(
+                                            1.dp,
+                                            Color(
+                                                0xFFE1B95B
+                                            )
+                                        )
+                            ) {
+                                Column(
+                                    modifier =
+                                        Modifier.padding(
+                                            12.dp
+                                        ),
+                                    verticalArrangement =
+                                        Arrangement.spacedBy(
+                                            5.dp
+                                        )
+                                ) {
+                                    Text(
+                                        "Экспорт завершён с предупреждениями: " +
+                                            result.warningCount,
+                                        color =
+                                            Color(
+                                                0xFFE1B95B
+                                            ),
+                                        fontWeight =
+                                            FontWeight.SemiBold,
+                                        fontSize = 12.sp
+                                    )
+                                    result.warnings
+                                        .take(4)
+                                        .forEach {
+                                                warning ->
+                                            Text(
+                                                "• " +
+                                                    warning,
+                                                color =
+                                                    Muted,
+                                                fontSize =
+                                                    11.sp,
+                                                lineHeight =
+                                                    15.sp
+                                            )
+                                        }
+                                    if (
+                                        result.warningCount >
+                                        result.warnings
+                                            .take(4)
+                                            .size
+                                    ) {
+                                        Text(
+                                            "Показаны первые предупреждения.",
+                                            color = Muted,
+                                            fontSize =
+                                                10.sp
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
