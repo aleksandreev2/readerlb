@@ -46,6 +46,7 @@ class LocalBookTxtWriter {
                     .forEachIndexed {
                             index,
                             reference ->
+                        checkLocalExportInterrupted()
                         val chapter =
                             readChapter(
                                 reference
@@ -60,6 +61,7 @@ class LocalBookTxtWriter {
 
                         chapter.blocks.forEach {
                                 block ->
+                            checkLocalExportInterrupted()
                             when (block) {
                                 is LocalExportBlock
                                     .Paragraph -> {
