@@ -44,7 +44,7 @@ class ReaderLbTransferManager(
                     .getTreeDocumentId(
                         treeUri
                     ),
-            expectedName = item.slugUrl,
+            expectedName = item.folderName,
             requireDirectory = true
         ) ?: error(
             "Тайтл больше не найден в локальной библиотеке"
@@ -321,7 +321,7 @@ class ReaderLbTransferManager(
 
     fun deleteTitle(
         treeUri: Uri,
-        slugUrl: String
+        folderName: String
     ) {
         val rootId =
             DocumentsContract
@@ -333,7 +333,7 @@ class ReaderLbTransferManager(
             treeUri = treeUri,
             parentDocumentId =
                 rootId,
-            expectedName = slugUrl,
+            expectedName = folderName,
             requireDirectory = true
         ) ?: return
 

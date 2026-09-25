@@ -18,7 +18,8 @@ data class LocalLibraryItem(
     val lastChapter: String,
     val coverUri: Uri?,
     val writeTime: Long,
-    val createdByReaderLB: Boolean
+    val createdByReaderLB: Boolean,
+    val folderName: String = slugUrl
 )
 
 data class LocalLibrarySnapshot(
@@ -55,6 +56,10 @@ internal fun encodeLocalLibraryCache(
                 .put(
                     "createdByReaderLB",
                     item.createdByReaderLB
+                )
+                .put(
+                    "folderName",
+                    item.folderName
                 )
                 .apply {
                     item.coverUri?.let {
@@ -141,7 +146,15 @@ internal fun decodeLocalLibraryCache(
                         item.optBoolean(
                             "createdByReaderLB",
                             false
+                        ),
+                    folderName =
+                        item.optString(
+                            "folderName"
                         )
+                            .trim()
+                            .ifBlank {
+                                slugUrl
+                            }
                 )
             )
         }
@@ -325,7 +338,9 @@ class RanobeLibLibraryScanner(
                     0L
                 ),
             createdByReaderLB =
-                chapters.createdByReaderLB
+                chapters.createdByReaderLB,
+            folderName =
+                directory.name
         )
     }
 

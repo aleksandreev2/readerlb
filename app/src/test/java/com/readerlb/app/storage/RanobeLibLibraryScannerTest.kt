@@ -122,4 +122,39 @@ class RanobeLibLibraryScannerTest {
         )
     }
 
+    @Test
+    fun localLibraryCachePreservesActualFolderName() {
+        val original = listOf(
+            LocalLibraryItem(
+                title = "Чужой локальный тайтл",
+                slugUrl = "123--server-slug",
+                chapterCount = 10,
+                firstChapter = "1",
+                lastChapter = "10",
+                coverUri = null,
+                writeTime = 100L,
+                createdByReaderLB = false,
+                folderName =
+                    "local-folder-name"
+            )
+        )
+
+        val restored =
+            decodeLocalLibraryCache(
+                encodeLocalLibraryCache(
+                    original
+                )
+            )
+
+        assertEquals(
+            "local-folder-name",
+            restored.single()
+                .folderName
+        )
+        assertEquals(
+            original,
+            restored
+        )
+    }
+
 }

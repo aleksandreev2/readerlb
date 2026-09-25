@@ -41,6 +41,31 @@ Before the release candidate, verify these flows on a small screen and on Androi
 5. On Redmi 9 dimensions, check the empty import screen, preview, warning, error, library, settings, and update controls for clipping and reachable actions.
 6. Install a release-signed update over the previous release-signed build; verify SHA-256, certificate identity, and the in-app updater result.
 
+## Local-library export checks
+
+ReaderLB 1.1.0 adds the reverse local-library path. Automated coverage must keep verifying:
+
+- ReaderLB-created local package -> TXT / EPUB / FB2 round-trip;
+- exact chapter-number preservation, including `0`, `0.5` and `001`;
+- corrupt, missing-`data.txt` and unsafe chapter ZIP rejection;
+- missing illustration diagnostics instead of silent loss;
+- 2600-chapter streamed EPUB export;
+- mobile PDF pagination and illustration decoding;
+- atomic MediaStore publication in `Downloads/ReaderLB`;
+- deletion of partial MediaStore output after writer failure;
+- API 29 and API 35 runtime execution.
+
+Before a stable 1.1.0 tag, manually verify on the Redmi 9:
+
+1. Export one ReaderLB-created title and one ordinary RanobeLib-downloaded title.
+2. Export EPUB, PDF, FB2 and TXT, then open the produced files in compatible readers.
+3. Export a range containing unusual chapter numbers where available and confirm the original numbering is preserved.
+4. Cancel a long export midway and confirm no broken file remains in `Downloads/ReaderLB`.
+5. Export a large title (target: roughly 2000–3000 chapters) with illustrations and confirm there is no OOM, frozen UI or unrecoverable slowdown.
+6. Confirm the bottom sheet fits the small screen, progress is visible, and Open/Share work after completion.
+
+The Redmi 9 large-book check is a stable-release gate, not something emulator CI can replace.
+
 ## Portable package checks
 
 Portable `.readerlb.zip` regression coverage includes:
