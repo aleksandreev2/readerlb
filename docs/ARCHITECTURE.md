@@ -67,6 +67,36 @@ lightweight local-title summaries for the Home and Library screens.
 Large `chapters.json` files are streamed instead of loading the entire chapter
 model into memory.
 
+### Local-library export
+
+```text
+user-authorized RanobeLib title
+        ↓
+RanobeLibLocalBookReader
+        ↓
+LocalExportBook / LocalExportChapter / LocalExportBlock
+        ↓
+LocalBookEpubWriter / LocalBookPdfWriter / LocalBookFb2Writer / LocalBookTxtWriter
+        ↓
+MediaStore pending item
+        ↓
+Downloads/ReaderLB
+```
+
+The reverse reader loads title metadata and the chapter index first, then opens
+individual chapter ZIPs only when a writer reaches that chapter. Illustration
+payloads are copied on demand. PDF images are temporarily spilled to cache and
+decoded with sampling so the whole image set is never retained on the Java heap.
+
+Chapter archives are treated as untrusted input: entry names are leaf-only,
+duplicate entries are rejected, entry counts and document/image reads are
+bounded, and unknown document nodes produce diagnostics instead of disappearing
+silently.
+
+Output publication is transactional at the MediaStore boundary. A download
+starts as `IS_PENDING=1`, becomes visible only after the format writer succeeds,
+and is deleted if writing fails or is cancelled.
+
 ## Updates
 
 `UpdateManager` treats GitHub Releases as the stable update source.
@@ -113,6 +143,7 @@ names, paths and metadata as untrusted.
 - `importer/` — parsers, package building, validation, export and update
   transactions.
 - `storage/` — preferences, history and local RanobeLib library scanner.
+- `export/` — reverse local-title reader, common export model and EPUB/PDF/FB2/TXT writers.
 - `update/` — GitHub release discovery, APK verification and installation.
 - `notifications/` — opt-in FCM release notification handling.
 - `ui/theme/` — application theme.
