@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -4839,6 +4840,681 @@ private fun LibraryTitleDetail(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LocalBookExportDialog(
+    item: LocalLibraryItem,
+    selectedFormat: LocalBookExportFormat,
+    onFormatSelected: (
+        LocalBookExportFormat
+    ) -> Unit,
+    useRange: Boolean,
+    onUseRangeChanged: (
+        Boolean
+    ) -> Unit,
+    firstChapter: String,
+    onFirstChapterChanged: (
+        String
+    ) -> Unit,
+    lastChapter: String,
+    onLastChapterChanged: (
+        String
+    ) -> Unit,
+    includeCover: Boolean,
+    onIncludeCoverChanged: (
+        Boolean
+    ) -> Unit,
+    includeImages: Boolean,
+    onIncludeImagesChanged: (
+        Boolean
+    ) -> Unit,
+    busy: Boolean,
+    progress: LocalExportProgress?,
+    result: ExportedLocalBookFile?,
+    error: String?,
+    onExport: () -> Unit,
+    onCancel: () -> Unit,
+    onOpen: (
+        ExportedLocalBookFile
+    ) -> Unit,
+    onShare: (
+        ExportedLocalBookFile
+    ) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val progressFraction =
+        progress?.let {
+            if (
+                it.totalChapters > 0
+            ) {
+                (
+                    it.completedChapters
+                        .toFloat() /
+                        it.totalChapters
+                            .toFloat()
+                    )
+                    .coerceIn(
+                        0f,
+                        1f
+                    )
+            } else {
+                null
+            }
+        }
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!busy) {
+                onDismiss()
+            }
+        },
+        title = {
+            Text(
+                if (
+                    result == null
+                ) {
+                    "Экспортировать книгу"
+                } else {
+                    "Книга сохранена"
+                },
+                color = Ink,
+                fontWeight =
+                    FontWeight.Bold
+            )
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(
+                        max = 520.dp
+                    ),
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        12.dp
+                    )
+            ) {
+                if (
+                    result == null
+                ) {
+                    item {
+                        Text(
+                            item.title,
+                            color = Ink,
+                            fontWeight =
+                                FontWeight.SemiBold,
+                            maxLines = 2
+                        )
+                        Text(
+                            item.chapterCount
+                                .toString() +
+                                " глав · " +
+                                localChapterRangeText(
+                                    item
+                                ),
+                            color = Muted,
+                            fontSize = 12.sp,
+                            modifier =
+                                Modifier.padding(
+                                    top = 4.dp
+                                )
+                        )
+                    }
+
+                    item {
+                        Text(
+                            "Формат",
+                            color = Ink,
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+                    }
+
+                    item {
+                        Row(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            horizontalArrangement =
+                                Arrangement.spacedBy(
+                                    8.dp
+                                )
+                        ) {
+                            ExportFormatChoice(
+                                modifier =
+                                    Modifier.weight(
+                                        1f
+                                    ),
+                                format =
+                                    LocalBookExportFormat
+                                        .EPUB,
+                                selected =
+                                    selectedFormat ==
+                                        LocalBookExportFormat
+                                            .EPUB,
+                                subtitle =
+                                    "Рекомендуется",
+                                enabled = !busy,
+                                onClick =
+                                    onFormatSelected
+                            )
+                            ExportFormatChoice(
+                                modifier =
+                                    Modifier.weight(
+                                        1f
+                                    ),
+                                format =
+                                    LocalBookExportFormat
+                                        .PDF,
+                                selected =
+                                    selectedFormat ==
+                                        LocalBookExportFormat
+                                            .PDF,
+                                subtitle =
+                                    "Для чтения",
+                                enabled = !busy,
+                                onClick =
+                                    onFormatSelected
+                            )
+                        }
+                    }
+
+                    item {
+                        Row(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            horizontalArrangement =
+                                Arrangement.spacedBy(
+                                    8.dp
+                                )
+                        ) {
+                            ExportFormatChoice(
+                                modifier =
+                                    Modifier.weight(
+                                        1f
+                                    ),
+                                format =
+                                    LocalBookExportFormat
+                                        .FB2,
+                                selected =
+                                    selectedFormat ==
+                                        LocalBookExportFormat
+                                            .FB2,
+                                subtitle =
+                                    "Для читалок",
+                                enabled = !busy,
+                                onClick =
+                                    onFormatSelected
+                            )
+                            ExportFormatChoice(
+                                modifier =
+                                    Modifier.weight(
+                                        1f
+                                    ),
+                                format =
+                                    LocalBookExportFormat
+                                        .TXT,
+                                selected =
+                                    selectedFormat ==
+                                        LocalBookExportFormat
+                                            .TXT,
+                                subtitle =
+                                    "Простой текст",
+                                enabled = !busy,
+                                onClick =
+                                    onFormatSelected
+                            )
+                        }
+                    }
+
+                    item {
+                        Divider()
+                    }
+
+                    item {
+                        Row(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+                            Column(
+                                Modifier.weight(
+                                    1f
+                                )
+                            ) {
+                                Text(
+                                    "Диапазон глав",
+                                    color = Ink,
+                                    fontWeight =
+                                        FontWeight.SemiBold
+                                )
+                                Text(
+                                    if (
+                                        useRange
+                                    ) {
+                                        "Экспортировать только выбранные главы."
+                                    } else {
+                                        "Экспортировать все локальные главы."
+                                    },
+                                    color = Muted,
+                                    fontSize = 12.sp,
+                                    lineHeight =
+                                        17.sp
+                                )
+                            }
+                            Switch(
+                                checked =
+                                    useRange,
+                                enabled = !busy,
+                                onCheckedChange =
+                                    onUseRangeChanged
+                            )
+                        }
+                    }
+
+                    if (useRange) {
+                        item {
+                            OutlinedTextField(
+                                value =
+                                    firstChapter,
+                                onValueChange =
+                                    onFirstChapterChanged,
+                                enabled = !busy,
+                                label = {
+                                    Text(
+                                        "С главы"
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions =
+                                    KeyboardOptions(
+                                        keyboardType =
+                                            KeyboardType
+                                                .Decimal
+                                    ),
+                                modifier =
+                                    Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        item {
+                            OutlinedTextField(
+                                value =
+                                    lastChapter,
+                                onValueChange =
+                                    onLastChapterChanged,
+                                enabled = !busy,
+                                label = {
+                                    Text(
+                                        "По главу"
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions =
+                                    KeyboardOptions(
+                                        keyboardType =
+                                            KeyboardType
+                                                .Decimal
+                                    ),
+                                modifier =
+                                    Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
+                    item {
+                        Divider()
+                    }
+
+                    item {
+                        ExportOptionSwitch(
+                            title = "Обложка",
+                            description =
+                                "Добавить обложку в EPUB, PDF и FB2.",
+                            checked =
+                                includeCover,
+                            enabled = !busy,
+                            onCheckedChange =
+                                onIncludeCoverChanged
+                        )
+                    }
+
+                    item {
+                        ExportOptionSwitch(
+                            title = "Иллюстрации",
+                            description =
+                                if (
+                                    selectedFormat ==
+                                        LocalBookExportFormat
+                                            .TXT
+                                ) {
+                                    "В TXT изображения отмечаются текстовыми подписями."
+                                } else {
+                                    "Сохранить встроенные иллюстрации книги."
+                                },
+                            checked =
+                                includeImages,
+                            enabled = !busy,
+                            onCheckedChange =
+                                onIncludeImagesChanged
+                        )
+                    }
+
+                    if (busy) {
+                        item {
+                            Column(
+                                verticalArrangement =
+                                    Arrangement.spacedBy(
+                                        7.dp
+                                    )
+                            ) {
+                                Text(
+                                    "Экспортирую " +
+                                        selectedFormat
+                                            .displayName,
+                                    color = Ink,
+                                    fontWeight =
+                                        FontWeight.SemiBold
+                                )
+
+                                if (
+                                    progressFraction !=
+                                    null
+                                ) {
+                                    LinearProgressIndicator(
+                                        progress = {
+                                            progressFraction
+                                        },
+                                        modifier =
+                                            Modifier.fillMaxWidth(),
+                                        color = Blue
+                                    )
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier =
+                                            Modifier.fillMaxWidth(),
+                                        color = Blue
+                                    )
+                                }
+
+                                if (
+                                    progress !=
+                                    null
+                                ) {
+                                    Text(
+                                        "Глава " +
+                                            progress
+                                                .completedChapters +
+                                            " из " +
+                                            progress
+                                                .totalChapters,
+                                        color = Muted,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    error?.let {
+                        item {
+                            StatusCard(
+                                message = it,
+                                success = false
+                            )
+                        }
+                    }
+                } else {
+                    item {
+                        Row(
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription =
+                                    null,
+                                tint = Success,
+                                modifier =
+                                    Modifier.size(
+                                        26.dp
+                                    )
+                            )
+                            Column(
+                                modifier =
+                                    Modifier.padding(
+                                        start = 10.dp
+                                    )
+                            ) {
+                                Text(
+                                    result.displayName,
+                                    color = Ink,
+                                    fontWeight =
+                                        FontWeight.SemiBold
+                                )
+                                Text(
+                                    result.chapterCount
+                                        .toString() +
+                                        " глав · " +
+                                        result.format
+                                            .displayName +
+                                        " · Downloads/ReaderLB",
+                                    color = Muted,
+                                    fontSize = 12.sp,
+                                    lineHeight =
+                                        17.sp
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        OutlineAction(
+                            text = "Открыть",
+                            onClick = {
+                                onOpen(
+                                    result
+                                )
+                            }
+                        )
+                    }
+
+                    item {
+                        OutlineAction(
+                            text = "Поделиться",
+                            onClick = {
+                                onShare(
+                                    result
+                                )
+                            }
+                        )
+                    }
+
+                    error?.let {
+                        item {
+                            StatusCard(
+                                message = it,
+                                success = false
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            when {
+                busy -> {
+                    TextButton(
+                        onClick = onCancel
+                    ) {
+                        Text("Отменить")
+                    }
+                }
+
+                result != null -> {
+                    TextButton(
+                        onClick =
+                            onDismiss
+                    ) {
+                        Text("Готово")
+                    }
+                }
+
+                else -> {
+                    TextButton(
+                        onClick = onExport
+                    ) {
+                        Text(
+                            "Сохранить " +
+                                selectedFormat
+                                    .displayName
+                        )
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            if (
+                !busy &&
+                result == null
+            ) {
+                TextButton(
+                    onClick =
+                        onDismiss
+                ) {
+                    Text("Закрыть")
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun ExportFormatChoice(
+    modifier: Modifier,
+    format: LocalBookExportFormat,
+    selected: Boolean,
+    subtitle: String,
+    enabled: Boolean,
+    onClick: (
+        LocalBookExportFormat
+    ) -> Unit
+) {
+    Card(
+        modifier = modifier
+            .clip(
+                RoundedCornerShape(
+                    12.dp
+                )
+            )
+            .clickable(
+                enabled = enabled,
+                onClick = {
+                    onClick(format)
+                }
+            ),
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    if (selected) {
+                        MaterialTheme
+                            .colorScheme
+                            .primaryContainer
+                    } else {
+                        MaterialTheme
+                            .colorScheme
+                            .surface
+                    }
+            ),
+        border =
+            androidx.compose.foundation
+                .BorderStroke(
+                    1.dp,
+                    if (selected) {
+                        Blue
+                    } else {
+                        Line
+                    }
+                ),
+        shape =
+            RoundedCornerShape(
+                12.dp
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 12.dp,
+                    vertical = 11.dp
+                )
+        ) {
+            Text(
+                format.displayName,
+                color =
+                    if (selected) {
+                        Blue
+                    } else {
+                        Ink
+                    },
+                fontWeight =
+                    FontWeight.Bold
+            )
+            Text(
+                subtitle,
+                color = Muted,
+                fontSize = 10.sp,
+                modifier =
+                    Modifier.padding(
+                        top = 2.dp
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExportOptionSwitch(
+    title: String,
+    description: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (
+        Boolean
+    ) -> Unit
+) {
+    Row(
+        modifier =
+            Modifier.fillMaxWidth(),
+        verticalAlignment =
+            Alignment.CenterVertically
+    ) {
+        Column(
+            Modifier.weight(
+                1f
+            )
+        ) {
+            Text(
+                title,
+                color = Ink,
+                fontWeight =
+                    FontWeight.SemiBold
+            )
+            Text(
+                description,
+                color = Muted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+        }
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange =
+                onCheckedChange
+        )
     }
 }
 
