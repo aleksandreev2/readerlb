@@ -101,7 +101,9 @@ class LocalLibraryExportManager(
             return chapter
         }
 
-        return writeDownload(
+        return writePendingDownload(
+            resolver =
+                context.contentResolver,
             displayName =
                 displayName,
             mimeType =
@@ -284,100 +286,102 @@ class LocalLibraryExportManager(
                 }
             }
 
-    private fun writeDownload(
-        displayName: String,
-        mimeType: String,
-        block: (
-            java.io.OutputStream
-        ) -> ExportedLocalBookFile
-    ): ExportedLocalBookFile {
-        val resolver =
-            context.contentResolver
-        val values =
+
+}
+
+
+internal fun writePendingDownload(
+    resolver: android.content.ContentResolver,
+    displayName: String,
+    mimeType: String,
+    block: (
+        java.io.OutputStream
+    ) -> ExportedLocalBookFile
+): ExportedLocalBookFile {
+    val values =
+        ContentValues()
+            .apply {
+                put(
+                    MediaStore
+                        .MediaColumns
+                        .DISPLAY_NAME,
+                    displayName
+                )
+                put(
+                    MediaStore
+                        .MediaColumns
+                        .MIME_TYPE,
+                    mimeType
+                )
+                put(
+                    MediaStore
+                        .MediaColumns
+                        .RELATIVE_PATH,
+                    Environment
+                        .DIRECTORY_DOWNLOADS +
+                        "/ReaderLB"
+                )
+                put(
+                    MediaStore
+                        .MediaColumns
+                        .IS_PENDING,
+                    1
+                )
+            }
+
+    val uri =
+        resolver.insert(
+            MediaStore
+                .Downloads
+                .EXTERNAL_CONTENT_URI,
+            values
+        ) ?: error(
+            "Android не создал файл экспорта"
+        )
+
+    try {
+        val output =
+            resolver
+                .openOutputStream(
+                    uri,
+                    "w"
+                ) ?: error(
+                "Android не дал записать файл экспорта"
+            )
+
+        val result =
+            output.buffered().use(
+                block
+            )
+
+        val published =
             ContentValues()
                 .apply {
                     put(
                         MediaStore
                             .MediaColumns
-                            .DISPLAY_NAME,
-                        displayName
-                    )
-                    put(
-                        MediaStore
-                            .MediaColumns
-                            .MIME_TYPE,
-                        mimeType
-                    )
-                    put(
-                        MediaStore
-                            .MediaColumns
-                            .RELATIVE_PATH,
-                        Environment
-                            .DIRECTORY_DOWNLOADS +
-                            "/ReaderLB"
-                    )
-                    put(
-                        MediaStore
-                            .MediaColumns
                             .IS_PENDING,
-                        1
+                        0
                     )
                 }
 
-        val uri =
-            resolver.insert(
-                MediaStore
-                    .Downloads
-                    .EXTERNAL_CONTENT_URI,
-                values
-            ) ?: error(
-                "Android не создал файл экспорта"
-            )
+        resolver.update(
+            uri,
+            published,
+            null,
+            null
+        )
 
-        try {
-            val output =
-                resolver
-                    .openOutputStream(
-                        uri,
-                        "w"
-                    ) ?: error(
-                    "Android не дал записать файл экспорта"
-                )
-
-            val result =
-                output.buffered().use(
-                    block
-                )
-
-            val published =
-                ContentValues()
-                    .apply {
-                        put(
-                            MediaStore
-                                .MediaColumns
-                                .IS_PENDING,
-                            0
-                        )
-                    }
-
-            resolver.update(
-                uri,
-                published,
-                null,
-                null
-            )
-
-            return result.copy(
-                uri = uri
-            )
-        } catch (throwable: Throwable) {
-            resolver.delete(
-                uri,
-                null,
-                null
-            )
-            throw throwable
-        }
+        return result.copy(
+            uri = uri
+        )
+    } catch (throwable: Throwable) {
+        resolver.delete(
+            uri,
+            null,
+            null
+        )
+        throw throwable
     }
 }
 
