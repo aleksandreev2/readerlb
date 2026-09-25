@@ -89,6 +89,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
+import com.readerlb.app.export.ExportedLocalBookFile
+import com.readerlb.app.export.LocalBookExportFormat
+import com.readerlb.app.export.LocalExportOptions
+import com.readerlb.app.export.LocalExportProgress
+import com.readerlb.app.export.LocalLibraryExportManager
 import com.readerlb.app.importer.DEFAULT_EPUB_IMAGE_LIMIT_MB
 import com.readerlb.app.importer.DEFAULT_EPUB_SOURCE_LIMIT_MB
 import com.readerlb.app.importer.DEFAULT_EPUB_TOTAL_IMAGE_LIMIT_MB
@@ -1652,6 +1657,11 @@ private fun ImportScreen(
     val exporter = remember { RanobeLibExporter(context) }
     val transferManager = remember {
         ReaderLbTransferManager(context)
+    }
+    val exportManager = remember {
+        LocalLibraryExportManager(
+            context
+        )
     }
     val importPreferences = remember {
         Preferences(context)
@@ -4122,6 +4132,260 @@ private fun LibraryTitleDetail(
     var confirmDelete by remember {
         mutableStateOf(false)
     }
+    var showExport by remember {
+        mutableStateOf(false)
+    }
+    var exportFormatIndex by rememberSaveable {
+        mutableIntStateOf(0)
+    }
+    var exportUseRange by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var exportFirstChapter by rememberSaveable(
+        item.slugUrl
+    ) {
+        mutableStateOf(
+            item.firstChapter
+        )
+    }
+    var exportLastChapter by rememberSaveable(
+        item.slugUrl
+    ) {
+        mutableStateOf(
+            item.lastChapter
+        )
+    }
+    var exportIncludeCover by rememberSaveable {
+        mutableStateOf(true)
+    }
+    var exportIncludeImages by rememberSaveable {
+        mutableStateOf(true)
+    }
+    var exportBusy by remember {
+        mutableStateOf(false)
+    }
+    var exportProgress by remember {
+        mutableStateOf<LocalExportProgress?>(
+            null
+        )
+    }
+    var exportResult by remember {
+        mutableStateOf<ExportedLocalBookFile?>(
+            null
+        )
+    }
+    var exportError by remember {
+        mutableStateOf<String?>(null)
+    }
+    var exportJob by remember {
+        mutableStateOf<Job?>(null)
+    }
+
+    val exportFormat =
+        LocalBookExportFormat.entries[
+            exportFormatIndex.coerceIn(
+                0,
+                LocalBookExportFormat
+                    .entries
+                    .lastIndex
+            )
+        ]
+
+    fun startExport() {
+        val tree =
+            treeUri
+                ?: run {
+                    exportError =
+                        "Сначала подключите папку RanobeLib."
+                    return
+                }
+
+        if (exportBusy) {
+            return
+        }
+
+        exportBusy = true
+        exportProgress = null
+        exportResult = null
+        exportError = null
+
+        exportJob = scope.launch {
+            try {
+                val result =
+                    runInterruptible(
+                        Dispatchers.IO
+                    ) {
+                        exportManager.export(
+                            format =
+                                exportFormat,
+                            treeUri = tree,
+                            item = item,
+                            options =
+                                LocalExportOptions(
+                                    firstChapter =
+                                        if (
+                                            exportUseRange
+                                        ) {
+                                            exportFirstChapter
+                                        } else {
+                                            null
+                                        },
+                                    lastChapter =
+                                        if (
+                                            exportUseRange
+                                        ) {
+                                            exportLastChapter
+                                        } else {
+                                            null
+                                        },
+                                    includeCover =
+                                        exportIncludeCover,
+                                    includeImages =
+                                        exportIncludeImages
+                                ),
+                            onProgress = {
+                                exportProgress =
+                                    it
+                            }
+                        )
+                    }
+
+                exportResult =
+                    result
+            } catch (
+                cancelled:
+                    CancellationException
+            ) {
+                exportError =
+                    "Экспорт отменён."
+            } catch (throwable: Throwable) {
+                exportError =
+                    throwable.message
+                        ?: "Не удалось экспортировать книгу"
+            } finally {
+                exportBusy = false
+                exportJob = null
+            }
+        }
+    }
+
+    fun openExportedFile(
+        result: ExportedLocalBookFile
+    ) {
+        val intent =
+            Intent(
+                Intent.ACTION_VIEW
+            )
+                .setDataAndType(
+                    result.uri,
+                    result.format
+                        .mimeType
+                )
+                .addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+
+        runCatching {
+            context.startActivity(
+                intent
+            )
+        }.onFailure {
+            exportError =
+                "На устройстве нет приложения для открытия этого формата."
+        }
+    }
+
+    fun shareExportedFile(
+        result: ExportedLocalBookFile
+    ) {
+        val intent =
+            Intent(
+                Intent.ACTION_SEND
+            )
+                .setType(
+                    result.format
+                        .mimeType
+                )
+                .putExtra(
+                    Intent.EXTRA_STREAM,
+                    result.uri
+                )
+                .addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+
+        context.startActivity(
+            Intent.createChooser(
+                intent,
+                "Поделиться книгой"
+            )
+        )
+    }
+
+    if (showExport) {
+        LocalBookExportDialog(
+            item = item,
+            selectedFormat =
+                exportFormat,
+            onFormatSelected = {
+                exportFormatIndex =
+                    it.ordinal
+                exportResult = null
+                exportError = null
+            },
+            useRange =
+                exportUseRange,
+            onUseRangeChanged = {
+                exportUseRange = it
+            },
+            firstChapter =
+                exportFirstChapter,
+            onFirstChapterChanged = {
+                exportFirstChapter =
+                    sanitizeChapterRangeInput(
+                        it
+                    )
+            },
+            lastChapter =
+                exportLastChapter,
+            onLastChapterChanged = {
+                exportLastChapter =
+                    sanitizeChapterRangeInput(
+                        it
+                    )
+            },
+            includeCover =
+                exportIncludeCover,
+            onIncludeCoverChanged = {
+                exportIncludeCover = it
+            },
+            includeImages =
+                exportIncludeImages,
+            onIncludeImagesChanged = {
+                exportIncludeImages = it
+            },
+            busy = exportBusy,
+            progress =
+                exportProgress,
+            result = exportResult,
+            error = exportError,
+            onExport = ::startExport,
+            onCancel = {
+                exportJob?.cancel()
+            },
+            onOpen = ::openExportedFile,
+            onShare =
+                ::shareExportedFile,
+            onDismiss = {
+                if (!exportBusy) {
+                    showExport = false
+                    exportResult = null
+                    exportError = null
+                }
+            }
+        )
+    }
+
 
     if (confirmDelete) {
         AlertDialog(
@@ -4466,6 +4730,25 @@ private fun LibraryTitleDetail(
                     )
             ) {
                 OutlineAction(
+                    if (exportBusy) {
+                        "Экспортирую…"
+                    } else {
+                        "Экспортировать"
+                    },
+                    onClick = {
+                        if (
+                            !busy &&
+                            !exportBusy
+                        ) {
+                            exportResult = null
+                            exportError = null
+                            exportProgress = null
+                            showExport = true
+                        }
+                    }
+                )
+
+                OutlineAction(
                     if (busy) {
                         "Подготавливаю пакет…"
                     } else {
@@ -4481,7 +4764,10 @@ private fun LibraryTitleDetail(
                                 "Сначала подключите папку RanobeLib."
                             return@OutlineAction
                         }
-                        if (busy) {
+                        if (
+                            busy ||
+                            exportBusy
+                        ) {
                             return@OutlineAction
                         }
 
@@ -4531,6 +4817,7 @@ private fun LibraryTitleDetail(
                         "Удалить новеллу",
                     enabled =
                         !busy &&
+                            !exportBusy &&
                             treeUri != null,
                     onClick = {
                         confirmDelete = true
