@@ -145,6 +145,37 @@ class RanobeLibLocalBookReader(
         )
     }
 
+    fun copyTitleFile(
+        opened: OpenedLocalExportBook,
+        fileName: String,
+        output: OutputStream
+    ) {
+        val uri =
+            opened.fileUris[
+                fileName
+            ] ?: error(
+                "Локальный файл больше не найден"
+            )
+        val input =
+            context.contentResolver
+                .openInputStream(
+                    uri
+                )
+                ?: error(
+                    "Android не дал прочитать локальный файл"
+                )
+
+        input.buffered().use {
+            copyBounded(
+                input = it,
+                output = output,
+                limitBytes =
+                    MAX_LOCAL_IMAGE_BYTES,
+                label = "Файл"
+            )
+        }
+    }
+
     fun copyChapterImage(
         opened: OpenedLocalExportBook,
         reference: LocalExportChapterRef,
