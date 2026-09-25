@@ -5281,10 +5281,25 @@ private fun LocalBookExportDialog(
                         ExportOptionSwitch(
                             title = "Обложка",
                             description =
-                                "Добавить обложку в EPUB, PDF и FB2.",
+                                if (
+                                    selectedFormat ==
+                                        LocalBookExportFormat
+                                            .TXT
+                                ) {
+                                    "TXT не хранит обложку."
+                                } else {
+                                    "Добавить обложку в книгу."
+                                },
                             checked =
-                                includeCover,
-                            enabled = !busy,
+                                includeCover &&
+                                    selectedFormat !=
+                                        LocalBookExportFormat
+                                            .TXT,
+                            enabled =
+                                !busy &&
+                                    selectedFormat !=
+                                        LocalBookExportFormat
+                                            .TXT,
                             onCheckedChange =
                                 onIncludeCoverChanged
                         )
