@@ -1659,11 +1659,6 @@ private fun ImportScreen(
     val transferManager = remember {
         ReaderLbTransferManager(context)
     }
-    val exportManager = remember {
-        LocalLibraryExportManager(
-            context
-        )
-    }
     val importPreferences = remember {
         Preferences(context)
     }
@@ -4226,6 +4221,11 @@ private fun LibraryTitleDetail(
     val scope = rememberCoroutineScope()
     val transferManager = remember {
         ReaderLbTransferManager(context)
+    }
+    val exportManager = remember {
+        LocalLibraryExportManager(
+            context
+        )
     }
     val cover by rememberLibraryCover(
         item.coverUri
