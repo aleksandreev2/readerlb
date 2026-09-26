@@ -120,7 +120,7 @@ class ShizukuRanobeLibLibraryScanner(
                 )
                 .use {
                     reader ->
-                    readShizukuChapterSummary(
+                    readLocalChapterSummary(
                         JsonReader(reader)
                     )
                 }
@@ -268,17 +268,3 @@ class ShizukuRanobeLibLibraryScanner(
     }
 }
 
-private fun readShizukuChapterSummary(
-    reader: JsonReader
-): LocalChapterSummary {
-    val text =
-        buildString {
-            val buffer =
-                CharArray(
-                    16 * 1024
-                )
-            error(
-                "Internal reader adapter should not be used"
-            )
-        }
-}
