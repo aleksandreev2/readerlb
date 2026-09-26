@@ -151,6 +151,11 @@ class ReaderLbPairingService :
                 )
                 ?.toString()
                 ?.trim()
+                ?: intent
+                    .getStringExtra(
+                        EXTRA_DIRECT_CODE
+                    )
+                    ?.trim()
         val port =
             intent.getIntExtra(
                 EXTRA_PORT,
@@ -482,6 +487,10 @@ class ReaderLbPairingService :
                 }
 
                 pairingPort = port
+                ReaderLbBridgeAccess
+                    .markPairingPort(
+                        port
+                    )
                 update(
                     codeNotification(
                         port
@@ -825,6 +834,8 @@ class ReaderLbPairingService :
             "pairing_code"
         private const val EXTRA_PORT =
             "pairing_port"
+        private const val EXTRA_DIRECT_CODE =
+            "direct_pairing_code"
         private const val PAIRING_SERVICE =
             "_adb-tls-pairing._tcp"
         private const val CONNECT_SERVICE =
@@ -846,6 +857,33 @@ class ReaderLbPairingService :
                         ACTION_START
                     )
             context.startForegroundService(
+                intent
+            )
+        }
+
+        fun submitCode(
+            context: Context,
+            port: Int,
+            code: String
+        ) {
+            val intent =
+                Intent(
+                    context,
+                    ReaderLbPairingService::
+                        class.java
+                )
+                    .setAction(
+                        ACTION_REPLY
+                    )
+                    .putExtra(
+                        EXTRA_PORT,
+                        port
+                    )
+                    .putExtra(
+                        EXTRA_DIRECT_CODE,
+                        code
+                    )
+            context.startService(
                 intent
             )
         }
