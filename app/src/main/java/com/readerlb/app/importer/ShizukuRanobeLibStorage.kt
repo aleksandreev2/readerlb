@@ -1,11 +1,11 @@
 package com.readerlb.app.importer
 
-import com.readerlb.app.shizuku.ShizukuRanobeLibBridge
+import com.readerlb.app.shizuku.RanobeLibPrivilegedFiles
 import com.readerlb.app.storage.MAX_INFO_JSON_BYTES
 
 class ShizukuRanobeLibStorage(
     private val bridge:
-        ShizukuRanobeLibBridge,
+        RanobeLibPrivilegedFiles,
     private val folderName: String
 ) : RanobeLibMutableStorage {
 
