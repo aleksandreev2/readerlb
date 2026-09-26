@@ -425,13 +425,25 @@ internal object ReaderLbBridgeLauncher {
     }
 
     private fun reserveLoopbackPort(): Int =
-        ServerSocket(
-            0,
-            1,
-            InetAddress
-                .getLoopbackAddress()
-        ).use {
-            it.localPort
+        ServerSocket().use {
+                server ->
+            server.reuseAddress = false
+            server.bind(
+                java.net.InetSocketAddress(
+                    InetAddress.getByName(
+                        "127.0.0.1"
+                    ),
+                    0
+                ),
+                1
+            )
+            require(
+                server.localPort in
+                    1024..65535
+            ) {
+                "Android не выделил локальный порт для ReaderLB Bridge"
+            }
+            server.localPort
         }
 
     private fun randomToken(): String {
