@@ -157,4 +157,72 @@ class RanobeLibLibraryScannerTest {
         )
     }
 
+    @Test
+    fun resolvesRemoteCoverUrlWithQueryToLocalFile() {
+        assertEquals(
+            "poster.webp",
+            resolveLocalCoverName(
+                imageUrl =
+                    "https://img.example/novel/poster.webp?size=large",
+                availableFileNames =
+                    setOf(
+                        "info.json",
+                        "chapters.json",
+                        "poster.webp"
+                    )
+            )
+        )
+    }
+
+    @Test
+    fun resolvesConventionalCoverWhenRanobeLibMetadataHasNoLocalName() {
+        assertEquals(
+            "cover.jpg",
+            resolveLocalCoverName(
+                imageUrl =
+                    "https://img.example/cache/abcdef.webp",
+                availableFileNames =
+                    setOf(
+                        "info.json",
+                        "chapters.json",
+                        "cover.jpg"
+                    )
+            )
+        )
+    }
+
+    @Test
+    fun resolvesSingleTopLevelImageAsDownloadedCover() {
+        assertEquals(
+            "9b2f6a.webp",
+            resolveLocalCoverName(
+                imageUrl = "",
+                availableFileNames =
+                    setOf(
+                        "info.json",
+                        "chapters.json",
+                        "v1-n1-10.zip",
+                        "9b2f6a.webp"
+                    )
+            )
+        )
+    }
+
+    @Test
+    fun doesNotGuessBetweenMultipleUnrelatedTopLevelImages() {
+        assertEquals(
+            null,
+            resolveLocalCoverName(
+                imageUrl = "",
+                availableFileNames =
+                    setOf(
+                        "info.json",
+                        "chapters.json",
+                        "first.webp",
+                        "second.jpg"
+                    )
+            )
+        )
+    }
+
 }
