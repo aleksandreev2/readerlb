@@ -8,6 +8,8 @@ RanobeLib local-export compatibility hotfix.
 - Added legacy HTML parsing for paragraphs, headings, line breaks, blockquotes, separators, centered text and local chapter images.
 - Added raw-HTML and object-with-HTML-content fallbacks so supported chapter text is preserved instead of failing with a JSON object conversion error.
 - Bumped Android versionCode to 19 so the hotfix installs over ReaderLB 1.1.0.
+- Added local-cover discovery for ordinary RanobeLib-downloaded titles, including remote image URLs, conventional `cover.*` names and a safe single-image fallback.
+- Clarified title origin in the library and detail screen with `Импорт ReaderLB` versus `Скачано в RanobeLib` labels.
 
 ## 1.1.0
 
