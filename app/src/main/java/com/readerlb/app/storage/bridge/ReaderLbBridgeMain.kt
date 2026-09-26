@@ -27,6 +27,26 @@ object ReaderLbBridgeMain {
 
     @JvmStatic
     fun main(args: Array<String>) {
+        if (
+            args.size == 1 &&
+            args[0] == "--probe"
+        ) {
+            val root =
+                findBookRoot()
+            if (root == null) {
+                println(
+                    "READERLB_BRIDGE_ERROR:" +
+                        "book_unavailable"
+                )
+            } else {
+                println(
+                    "READERLB_BRIDGE_READY:" +
+                        root.absolutePath
+                )
+            }
+            return
+        }
+
         require(args.size == 2) {
             "Usage: ReaderLbBridgeMain <port> <token>"
         }
