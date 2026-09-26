@@ -1,7 +1,9 @@
 package com.readerlb.app.storage.bridge
 
-import android.net.LocalServerSocket
-import android.net.LocalSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
@@ -26,20 +28,31 @@ object ReaderLbBridgeMain {
     @JvmStatic
     fun main(args: Array<String>) {
         require(args.size == 2) {
-            "Usage: ReaderLbBridgeMain <socket-name> <token>"
+            "Usage: ReaderLbBridgeMain <port> <token>"
         }
 
-        val socketName = args[0]
+        val port = args[0].toIntOrNull()
+            ?.takeIf { it in 1024..65535 }
+            ?: error("Invalid bridge port")
         val token = args[1]
-        require(socketName.matches(Regex("[A-Za-z0-9_.-]{8,96}")))
         require(token.matches(Regex("[a-f0-9]{64}")))
 
         val root = findBookRoot()
             ?: error("RanobeLib book directory is unavailable")
 
-        LocalServerSocket(socketName).use { server ->
+        ServerSocket().use { server ->
+            server.reuseAddress = false
+            server.bind(
+                InetSocketAddress(
+                    InetAddress.getLoopbackAddress(),
+                    port
+                ),
+                16
+            )
+
             while (true) {
                 val client = server.accept()
+                client.soTimeout = 15_000
                 workers.execute {
                     runCatching {
                         handleClient(
@@ -55,7 +68,7 @@ object ReaderLbBridgeMain {
     }
 
     private fun handleClient(
-        client: LocalSocket,
+        client: Socket,
         token: String,
         root: File
     ) {
