@@ -121,6 +121,10 @@ import com.readerlb.app.storage.RanobeLibAccessAssessment
 import com.readerlb.app.storage.RanobeLibAccessCapability
 import com.readerlb.app.storage.assessRanobeLibAccess
 import com.readerlb.app.storage.RanobeLibLibraryScanner
+import com.readerlb.app.storage.ShizukuRanobeLibLibraryScanner
+import com.readerlb.app.shizuku.ShizukuRanobeLibBridge
+import com.readerlb.app.shizuku.ShizukuRanobeLibState
+import com.readerlb.app.shizuku.ShizukuRanobeLibStatus
 import com.readerlb.app.storage.decodeLocalLibraryCache
 import com.readerlb.app.storage.encodeLocalLibraryCache
 import com.readerlb.app.update.UpdateDownloadProgress
@@ -303,7 +307,9 @@ private fun ReaderLBRoot(
 @Composable
 private fun RanobeLibAccessSetupSheet(
     assessment: RanobeLibAccessAssessment,
+    shizukuStatus: ShizukuRanobeLibStatus?,
     onGrantLegacyAccess: () -> Unit,
+    onShizukuAction: () -> Unit,
     onContinueWithoutDirectAccess: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -433,110 +439,291 @@ private fun RanobeLibAccessSetupSheet(
 
                 RanobeLibAccessCapability
                     .SYSTEM_RESTRICTED -> {
+                    val status =
+                        shizukuStatus
+                            ?: ShizukuRanobeLibStatus(
+                                state =
+                                    ShizukuRanobeLibState
+                                        .CONNECTING,
+                                message =
+                                    "Проверяю способ полного доступа…"
+                            )
+
                     item {
                         AccessSetupStatusCard(
                             icon =
-                                Icons.Default.Warning,
+                                if (
+                                    status.ready
+                                ) {
+                                    Icons.Default.Check
+                                } else {
+                                    Icons.Default.Info
+                                },
                             title =
-                                "Android защищает папку RanobeLib",
+                                when (
+                                    status.state
+                                ) {
+                                    ShizukuRanobeLibState
+                                        .NOT_INSTALLED ->
+                                        "Нужен Shizuku"
+
+                                    ShizukuRanobeLibState
+                                        .NOT_RUNNING ->
+                                        "Запустите Shizuku"
+
+                                    ShizukuRanobeLibState
+                                        .PERMISSION_REQUIRED ->
+                                        "Один системный запрос"
+
+                                    ShizukuRanobeLibState
+                                        .PERMISSION_DENIED ->
+                                        "Разрешение отклонено"
+
+                                    ShizukuRanobeLibState
+                                        .CONNECTING ->
+                                        "Подключаю полный доступ"
+
+                                    ShizukuRanobeLibState
+                                        .READY ->
+                                        "Полный доступ готов"
+
+                                    ShizukuRanobeLibState
+                                        .RANOBELIB_NOT_FOUND ->
+                                        "Папка RanobeLib пока не найдена"
+
+                                    ShizukuRanobeLibState
+                                        .ERROR ->
+                                        "Не удалось подключить Shizuku"
+                                },
                             text =
-                                "Начиная с Android 11 система не разрешает обычным приложениям выбирать Android/data другого приложения. Обычное разрешение «Файлы» это не исправляет.",
-                            success = false
+                                status.message,
+                            success =
+                                status.ready
                         )
                     }
 
-                    item {
-                        Card(
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        MaterialTheme
-                                            .colorScheme
-                                            .surface
-                                ),
-                            shape =
-                                RoundedCornerShape(
-                                    14.dp
-                                ),
-                            border =
-                                androidx.compose.foundation
-                                    .BorderStroke(
-                                        1.dp,
-                                        Line
-                                    )
-                        ) {
-                            Column(
+                    when (
+                        status.state
+                    ) {
+                        ShizukuRanobeLibState
+                            .NOT_INSTALLED -> {
+                            item {
+                                Text(
+                                    "Android ${Build.VERSION.RELEASE} не даёт обычному приложению выбрать папку другого приложения в Android/data. ReaderLB может получить рабочий доступ через Shizuku без root.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                Card(
+                                    colors =
+                                        CardDefaults.cardColors(
+                                            containerColor =
+                                                MaterialTheme
+                                                    .colorScheme
+                                                    .surface
+                                        ),
+                                    shape =
+                                        RoundedCornerShape(
+                                            14.dp
+                                        ),
+                                    border =
+                                        androidx.compose.foundation
+                                            .BorderStroke(
+                                                1.dp,
+                                                Line
+                                            )
+                                ) {
+                                    Column(
+                                        modifier =
+                                            Modifier.padding(
+                                                16.dp
+                                            ),
+                                        verticalArrangement =
+                                            Arrangement.spacedBy(
+                                                7.dp
+                                            )
+                                    ) {
+                                        Text(
+                                            "Как получить полный доступ",
+                                            color = Ink,
+                                            fontWeight =
+                                                FontWeight.Bold
+                                        )
+                                        Text(
+                                            "1. Установите Shizuku.\n2. Запустите его через «Беспроводную отладку».\n3. Вернитесь в ReaderLB и разрешите доступ.",
+                                            color = Muted,
+                                            fontSize = 13.sp,
+                                            lineHeight = 19.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Установить Shizuku",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .NOT_RUNNING -> {
+                            item {
+                                Text(
+                                    "Shizuku уже установлен. На Android 11+ его можно запустить прямо на телефоне через системную «Беспроводную отладку». После запуска просто вернитесь сюда — ReaderLB перепроверит доступ.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Открыть Shizuku",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .PERMISSION_REQUIRED -> {
+                            item {
+                                Text(
+                                    "Shizuku уже работает. Осталось один раз разрешить ReaderLB использовать его только для локальной папки книг RanobeLib.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Разрешить ReaderLB",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .PERMISSION_DENIED -> {
+                            item {
+                                Text(
+                                    "Откройте Shizuku → Приложения → ReaderLB и включите разрешение. Затем вернитесь — повторная проверка произойдёт автоматически.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Открыть Shizuku",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .CONNECTING -> {
+                            item {
+                                LinearProgressIndicator(
+                                    modifier =
+                                        Modifier.fillMaxWidth(),
+                                    color = Blue
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .READY -> {
+                            item {
+                                Text(
+                                    "ReaderLB теперь может читать скачанную библиотеку, экспортировать тайтлы и добавлять главы напрямую. Повторно выбирать Android/data не нужно.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text = "Готово",
+                                    onClick =
+                                        onDismiss
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .RANOBELIB_NOT_FOUND -> {
+                            item {
+                                Text(
+                                    "Откройте RanobeLib и скачайте хотя бы один тайтл локально, затем нажмите повторную проверку.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Проверить ещё раз",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .ERROR -> {
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Повторить проверку",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+                    }
+
+                    if (
+                        status.state !=
+                        ShizukuRanobeLibState
+                            .READY
+                    ) {
+                        item {
+                            Box(
                                 modifier =
-                                    Modifier.padding(
-                                        16.dp
-                                    ),
-                                verticalArrangement =
-                                    Arrangement.spacedBy(
-                                        8.dp
+                                    Modifier.fillMaxWidth(),
+                                contentAlignment =
+                                    Alignment.Center
+                            ) {
+                                TextButton(
+                                    onClick =
+                                        onContinueWithoutDirectAccess
+                                ) {
+                                    Text(
+                                        "Пока работать через Downloads"
                                     )
-                            ) {
-                                Text(
-                                    "Что работает сейчас",
-                                    color = Ink,
-                                    fontWeight =
-                                        FontWeight.Bold
-                                )
-                                Text(
-                                    "EPUB/TXT можно импортировать, а готовый пакет ReaderLB сохранит в Downloads/ReaderLB.",
-                                    color = Muted,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp
-                                )
-                                Divider()
-                                Text(
-                                    "Что требует прямого доступа",
-                                    color = Ink,
-                                    fontWeight =
-                                        FontWeight.Bold
-                                )
-                                Text(
-                                    "Просмотр уже скачанной библиотеки RanobeLib, экспорт её тайтлов и запись глав прямо в RanobeLib.",
-                                    color = Muted,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp
-                                )
+                                }
                             }
                         }
                     }
-
-                    item {
-                        Text(
-                            "Для полного доступа на новых Android нужен отдельный привилегированный мост вроде Shizuku или root. ReaderLB не будет отправлять вас в системную настройку, которая всё равно не даст доступ к этой папке.",
-                            color = Muted,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-
-                    item {
-                        GradientButton(
-                            text =
-                                "Работать через Downloads",
-                            onClick =
-                                onContinueWithoutDirectAccess
-                        )
-                    }
-
-                    item {
-                        Box(
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                            contentAlignment =
-                                Alignment.Center
-                        ) {
-                            TextButton(
-                                onClick =
-                                    onDismiss
-                            ) {
-                                Text("Закрыть")
-                            }
-                        }
-                    }
+                }
                 }
             }
         }
