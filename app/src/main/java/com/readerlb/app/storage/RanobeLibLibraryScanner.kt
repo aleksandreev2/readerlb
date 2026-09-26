@@ -617,7 +617,7 @@ internal fun parseLocalChapterSummary(
         StringReader(chaptersText)
     ).use(::readLocalChapterSummary)
 
-private fun readLocalChapterSummary(
+internal fun readLocalChapterSummary(
     reader: JsonReader
 ): LocalChapterSummary {
     val numbers = HashSet<String>()
