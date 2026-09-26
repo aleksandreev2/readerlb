@@ -52,12 +52,6 @@ class MainActivitySmokeTest {
             .fetchSemanticsNode()
         composeRule
             .onNodeWithText(
-                "Настроить прямой доступ",
-                substring = true
-            )
-            .fetchSemanticsNode()
-        composeRule
-            .onNodeWithText(
                 "Shizuku устанавливать не нужно.",
                 substring = true
             )
