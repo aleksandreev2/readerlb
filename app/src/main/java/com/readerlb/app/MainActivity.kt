@@ -312,6 +312,7 @@ private fun RanobeLibAccessSetupSheet(
     assessment: RanobeLibAccessAssessment,
     onGrantLegacyAccess: () -> Unit,
     onBuiltInAccessSetup: () -> Unit,
+    onSubmitPairingCode: (String) -> Unit,
     onShizukuAction: () -> Unit,
     onContinueWithoutDirectAccess: () -> Unit,
     onDismiss: () -> Unit
@@ -320,6 +321,13 @@ private fun RanobeLibAccessSetupSheet(
         rememberModalBottomSheetState(
             skipPartiallyExpanded = true
         )
+    var manualPairingCode by
+        rememberSaveable {
+            mutableStateOf("")
+        }
+    val pairingPort =
+        ReaderLbBridgeAccess
+            .pairingPort
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -456,7 +464,7 @@ private fun RanobeLibAccessSetupSheet(
 
                     item {
                         Text(
-                            "Нажмите кнопку ниже. ReaderLB откроет Wireless Debugging, найдёт pairing-порт и попросит только 6-значный код из настроек. После подключения библиотека найдётся автоматически.",
+                            "Нажмите кнопку ниже. ReaderLB откроет Wireless Debugging, найдёт pairing-порт и попросит только 6-значный код из настроек. Код можно ввести прямо в уведомлении или, если уведомления запрещены, после возврата в ReaderLB.",
                             color = Muted,
                             fontSize = 13.sp,
                             lineHeight = 19.sp
@@ -513,6 +521,64 @@ private fun RanobeLibAccessSetupSheet(
                                 Modifier.fillMaxWidth(),
                             color = Blue
                         )
+                    }
+
+                    if (
+                        pairingPort in
+                            1..65535
+                    ) {
+                        item {
+                            Text(
+                                "ReaderLB уже нашёл pairing-порт. Если уведомление с вводом кода не появилось, введите код здесь:",
+                                color = Muted,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                        }
+
+                        item {
+                            OutlinedTextField(
+                                value =
+                                    manualPairingCode,
+                                onValueChange = {
+                                        value ->
+                                    manualPairingCode =
+                                        value
+                                            .filter(
+                                                Char::isDigit
+                                            )
+                                            .take(6)
+                                },
+                                modifier =
+                                    Modifier.fillMaxWidth(),
+                                label = {
+                                    Text(
+                                        "6-значный код"
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions =
+                                    KeyboardOptions(
+                                        keyboardType =
+                                            KeyboardType.Number
+                                    )
+                            )
+                        }
+
+                        item {
+                            GradientButton(
+                                text =
+                                    "Подключить",
+                                enabled =
+                                    manualPairingCode
+                                        .length == 6,
+                                onClick = {
+                                    onSubmitPairingCode(
+                                        manualPairingCode
+                                    )
+                                }
+                            )
+                        }
                     }
 
                     item {
@@ -1346,16 +1412,12 @@ private fun MainApp(
             contract =
                 ActivityResultContracts
                     .RequestPermission()
-        ) { granted ->
-            if (granted) {
-                ReaderLbBridgeAccess
-                    .startSetup(context)
-            } else {
-                ReaderLbBridgeAccess
-                    .markError(
-                        "Для простой настройки прямого доступа Android должен разрешить уведомление с полем для 6-значного pairing-кода."
-                    )
-            }
+        ) {
+            // Notification permission only makes the inline pairing-code
+            // action more convenient. Direct access itself must not depend
+            // on it: the sheet has an in-app code-entry fallback.
+            ReaderLbBridgeAccess
+                .startSetup(context)
         }
 
     fun beginBuiltInAccessSetup() {
@@ -1873,6 +1935,14 @@ private fun MainApp(
             },
             onBuiltInAccessSetup = {
                 beginBuiltInAccessSetup()
+            },
+            onSubmitPairingCode = {
+                    code ->
+                ReaderLbBridgeAccess
+                    .submitPairingCode(
+                        context,
+                        code
+                    )
             },
             onShizukuAction = {
                 when (ranobeLibAccess.capability) {
