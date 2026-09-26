@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased — 1.1.1
+## Unreleased — 1.1.2
+
+Shizuku access-probe hotfix.
+
+- The Android 11+ Shizuku connection check now validates only the known `Android/data/ru.libappc/files/book` directory instead of enumerating title folders and parsing title metadata.
+- Initial access time is now independent of the number and total size of downloaded books; the normal library scan remains a separate progress-reporting step.
+- Access diagnostics now explicitly state that ReaderLB does not scan the whole device during the Shizuku probe.
+- When Shizuku is running but the target directory cannot be read/written, ReaderLB now explains that the folder may be missing or the device firmware may block shell access.
+- Bumped Android versionCode to 23 and versionName to 1.1.2.
+
+## 1.1.1
 
 RanobeLib local-export compatibility hotfix.
 
