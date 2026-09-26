@@ -1592,6 +1592,7 @@ private fun MainApp(
                         folderUri = null
                         libraryError = "Доступ к RanobeLib потерян. Импорт сохранит переносимый ZIP."
                         showRanobeLibAccessSetup = true
+                        ReaderLbBridgeAccess.refresh(context)
                         ShizukuAccess.refresh(context)
                     }
                 }
