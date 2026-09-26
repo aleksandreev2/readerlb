@@ -12,6 +12,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import android.os.ParcelFileDescriptor
 import com.readerlb.app.storage.RanobeLibFileBackend
+import com.readerlb.app.storage.RanobeLibFileEntry
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
@@ -43,11 +44,24 @@ class ReaderLbBridgeFileBackend(
     override fun list(
         relativePath: String
     ): Array<String> =
+        listEntries(
+            relativePath
+        )
+            .map {
+                it.name
+            }
+            .toTypedArray()
+
+    override fun listEntries(
+        relativePath: String
+    ): List<RanobeLibFileEntry> =
         request(
-            ReaderLbBridgeProtocol.OP_LIST,
+            ReaderLbBridgeProtocol
+                .OP_LIST_META,
             relativePath
         ) { _, input ->
-            val count = input.readInt()
+            val count =
+                input.readInt()
             require(
                 count in
                     0..ReaderLbBridgeProtocol
@@ -55,8 +69,18 @@ class ReaderLbBridgeFileBackend(
             ) {
                 "Invalid directory entry count"
             }
-            Array(count) {
-                input.readUTF()
+
+            List(count) {
+                RanobeLibFileEntry(
+                    name =
+                        input.readUTF(),
+                    isDirectory =
+                        input.readBoolean(),
+                    length =
+                        input.readLong(),
+                    lastModified =
+                        input.readLong()
+                )
             }
         }
 
