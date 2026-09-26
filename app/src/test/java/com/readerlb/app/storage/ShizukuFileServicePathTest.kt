@@ -1,5 +1,6 @@
 package com.readerlb.app.storage
 
+import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,11 +19,11 @@ class ShizukuFileServicePathTest {
         val root = Files.createTempDirectory("readerlb-book").toFile()
         try {
             repeat(50) { index ->
-                root.resolve("title-$index").mkdir()
+                File(root, "title-$index").mkdir()
             }
-            root.resolve("title-with-random-files").mkdir().also { title ->
-                title.resolve("not-ranobelib.txt").writeText("fixture")
-            }
+            File(root, "title-with-random-files").mkdir()
+            File(File(root, "title-with-random-files"), "not-ranobelib.txt")
+                .writeText("fixture")
 
             assertTrue(isUsableLibraryRoot(root))
         } finally {
@@ -33,7 +34,7 @@ class ShizukuFileServicePathTest {
     @Test fun accessProbeRejectsMissingDirectory() {
         val parent = Files.createTempDirectory("readerlb-missing").toFile()
         try {
-            assertFalse(isUsableLibraryRoot(parent.resolve("book")))
+            assertFalse(isUsableLibraryRoot(File(parent, "book")))
         } finally {
             parent.deleteRecursively()
         }
