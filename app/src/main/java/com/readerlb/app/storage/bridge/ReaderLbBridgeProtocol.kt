@@ -6,6 +6,7 @@ internal object ReaderLbBridgeProtocol {
 
     const val OP_PING = "ping"
     const val OP_LIST = "list"
+    const val OP_LIST_META = "list_meta"
     const val OP_EXISTS = "exists"
     const val OP_IS_DIRECTORY = "is_directory"
     const val OP_LENGTH = "length"
