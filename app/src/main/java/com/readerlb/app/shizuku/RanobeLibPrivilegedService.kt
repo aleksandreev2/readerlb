@@ -175,47 +175,12 @@ class RanobeLibPrivilegedService :
 
     private fun target(
         relativePath: String
-    ): File {
-        val clean =
-            relativePath
-                .replace(
-                    '\\',
-                    '/'
-                )
-                .trim()
-                .trim('/')
-
-        val candidate =
-            if (
-                clean.isEmpty()
-            ) {
-                ROOT
-            } else {
-                File(
-                    ROOT,
-                    clean
-                )
-            }
-                .canonicalFile
-
-        val rootPath =
-            ROOT_CANONICAL.path
-        val candidatePath =
-            candidate.path
-
-        require(
-            candidatePath ==
-                rootPath ||
-                candidatePath.startsWith(
-                    rootPath +
-                        File.separator
-                )
-        ) {
-            "Путь выходит за пределы библиотеки RanobeLib"
-        }
-
-        return candidate
-    }
+    ): File =
+        resolveRestrictedRanobeLibPath(
+            root = ROOT_CANONICAL,
+            relativePath =
+                relativePath
+        )
 
     private fun requireNonRoot(
         relativePath: String
@@ -240,4 +205,62 @@ class RanobeLibPrivilegedService :
         val ROOT_CANONICAL =
             ROOT.canonicalFile
     }
+}
+
+
+internal fun resolveRestrictedRanobeLibPath(
+    root: File,
+    relativePath: String
+): File {
+    require(
+        !relativePath
+            .startsWith("/") &&
+            !relativePath
+                .startsWith("\\") &&
+            '\u0000' !in
+                relativePath
+    ) {
+        "Разрешён только относительный путь внутри библиотеки RanobeLib"
+    }
+
+    val clean =
+        relativePath
+            .replace(
+                '\\',
+                '/'
+            )
+            .trim()
+            .trim('/')
+
+    val canonicalRoot =
+        root.canonicalFile
+    val candidate =
+        if (
+            clean.isEmpty()
+        ) {
+            canonicalRoot
+        } else {
+            File(
+                canonicalRoot,
+                clean
+            ).canonicalFile
+        }
+
+    val rootPath =
+        canonicalRoot.path
+    val candidatePath =
+        candidate.path
+
+    require(
+        candidatePath ==
+            rootPath ||
+            candidatePath.startsWith(
+                rootPath +
+                    File.separator
+            )
+    ) {
+        "Путь выходит за пределы библиотеки RanobeLib"
+    }
+
+    return candidate
 }
