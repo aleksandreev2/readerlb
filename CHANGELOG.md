@@ -7,9 +7,12 @@ RanobeLib local-export compatibility hotfix.
 - Fixed export crashes for ordinary RanobeLib-downloaded chapters whose `data.txt` stores JSON-encoded HTML instead of ReaderLB's ProseMirror JSON object.
 - Added legacy HTML parsing for paragraphs, headings, line breaks, blockquotes, separators, centered text and local chapter images.
 - Added raw-HTML and object-with-HTML-content fallbacks so supported chapter text is preserved instead of failing with a JSON object conversion error.
-- Bumped Android versionCode to 20 so the latest 1.1.1 candidate installs over ReaderLB 1.1.0 and earlier 1.1.1 test builds.
+- Bumped Android versionCode to 21 so the latest 1.1.1 candidate installs over ReaderLB 1.1.0 and earlier 1.1.1 test builds.
 - Added local-cover discovery for ordinary RanobeLib-downloaded titles, including remote image URLs, conventional `cover.*` names and a safe single-image fallback.
 - Clarified title origin in the library and detail screen with `Импорт ReaderLB` versus `Скачано в RanobeLib` labels.
+- Added proactive RanobeLib access diagnostics on first launch and from Home, Library, Import and Settings.
+- Replaced dead/disabled direct-import controls with an access setup flow that explains the exact Android storage state and offers the valid next action.
+- On Android 10 and older, ReaderLB can open the system picker for the RanobeLib `book` folder; on Android 11+ it explicitly explains the platform `Android/data` restriction and keeps the working Downloads flow available.
 
 ## 1.1.0
 
