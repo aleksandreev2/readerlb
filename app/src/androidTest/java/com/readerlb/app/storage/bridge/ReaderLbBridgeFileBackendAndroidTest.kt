@@ -315,7 +315,7 @@ class ReaderLbBridgeFileBackendAndroidTest {
                 )
 
             assertTrue(
-                backend.ping()
+                backend.pingOrThrow()
             )
             assertArrayEquals(
                 arrayOf(
