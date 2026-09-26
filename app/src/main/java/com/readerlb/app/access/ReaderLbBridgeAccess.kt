@@ -304,7 +304,7 @@ internal object ReaderLbBridgeLauncher {
         val command =
             "CLASSPATH=" +
                 shellQuote(apk) +
-                " nohup setsid app_process " +
+                " nohup setsid /system/bin/app_process " +
                 "/system/bin " +
                 "--nice-name=readerlb_bridge " +
                 "com.readerlb.app.storage.bridge." +
