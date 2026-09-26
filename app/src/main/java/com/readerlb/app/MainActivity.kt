@@ -115,7 +115,10 @@ import com.readerlb.app.importer.ReaderBlock
 import com.readerlb.app.importer.chapterNumberInRange
 import com.readerlb.app.importer.shouldInspectReaderLbTransferFile
 import com.readerlb.app.importer.compareChapterNumbers
+import com.readerlb.app.access.ReaderLbBridgeAccess
 import com.readerlb.app.storage.HistoryStore
+import com.readerlb.app.storage.RanobeLibBackendKind
+import com.readerlb.app.storage.RanobeLibBackends
 import com.readerlb.app.storage.ImportHistoryItem
 import com.readerlb.app.storage.LocalLibraryItem
 import com.readerlb.app.storage.Preferences
@@ -980,16 +983,19 @@ private fun MainApp(
     }
 
     val shizukuState = ShizukuAccess.state
+    val builtInAccessState = ReaderLbBridgeAccess.state
     var accessResumeTick by remember { mutableIntStateOf(0) }
     DisposableEffect(context) {
         val activity = context as ComponentActivity
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 accessResumeTick += 1
+                ReaderLbBridgeAccess.refresh(context)
                 ShizukuAccess.refresh(context)
             }
         }
         activity.lifecycle.addObserver(observer)
+        ReaderLbBridgeAccess.refresh(context)
         ShizukuAccess.refresh(context)
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
@@ -1009,22 +1015,66 @@ private fun MainApp(
         }
     }
 
-    LaunchedEffect(shizukuState) {
-        if (shizukuState == ShizukuAccessState.READY && folderUri == null) {
-            folderUri = ShizukuAccess.treeUri
-            showRanobeLibAccessSetup = false
-            preferences.ranobeLibAccessIntroDone = true
-        } else if (shizukuState !in setOf(
-                ShizukuAccessState.READY,
-                ShizukuAccessState.CHECKING,
-                ShizukuAccessState.CONNECTING
-            ) &&
-            folderUri == ShizukuAccess.treeUri
-        ) {
-            folderUri = null
-            showRanobeLibAccessSetup = true
+    LaunchedEffect(
+        builtInAccessState,
+        shizukuState
+    ) {
+        val backend =
+            RanobeLibBackends
+                .currentKind()
+
+        when {
+            builtInAccessState ==
+                com.readerlb.app.storage
+                    .ReaderLbBuiltInAccessState
+                    .READY &&
+                backend ==
+                    RanobeLibBackendKind
+                        .READERLB_BRIDGE -> {
+                folderUri =
+                    ReaderLbBridgeAccess
+                        .treeUri
+                showRanobeLibAccessSetup =
+                    false
+                preferences
+                    .ranobeLibAccessIntroDone =
+                    true
+            }
+
+            shizukuState ==
+                ShizukuAccessState.READY &&
+                backend ==
+                    RanobeLibBackendKind
+                        .SHIZUKU &&
+                folderUri == null -> {
+                folderUri =
+                    ShizukuAccess.treeUri
+                showRanobeLibAccessSetup =
+                    false
+                preferences
+                    .ranobeLibAccessIntroDone =
+                    true
+            }
+
+            folderUri ==
+                ReaderLbBridgeAccess.treeUri &&
+                backend == null -> {
+                folderUri = null
+                showRanobeLibAccessSetup =
+                    true
+            }
         }
     }
+
+    val activeAccessBackend =
+        remember(
+            builtInAccessState,
+            shizukuState,
+            folderUri
+        ) {
+            RanobeLibBackends
+                .currentKind()
+        }
 
     val ranobeLibAccess =
         assessRanobeLibAccess(
@@ -1036,7 +1086,20 @@ private fun MainApp(
             connected =
                 folderUri != null,
             shizukuState = shizukuState,
-            connectedWithShizuku = folderUri == ShizukuAccess.treeUri
+            connectedWithShizuku =
+                folderUri ==
+                    ShizukuAccess.treeUri &&
+                    activeAccessBackend ==
+                        RanobeLibBackendKind
+                            .SHIZUKU,
+            builtInState =
+                builtInAccessState,
+            connectedWithBuiltInBridge =
+                folderUri ==
+                    ReaderLbBridgeAccess.treeUri &&
+                    activeAccessBackend ==
+                        RanobeLibBackendKind
+                            .READERLB_BRIDGE
         )
 
     LaunchedEffect(Unit) {
