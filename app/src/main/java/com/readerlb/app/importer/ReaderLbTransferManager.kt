@@ -6,6 +6,8 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.core.content.FileProvider
 import com.readerlb.app.storage.LocalLibraryItem
+import com.readerlb.app.shizuku.RanobeLibPrivilegedFiles
+import com.readerlb.app.shizuku.ShizukuRanobeLibBridge
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -108,47 +110,10 @@ class ReaderLbTransferManager(
                 target.outputStream()
                     .buffered()
             ).use { zip ->
-                val manifest = JSONObject()
-                    .put(
-                        "format",
-                        TRANSFER_FORMAT
-                    )
-                    .put(
-                        "version",
-                        TRANSFER_VERSION
-                    )
-                    .put(
-                        "title",
-                        item.title
-                    )
-                    .put(
-                        "slugUrl",
-                        item.slugUrl
-                    )
-                    .put(
-                        "chapterCount",
-                        item.chapterCount
-                    )
-                    .put(
-                        "firstChapter",
-                        item.firstChapter
-                    )
-                    .put(
-                        "lastChapter",
-                        item.lastChapter
-                    )
-                    .toString()
-                    .toByteArray(
-                        Charsets.UTF_8
-                    )
-
-                zip.putNextEntry(
-                    ZipEntry(
-                        TRANSFER_MANIFEST
-                    )
+                writeTransferManifest(
+                    zip = zip,
+                    item = item
                 )
-                zip.write(manifest)
-                zip.closeEntry()
 
                 files
                     .sortedBy {
@@ -204,6 +169,149 @@ class ReaderLbTransferManager(
                 ".files",
             target
         )
+    }
+
+    fun createShareUri(
+        bridge: RanobeLibPrivilegedFiles,
+        item: LocalLibraryItem
+    ): Uri {
+        cleanupOldShareFiles()
+
+        require(
+            bridge.isDirectory(
+                item.folderName
+            )
+        ) {
+            "Тайтл больше не найден в локальной библиотеке"
+        }
+
+        val files =
+            bridge.listNames(
+                item.folderName
+            )
+                .filter {
+                    !bridge.isDirectory(
+                        item.folderName +
+                            "/" +
+                            it
+                    )
+                }
+
+        require(
+            "info.json" in files &&
+                "chapters.json" in
+                files
+        ) {
+            "Локальный тайтл повреждён: отсутствуют служебные файлы"
+        }
+
+        val shareDir =
+            File(
+                context.cacheDir,
+                "shares"
+            ).apply {
+                require(
+                    isDirectory ||
+                        mkdirs()
+                ) {
+                    "Не удалось подготовить папку для отправки"
+                }
+            }
+
+        val safeName =
+            item.title
+                .replace(
+                    Regex(
+                        """[\\/:*?"<>|\p{Cntrl}]+"""
+                    ),
+                    "_"
+                )
+                .trim()
+                .take(80)
+                .ifBlank {
+                    "ReaderLB_title"
+                }
+
+        val target =
+            File(
+                shareDir,
+                safeName +
+                    "_" +
+                    System.currentTimeMillis() +
+                    ".readerlb.zip"
+            )
+
+        try {
+            ZipOutputStream(
+                target
+                    .outputStream()
+                    .buffered()
+            ).use {
+                    zip ->
+                writeTransferManifest(
+                    zip = zip,
+                    item = item
+                )
+
+                files
+                    .sorted()
+                    .forEach {
+                            name ->
+                        require(
+                            isSafeLeafName(
+                                name
+                            )
+                        ) {
+                            "Недопустимое имя файла внутри тайтла"
+                        }
+
+                        zip.putNextEntry(
+                            ZipEntry(
+                                "book/" +
+                                    item.slugUrl +
+                                    "/" +
+                                    name
+                            )
+                        )
+
+                        bridge.openInput(
+                            item.folderName +
+                                "/" +
+                                name
+                        )
+                            .buffered()
+                            .use {
+                                input ->
+                                input.copyTo(
+                                    zip
+                                )
+                            }
+
+                        zip.closeEntry()
+                    }
+            }
+        } catch (
+            throwable: Throwable
+        ) {
+            target.delete()
+            throw throwable
+        }
+
+        require(
+            target.isFile &&
+                target.length() >
+                0L
+        ) {
+            "Пакет ReaderLB не был создан"
+        }
+
+        return FileProvider
+            .getUriForFile(
+                context,
+                context.packageName +
+                    ".files",
+                target
+            )
     }
 
     fun shareIntent(
@@ -319,6 +427,120 @@ class ReaderLbTransferManager(
         }
     }
 
+    fun install(
+        uri: Uri,
+        bridge:
+            ShizukuRanobeLibBridge
+    ): ExportResult {
+        val info =
+            inspect(uri)
+                ?: error(
+                    "Это не пакет ReaderLB"
+                )
+
+        val tempRoot =
+            File(
+                context.cacheDir,
+                "readerlb_transfer_" +
+                    System.nanoTime()
+            ).apply {
+                require(
+                    mkdirs()
+                ) {
+                    "Не удалось подготовить временную папку"
+                }
+            }
+
+        try {
+            context.contentResolver
+                .openInputStream(uri)
+                ?.buffered()
+                ?.use {
+                    input ->
+                    extractReaderLbTransfer(
+                        input = input,
+                        info = info,
+                        rootDir =
+                            tempRoot
+                    )
+                }
+                ?: error(
+                    "Не удалось открыть пакет ReaderLB"
+                )
+
+            val titleDir =
+                File(
+                    tempRoot,
+                    "book/" +
+                        info.slugUrl
+                )
+            val built =
+                BuiltRanobeLibPackage(
+                    rootDir =
+                        tempRoot,
+                    titleDir =
+                        titleDir,
+                    title = info.title,
+                    chapterCount =
+                        info.chapterCount,
+                    firstChapter =
+                        info.firstChapter,
+                    lastChapter =
+                        info.lastChapter,
+                    slugUrl =
+                        info.slugUrl
+                )
+
+            val report =
+                RanobeLibPackageBuilder()
+                    .verify(built)
+
+            if (
+                !report.isValid
+            ) {
+                throw PackageVerificationException(
+                    report
+                )
+            }
+
+            val direct =
+                RanobeLibExporter(
+                    context
+                )
+                    .copyToRanobeLibShizuku(
+                        bridge =
+                            bridge,
+                        source =
+                            titleDir,
+                        slugUrl =
+                            info.slugUrl
+                    )
+
+            return ExportResult(
+                title = info.title,
+                chapterCount =
+                    direct.chapterCount,
+                firstChapter =
+                    direct.firstChapter,
+                lastChapter =
+                    direct.lastChapter,
+                slugUrl =
+                    info.slugUrl,
+                installedDirectly =
+                    true,
+                updatedExisting =
+                    direct
+                        .updatedExisting,
+                addedChapterCount =
+                    direct
+                        .addedChapterCount
+            )
+        } finally {
+            tempRoot
+                .deleteRecursively()
+        }
+    }
+
     fun deleteTitle(
         treeUri: Uri,
         folderName: String
@@ -347,6 +569,76 @@ class ReaderLbTransferManager(
         require(deleted) {
             "Android не разрешил удалить локальный тайтл"
         }
+    }
+
+    fun deleteTitle(
+        bridge:
+            RanobeLibPrivilegedFiles,
+        folderName: String
+    ) {
+        if (
+            !bridge.exists(
+                folderName
+            )
+        ) {
+            return
+        }
+
+        require(
+            bridge.deleteRecursively(
+                folderName
+            )
+        ) {
+            "Shizuku не смог удалить локальный тайтл"
+        }
+    }
+
+    private fun writeTransferManifest(
+        zip: ZipOutputStream,
+        item: LocalLibraryItem
+    ) {
+        val manifest =
+            JSONObject()
+                .put(
+                    "format",
+                    TRANSFER_FORMAT
+                )
+                .put(
+                    "version",
+                    TRANSFER_VERSION
+                )
+                .put(
+                    "title",
+                    item.title
+                )
+                .put(
+                    "slugUrl",
+                    item.slugUrl
+                )
+                .put(
+                    "chapterCount",
+                    item.chapterCount
+                )
+                .put(
+                    "firstChapter",
+                    item.firstChapter
+                )
+                .put(
+                    "lastChapter",
+                    item.lastChapter
+                )
+                .toString()
+                .toByteArray(
+                    Charsets.UTF_8
+                )
+
+        zip.putNextEntry(
+            ZipEntry(
+                TRANSFER_MANIFEST
+            )
+        )
+        zip.write(manifest)
+        zip.closeEntry()
     }
 
     private fun cleanupOldShareFiles() {

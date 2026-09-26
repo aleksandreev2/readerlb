@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
+import com.readerlb.app.shizuku.ShizukuRanobeLibBridge
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -28,6 +29,8 @@ class RanobeLibExporter(private val context: Context) {
         firstChapter: String? = null,
         lastChapter: String? = null,
         ranobeLibBookTree: Uri? = null,
+        shizukuBridge:
+            ShizukuRanobeLibBridge? = null,
         onProgress: (ExportProgress) -> Unit = {}
     ): ExportResult {
         val tempRoot = File(
@@ -80,13 +83,30 @@ class RanobeLibExporter(private val context: Context) {
                 )
             )
 
-            val directResult = ranobeLibBookTree?.let {
-                copyToRanobeLibTree(
-                    treeUri = it,
-                    source = built.titleDir,
-                    slugUrl = built.slugUrl
-                )
-            }
+            val directResult =
+                ranobeLibBookTree?.let {
+                    copyToRanobeLibTree(
+                        treeUri = it,
+                        source =
+                            built.titleDir,
+                        slugUrl =
+                            built.slugUrl
+                    )
+                }
+                    ?: shizukuBridge
+                        ?.takeIf {
+                            it.currentStatus()
+                                .ready
+                        }
+                        ?.let {
+                            copyToRanobeLibShizuku(
+                                bridge = it,
+                                source =
+                                    built.titleDir,
+                                slugUrl =
+                                    built.slugUrl
+                            )
+                        }
             val installed = directResult != null
 
             val download = if (installed) {
@@ -246,6 +266,240 @@ class RanobeLibExporter(private val context: Context) {
             updatedExisting = false,
             addedChapterCount = numbers.size
         )
+    }
+
+    internal fun copyToRanobeLibShizuku(
+        bridge: ShizukuRanobeLibBridge,
+        source: File,
+        slugUrl: String
+    ): DirectWriteResult {
+        requireSafeTitleFolder(
+            slugUrl
+        )
+
+        if (
+            bridge.exists(
+                slugUrl
+            )
+        ) {
+            require(
+                bridge.isDirectory(
+                    slugUrl
+                )
+            ) {
+                "Путь существующего тайтла RanobeLib не является папкой"
+            }
+
+            val result =
+                RanobeLibUpdateTransaction()
+                    .apply(
+                        existing =
+                            ShizukuRanobeLibStorage(
+                                bridge = bridge,
+                                folderName =
+                                    slugUrl
+                            ),
+                        incomingTitleDir =
+                            source
+                    )
+
+            val merged =
+                result.mergedNumbers
+
+            require(
+                merged.isNotEmpty()
+            ) {
+                "После обновления тайтл не содержит глав"
+            }
+
+            return DirectWriteResult(
+                chapterCount =
+                    result
+                        .totalChapterCount,
+                firstChapter =
+                    merged.first(),
+                lastChapter =
+                    merged.last(),
+                updatedExisting =
+                    true,
+                addedChapterCount =
+                    result
+                        .addedNumbers
+                        .size
+            )
+        }
+
+        require(
+            bridge.mkdirs(
+                slugUrl
+            )
+        ) {
+            "Не удалось создать папку тайтла"
+        }
+
+        val sourceFiles =
+            source
+                .listFiles()
+                .orEmpty()
+                .filter(
+                    File::isFile
+                )
+                .sortedWith(
+                    compareBy<File> {
+                            file ->
+                        when (
+                            file.name
+                        ) {
+                            "info.json" ->
+                                2
+                            "chapters.json" ->
+                                1
+                            else -> 0
+                        }
+                    }.thenBy {
+                        it.name
+                    }
+                )
+
+        require(
+            sourceFiles.isNotEmpty()
+        ) {
+            "Подготовленный пакет пуст"
+        }
+
+        try {
+            sourceFiles.forEach {
+                    file ->
+                val target =
+                    "${slugUrl}/" +
+                        file.name
+
+                bridge.openOutput(
+                    target
+                )
+                    .buffered()
+                    .use {
+                        output ->
+                        file.inputStream()
+                            .buffered()
+                            .use {
+                                input ->
+                                input.copyTo(
+                                    output
+                                )
+                            }
+                    }
+
+                require(
+                    bridge.length(
+                        target
+                    ) ==
+                        file.length()
+                ) {
+                    "Размер ${file.name} после копирования не совпадает"
+                }
+            }
+
+            val installed =
+                bridge.listNames(
+                    slugUrl
+                )
+                    .toSet()
+
+            sourceFiles.forEach {
+                    sourceFile ->
+                val target =
+                    "${slugUrl}/" +
+                        sourceFile.name
+
+                require(
+                    sourceFile.name in
+                        installed &&
+                        bridge.exists(
+                            target
+                        ) &&
+                        bridge.length(
+                            target
+                        ) ==
+                        sourceFile
+                            .length()
+                ) {
+                    "Проверка ${sourceFile.name} после копирования не пройдена"
+                }
+            }
+        } catch (
+            throwable: Throwable
+        ) {
+            runCatching {
+                bridge
+                    .deleteRecursively(
+                        slugUrl
+                    )
+            }
+            throw throwable
+        }
+
+        val incomingChapters =
+            org.json.JSONArray(
+                File(
+                    source,
+                    "chapters.json"
+                )
+                    .readText(
+                        Charsets.UTF_8
+                    )
+            )
+
+        val numbers =
+            (
+                0 until
+                    incomingChapters
+                        .length()
+                )
+                .map {
+                    incomingChapters
+                        .getJSONObject(it)
+                        .getString(
+                            "number"
+                        )
+                }
+                .sortedWith(
+                    ::compareChapterNumbers
+                )
+
+        require(
+            numbers.isNotEmpty()
+        ) {
+            "Подготовленный тайтл не содержит глав"
+        }
+
+        return DirectWriteResult(
+            chapterCount =
+                numbers.size,
+            firstChapter =
+                numbers.first(),
+            lastChapter =
+                numbers.last(),
+            updatedExisting =
+                false,
+            addedChapterCount =
+                numbers.size
+        )
+    }
+
+    private fun requireSafeTitleFolder(
+        value: String
+    ) {
+        require(
+            value.isNotBlank() &&
+                value != "." &&
+                value != ".." &&
+                '/' !in value &&
+                '\\' !in value &&
+                ':' !in value
+        ) {
+            "Некорректная папка тайтла"
+        }
     }
 
     private fun mimeType(file: File): String =

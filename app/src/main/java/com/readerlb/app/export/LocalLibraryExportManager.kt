@@ -8,6 +8,8 @@ import android.provider.MediaStore
 import com.readerlb.app.importer.chapterNumberDecimal
 import com.readerlb.app.importer.chapterNumberInRange
 import com.readerlb.app.storage.LocalLibraryItem
+import com.readerlb.app.shizuku.RanobeLibPrivilegedFiles
+import java.io.OutputStream
 
 data class ExportedLocalBookFile(
     val uri: Uri,
@@ -21,7 +23,7 @@ data class ExportedLocalBookFile(
 class LocalLibraryExportManager(
     private val context: Context
 ) {
-    private val reader =
+    private val safReader =
         RanobeLibLocalBookReader(
             context
         )
@@ -47,10 +49,131 @@ class LocalLibraryExportManager(
         ) -> Unit = {}
     ): ExportedLocalBookFile {
         val source =
-            reader.open(
+            safReader.open(
                 treeUri = treeUri,
                 item = item
             )
+
+        return exportOpened(
+            format = format,
+            source = source,
+            options = options,
+            readChapter = {
+                    opened,
+                    reference ->
+                safReader.readChapter(
+                    opened,
+                    reference
+                )
+            },
+            copyTitleFile = {
+                    opened,
+                    fileName,
+                    output ->
+                safReader.copyTitleFile(
+                    opened,
+                    fileName,
+                    output
+                )
+            },
+            copyChapterImage = {
+                    opened,
+                    reference,
+                    entryName,
+                    output ->
+                safReader.copyChapterImage(
+                    opened,
+                    reference,
+                    entryName,
+                    output
+                )
+            },
+            onProgress = onProgress
+        )
+    }
+
+    fun export(
+        format: LocalBookExportFormat,
+        privilegedFiles:
+            RanobeLibPrivilegedFiles,
+        item: LocalLibraryItem,
+        options: LocalExportOptions =
+            LocalExportOptions(),
+        onProgress: (
+            LocalExportProgress
+        ) -> Unit = {}
+    ): ExportedLocalBookFile {
+        val reader =
+            ShizukuRanobeLibLocalBookReader(
+                privilegedFiles
+            )
+        val source =
+            reader.open(item)
+
+        return exportOpened(
+            format = format,
+            source = source,
+            options = options,
+            readChapter = {
+                    opened,
+                    reference ->
+                reader.readChapter(
+                    opened,
+                    reference
+                )
+            },
+            copyTitleFile = {
+                    opened,
+                    fileName,
+                    output ->
+                reader.copyTitleFile(
+                    opened,
+                    fileName,
+                    output
+                )
+            },
+            copyChapterImage = {
+                    opened,
+                    reference,
+                    entryName,
+                    output ->
+                reader.copyChapterImage(
+                    opened,
+                    reference,
+                    entryName,
+                    output
+                )
+            },
+            onProgress = onProgress
+        )
+    }
+
+    private fun exportOpened(
+        format:
+            LocalBookExportFormat,
+        source:
+            OpenedLocalExportBook,
+        options:
+            LocalExportOptions,
+        readChapter: (
+            OpenedLocalExportBook,
+            LocalExportChapterRef
+        ) -> LocalExportChapter,
+        copyTitleFile: (
+            OpenedLocalExportBook,
+            String,
+            OutputStream
+        ) -> Unit,
+        copyChapterImage: (
+            OpenedLocalExportBook,
+            LocalExportChapterRef,
+            String,
+            OutputStream
+        ) -> Unit,
+        onProgress: (
+            LocalExportProgress
+        ) -> Unit
+    ): ExportedLocalBookFile {
         val selectedBook =
             selectLocalExportBook(
                 book = source.book,
@@ -71,21 +194,35 @@ class LocalLibraryExportManager(
             mutableListOf<String>()
 
         fun readForExport(
-            reference: LocalExportChapterRef
+            reference:
+                LocalExportChapterRef
         ): LocalExportChapter {
-            val chapter =
+            val raw =
                 readChapter(
-                    opened = opened,
-                    reference =
-                        reference,
-                    includeImages =
-                        options
-                            .includeImages
+                    opened,
+                    reference
                 )
+            val chapter =
+                if (
+                    options.includeImages
+                ) {
+                    raw
+                } else {
+                    raw.copy(
+                        blocks =
+                            raw.blocks
+                                .filterNot {
+                                    it is
+                                        LocalExportBlock
+                                            .Image
+                                }
+                    )
+                }
 
             chapter.warnings.forEach {
                     warning ->
                 warningCount += 1
+
                 if (
                     warnings.size <
                     MAX_EXPORTED_WARNING_MESSAGES
@@ -101,6 +238,21 @@ class LocalLibraryExportManager(
             return chapter
         }
 
+        fun coverCopy():
+            ((OutputStream) -> Unit)? =
+            opened.book.coverName
+                ?.let {
+                        coverName ->
+                    {
+                            output ->
+                        copyTitleFile(
+                            opened,
+                            coverName,
+                            output
+                        )
+                    }
+                }
+
         return writePendingDownload(
             resolver =
                 context.contentResolver,
@@ -108,12 +260,14 @@ class LocalLibraryExportManager(
                 displayName,
             mimeType =
                 format.mimeType
-        ) { output ->
+        ) {
+                output ->
             when (format) {
                 LocalBookExportFormat
                     .TXT -> {
                     txtWriter.write(
-                        book = selectedBook,
+                        book =
+                            selectedBook,
                         output = output,
                         readChapter =
                             ::readForExport,
@@ -125,30 +279,23 @@ class LocalLibraryExportManager(
                 LocalBookExportFormat
                     .EPUB -> {
                     epubWriter.write(
-                        book = selectedBook,
+                        book =
+                            selectedBook,
                         output = output,
                         readChapter =
                             ::readForExport,
                         copyCover =
-                            coverCopy(
-                                opened
-                            ),
+                            coverCopy(),
                         copyChapterImage = {
                                 reference,
                                 image,
                                 imageOutput ->
-                            reader
-                                .copyChapterImage(
-                                    opened =
-                                        opened,
-                                    reference =
-                                        reference,
-                                    entryName =
-                                        image
-                                            .entryName,
-                                    output =
-                                        imageOutput
-                                )
+                            copyChapterImage(
+                                opened,
+                                reference,
+                                image.entryName,
+                                imageOutput
+                            )
                         },
                         onProgress =
                             onProgress
@@ -158,30 +305,23 @@ class LocalLibraryExportManager(
                 LocalBookExportFormat
                     .FB2 -> {
                     fb2Writer.write(
-                        book = selectedBook,
+                        book =
+                            selectedBook,
                         output = output,
                         readChapter =
                             ::readForExport,
                         copyCover =
-                            coverCopy(
-                                opened
-                            ),
+                            coverCopy(),
                         copyChapterImage = {
                                 reference,
                                 image,
                                 imageOutput ->
-                            reader
-                                .copyChapterImage(
-                                    opened =
-                                        opened,
-                                    reference =
-                                        reference,
-                                    entryName =
-                                        image
-                                            .entryName,
-                                    output =
-                                        imageOutput
-                                )
+                            copyChapterImage(
+                                opened,
+                                reference,
+                                image.entryName,
+                                imageOutput
+                            )
                         },
                         onProgress =
                             onProgress
@@ -191,30 +331,23 @@ class LocalLibraryExportManager(
                 LocalBookExportFormat
                     .PDF -> {
                     pdfWriter.write(
-                        book = selectedBook,
+                        book =
+                            selectedBook,
                         output = output,
                         readChapter =
                             ::readForExport,
                         copyCover =
-                            coverCopy(
-                                opened
-                            ),
+                            coverCopy(),
                         copyChapterImage = {
                                 reference,
                                 image,
                                 imageOutput ->
-                            reader
-                                .copyChapterImage(
-                                    opened =
-                                        opened,
-                                    reference =
-                                        reference,
-                                    entryName =
-                                        image
-                                            .entryName,
-                                    output =
-                                        imageOutput
-                                )
+                            copyChapterImage(
+                                opened,
+                                reference,
+                                image.entryName,
+                                imageOutput
+                            )
                         },
                         onProgress =
                             onProgress
@@ -237,56 +370,6 @@ class LocalLibraryExportManager(
             )
         }
     }
-
-    private fun readChapter(
-        opened: OpenedLocalExportBook,
-        reference: LocalExportChapterRef,
-        includeImages: Boolean
-    ): LocalExportChapter {
-        val chapter =
-            reader.readChapter(
-                opened = opened,
-                reference = reference
-            )
-
-        return if (
-            includeImages
-        ) {
-            chapter
-        } else {
-            chapter.copy(
-                blocks =
-                    chapter.blocks
-                        .filterNot {
-                            it is
-                                LocalExportBlock
-                                    .Image
-                        }
-            )
-        }
-    }
-
-    private fun coverCopy(
-        opened: OpenedLocalExportBook
-    ): ((
-        java.io.OutputStream
-    ) -> Unit)? =
-        opened.book.coverName
-            ?.let {
-                    coverName ->
-                {
-                        output:
-                            java.io.OutputStream ->
-                    reader.copyTitleFile(
-                        opened = opened,
-                        fileName =
-                            coverName,
-                        output = output
-                    )
-                }
-            }
-
-
 }
 
 

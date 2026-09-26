@@ -12,7 +12,10 @@ import java.util.zip.ZipInputStream
 data class OpenedLocalExportBook(
     val book: LocalExportBook,
     val coverUri: Uri?,
-    internal val fileUris: Map<String, Uri>
+    internal val fileUris:
+        Map<String, Uri>,
+    internal val folderName:
+        String = ""
 )
 
 class RanobeLibLocalBookReader(
@@ -112,7 +115,9 @@ class RanobeLibLocalBookReader(
             fileUris =
                 files.mapValues {
                     it.value.uri
-                }
+                },
+            folderName =
+                titleDirectory.name
         )
     }
 
@@ -481,7 +486,7 @@ private fun readBoundedZipText(
         )
 }
 
-private fun copyBounded(
+internal fun copyBounded(
     input: java.io.InputStream,
     output: OutputStream,
     limitBytes: Long,
@@ -527,7 +532,7 @@ private fun copyBounded(
     }
 }
 
-private fun requireSafeZipEntryName(
+internal fun requireSafeZipEntryName(
     name: String
 ) {
     require(
@@ -543,13 +548,13 @@ private fun requireSafeZipEntryName(
     }
 }
 
-private const val MAX_LOCAL_INFO_BYTES =
+internal const val MAX_LOCAL_INFO_BYTES =
     4L * 1024L * 1024L
-private const val MAX_LOCAL_CHAPTERS_BYTES =
+internal const val MAX_LOCAL_CHAPTERS_BYTES =
     32L * 1024L * 1024L
-private const val MAX_CHAPTER_DATA_BYTES =
+internal const val MAX_CHAPTER_DATA_BYTES =
     8L * 1024L * 1024L
-private const val MAX_LOCAL_IMAGE_BYTES =
+internal const val MAX_LOCAL_IMAGE_BYTES =
     64L * 1024L * 1024L
-private const val MAX_CHAPTER_ARCHIVE_ENTRIES =
+internal const val MAX_CHAPTER_ARCHIVE_ENTRIES =
     4096

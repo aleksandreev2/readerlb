@@ -92,6 +92,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import com.google.firebase.messaging.FirebaseMessaging
 import com.readerlb.app.export.ExportedLocalBookFile
 import com.readerlb.app.export.LocalBookExportFormat
@@ -121,6 +124,10 @@ import com.readerlb.app.storage.RanobeLibAccessAssessment
 import com.readerlb.app.storage.RanobeLibAccessCapability
 import com.readerlb.app.storage.assessRanobeLibAccess
 import com.readerlb.app.storage.RanobeLibLibraryScanner
+import com.readerlb.app.storage.ShizukuRanobeLibLibraryScanner
+import com.readerlb.app.shizuku.ShizukuRanobeLibBridge
+import com.readerlb.app.shizuku.ShizukuRanobeLibState
+import com.readerlb.app.shizuku.ShizukuRanobeLibStatus
 import com.readerlb.app.storage.decodeLocalLibraryCache
 import com.readerlb.app.storage.encodeLocalLibraryCache
 import com.readerlb.app.update.UpdateDownloadProgress
@@ -303,7 +310,9 @@ private fun ReaderLBRoot(
 @Composable
 private fun RanobeLibAccessSetupSheet(
     assessment: RanobeLibAccessAssessment,
+    shizukuStatus: ShizukuRanobeLibStatus?,
     onGrantLegacyAccess: () -> Unit,
+    onShizukuAction: () -> Unit,
     onContinueWithoutDirectAccess: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -433,110 +442,291 @@ private fun RanobeLibAccessSetupSheet(
 
                 RanobeLibAccessCapability
                     .SYSTEM_RESTRICTED -> {
+                    val status =
+                        shizukuStatus
+                            ?: ShizukuRanobeLibStatus(
+                                state =
+                                    ShizukuRanobeLibState
+                                        .CONNECTING,
+                                message =
+                                    "Проверяю способ полного доступа…"
+                            )
+
                     item {
                         AccessSetupStatusCard(
                             icon =
-                                Icons.Default.Warning,
+                                if (
+                                    status.ready
+                                ) {
+                                    Icons.Default.Check
+                                } else {
+                                    Icons.Default.Info
+                                },
                             title =
-                                "Android защищает папку RanobeLib",
+                                when (
+                                    status.state
+                                ) {
+                                    ShizukuRanobeLibState
+                                        .NOT_INSTALLED ->
+                                        "Нужен Shizuku"
+
+                                    ShizukuRanobeLibState
+                                        .NOT_RUNNING ->
+                                        "Запустите Shizuku"
+
+                                    ShizukuRanobeLibState
+                                        .PERMISSION_REQUIRED ->
+                                        "Один системный запрос"
+
+                                    ShizukuRanobeLibState
+                                        .PERMISSION_DENIED ->
+                                        "Разрешение отклонено"
+
+                                    ShizukuRanobeLibState
+                                        .CONNECTING ->
+                                        "Подключаю полный доступ"
+
+                                    ShizukuRanobeLibState
+                                        .READY ->
+                                        "Полный доступ готов"
+
+                                    ShizukuRanobeLibState
+                                        .RANOBELIB_NOT_FOUND ->
+                                        "Папка RanobeLib пока не найдена"
+
+                                    ShizukuRanobeLibState
+                                        .ERROR ->
+                                        "Не удалось подключить Shizuku"
+                                },
                             text =
-                                "Начиная с Android 11 система не разрешает обычным приложениям выбирать Android/data другого приложения. Обычное разрешение «Файлы» это не исправляет.",
-                            success = false
+                                status.message,
+                            success =
+                                status.ready
                         )
                     }
 
-                    item {
-                        Card(
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        MaterialTheme
-                                            .colorScheme
-                                            .surface
-                                ),
-                            shape =
-                                RoundedCornerShape(
-                                    14.dp
-                                ),
-                            border =
-                                androidx.compose.foundation
-                                    .BorderStroke(
-                                        1.dp,
-                                        Line
-                                    )
-                        ) {
-                            Column(
+                    when (
+                        status.state
+                    ) {
+                        ShizukuRanobeLibState
+                            .NOT_INSTALLED -> {
+                            item {
+                                Text(
+                                    "Android ${Build.VERSION.RELEASE} не даёт обычному приложению выбрать папку другого приложения в Android/data. ReaderLB может получить рабочий доступ через Shizuku без root.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                Card(
+                                    colors =
+                                        CardDefaults.cardColors(
+                                            containerColor =
+                                                MaterialTheme
+                                                    .colorScheme
+                                                    .surface
+                                        ),
+                                    shape =
+                                        RoundedCornerShape(
+                                            14.dp
+                                        ),
+                                    border =
+                                        androidx.compose.foundation
+                                            .BorderStroke(
+                                                1.dp,
+                                                Line
+                                            )
+                                ) {
+                                    Column(
+                                        modifier =
+                                            Modifier.padding(
+                                                16.dp
+                                            ),
+                                        verticalArrangement =
+                                            Arrangement.spacedBy(
+                                                7.dp
+                                            )
+                                    ) {
+                                        Text(
+                                            "Как получить полный доступ",
+                                            color = Ink,
+                                            fontWeight =
+                                                FontWeight.Bold
+                                        )
+                                        Text(
+                                            "1. Установите Shizuku.\n2. Запустите его через «Беспроводную отладку».\n3. Вернитесь в ReaderLB и разрешите доступ.",
+                                            color = Muted,
+                                            fontSize = 13.sp,
+                                            lineHeight = 19.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Установить Shizuku",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .NOT_RUNNING -> {
+                            item {
+                                Text(
+                                    "Shizuku уже установлен. На Android 11+ его можно запустить прямо на телефоне через системную «Беспроводную отладку». После запуска просто вернитесь сюда — ReaderLB перепроверит доступ.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Открыть Shizuku",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .PERMISSION_REQUIRED -> {
+                            item {
+                                Text(
+                                    "Shizuku уже работает. Осталось один раз разрешить ReaderLB использовать его только для локальной папки книг RanobeLib.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Разрешить ReaderLB",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .PERMISSION_DENIED -> {
+                            item {
+                                Text(
+                                    "Откройте Shizuku → Приложения → ReaderLB и включите разрешение. Затем вернитесь — повторная проверка произойдёт автоматически.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Открыть Shizuku",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .CONNECTING -> {
+                            item {
+                                LinearProgressIndicator(
+                                    modifier =
+                                        Modifier.fillMaxWidth(),
+                                    color = Blue
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .READY -> {
+                            item {
+                                Text(
+                                    "ReaderLB теперь может читать скачанную библиотеку, экспортировать тайтлы и добавлять главы напрямую. Повторно выбирать Android/data не нужно.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text = "Готово",
+                                    onClick =
+                                        onDismiss
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .RANOBELIB_NOT_FOUND -> {
+                            item {
+                                Text(
+                                    "Откройте RanobeLib и скачайте хотя бы один тайтл локально, затем нажмите повторную проверку.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
+
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Проверить ещё раз",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+
+                        ShizukuRanobeLibState
+                            .ERROR -> {
+                            item {
+                                GradientButton(
+                                    text =
+                                        "Повторить проверку",
+                                    onClick =
+                                        onShizukuAction
+                                )
+                            }
+                        }
+                    }
+
+                    if (
+                        status.state !=
+                        ShizukuRanobeLibState
+                            .READY
+                    ) {
+                        item {
+                            Box(
                                 modifier =
-                                    Modifier.padding(
-                                        16.dp
-                                    ),
-                                verticalArrangement =
-                                    Arrangement.spacedBy(
-                                        8.dp
+                                    Modifier.fillMaxWidth(),
+                                contentAlignment =
+                                    Alignment.Center
+                            ) {
+                                TextButton(
+                                    onClick =
+                                        onContinueWithoutDirectAccess
+                                ) {
+                                    Text(
+                                        "Пока работать через Downloads"
                                     )
-                            ) {
-                                Text(
-                                    "Что работает сейчас",
-                                    color = Ink,
-                                    fontWeight =
-                                        FontWeight.Bold
-                                )
-                                Text(
-                                    "EPUB/TXT можно импортировать, а готовый пакет ReaderLB сохранит в Downloads/ReaderLB.",
-                                    color = Muted,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp
-                                )
-                                Divider()
-                                Text(
-                                    "Что требует прямого доступа",
-                                    color = Ink,
-                                    fontWeight =
-                                        FontWeight.Bold
-                                )
-                                Text(
-                                    "Просмотр уже скачанной библиотеки RanobeLib, экспорт её тайтлов и запись глав прямо в RanobeLib.",
-                                    color = Muted,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp
-                                )
+                                }
                             }
                         }
                     }
-
-                    item {
-                        Text(
-                            "Для полного доступа на новых Android нужен отдельный привилегированный мост вроде Shizuku или root. ReaderLB не будет отправлять вас в системную настройку, которая всё равно не даст доступ к этой папке.",
-                            color = Muted,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-
-                    item {
-                        GradientButton(
-                            text =
-                                "Работать через Downloads",
-                            onClick =
-                                onContinueWithoutDirectAccess
-                        )
-                    }
-
-                    item {
-                        Box(
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                            contentAlignment =
-                                Alignment.Center
-                        ) {
-                            TextButton(
-                                onClick =
-                                    onDismiss
-                            ) {
-                                Text("Закрыть")
-                            }
-                        }
-                    }
+                }
                 }
             }
         }
@@ -784,11 +974,22 @@ private fun Onboarding(onDone: () -> Unit) {
             Spacer(Modifier.height(18.dp))
 
             GradientButton(
-                text = if (page == pageCount - 1) {
-                    "Понятно"
-                } else {
-                    "Следующее"
-                },
+                text =
+                    if (
+                        page ==
+                        pageCount - 1
+                    ) {
+                        if (
+                            Build.VERSION.SDK_INT >=
+                            Build.VERSION_CODES.R
+                        ) {
+                            "Настроить доступ"
+                        } else {
+                            "Начать"
+                        }
+                    } else {
+                        "Следующее"
+                    },
                 trailingIcon =
                     if (
                         page ==
@@ -1029,11 +1230,89 @@ private fun MainApp(
         )
     }
 
+    var shizukuStatus by remember {
+        mutableStateOf<
+            ShizukuRanobeLibStatus?
+        >(null)
+    }
+    val shizukuBridge = remember {
+        ShizukuRanobeLibBridge(
+            context
+        ) {
+                status ->
+            shizukuStatus =
+                status
+        }
+    }
+    val shizukuLibraryScanner =
+        remember(
+            shizukuBridge
+        ) {
+            ShizukuRanobeLibLibraryScanner(
+                context = context,
+                bridge =
+                    shizukuBridge
+            )
+        }
+
+    DisposableEffect(
+        shizukuBridge,
+        context
+    ) {
+        val lifecycleOwner =
+            context as?
+                LifecycleOwner
+        val observer =
+            LifecycleEventObserver {
+                    _,
+                    event ->
+                if (
+                    event ==
+                    Lifecycle.Event
+                        .ON_RESUME
+                ) {
+                    shizukuBridge
+                        .refresh()
+                }
+            }
+
+        lifecycleOwner
+            ?.lifecycle
+            ?.addObserver(
+                observer
+            )
+        shizukuBridge.start()
+
+        onDispose {
+            lifecycleOwner
+                ?.lifecycle
+                ?.removeObserver(
+                    observer
+                )
+            shizukuBridge.close()
+        }
+    }
+
+    val shizukuReady =
+        shizukuStatus?.ready ==
+            true
+    val libraryConnected =
+        folderUri != null ||
+            shizukuReady
+
     var showRanobeLibAccessSetup by rememberSaveable {
         mutableStateOf(
             folderUri == null &&
-                !preferences
-                    .ranobeLibAccessIntroDone
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.R
+                ) {
+                    !preferences
+                        .shizukuAccessIntroDone
+                } else {
+                    !preferences
+                        .ranobeLibAccessIntroDone
+                }
         )
     }
 
@@ -1045,11 +1324,21 @@ private fun MainApp(
                 Build.VERSION.RELEASE
                     .orEmpty(),
             connected =
-                folderUri != null
+                libraryConnected
         )
 
     LaunchedEffect(Unit) {
         preferences.ranobeLibBookTree = folderUri
+    }
+
+    LaunchedEffect(
+        shizukuStatus?.state
+    ) {
+        if (shizukuReady) {
+            preferences
+                .shizukuAccessIntroDone =
+                true
+        }
     }
     var importHintsDone by remember {
         mutableStateOf(preferences.importHintsDone)
@@ -1236,11 +1525,18 @@ private fun MainApp(
 
     fun refreshLocalLibrary() {
         val tree = folderUri
+        val useShizuku =
+            tree == null &&
+                shizukuReady
 
-        if (tree == null) {
+        if (
+            tree == null &&
+            !useShizuku
+        ) {
             libraryScanJob?.cancel()
             libraryScanJob = null
-            localLibrary = emptyList()
+            localLibrary =
+                emptyList()
             librarySkipped = 0
             libraryError = null
             libraryStatus = null
@@ -1251,131 +1547,203 @@ private fun MainApp(
         }
 
         if (
-            libraryScanJob?.isActive == true
+            libraryScanJob?.isActive ==
+            true
         ) {
-            libraryRefreshPending = true
+            libraryRefreshPending =
+                true
             return
         }
 
-        libraryScanJob = scope.launch {
-            do {
-                libraryRefreshPending = false
-                val previous = localLibrary
+        libraryScanJob =
+            scope.launch {
+                do {
+                    libraryRefreshPending =
+                        false
+                    val previous =
+                        localLibrary
 
-                libraryLoading = true
-                libraryError = null
-                libraryStatus = null
-                libraryScanned = 0
-                libraryScanTotal = 0
+                    libraryLoading =
+                        true
+                    libraryError =
+                        null
+                    libraryStatus =
+                        null
+                    libraryScanned = 0
+                    libraryScanTotal = 0
 
-                val result = try {
-                    withTimeout(
-                        120_000L
-                    ) {
-                        runInterruptible(
-                            Dispatchers.IO
-                        ) {
-                            Result.success(
-                                libraryScanner.scan(
-                                    tree
+                    val result =
+                        try {
+                            withTimeout(
+                                120_000L
+                            ) {
+                                runInterruptible(
+                                    Dispatchers.IO
                                 ) {
-                                        completed,
-                                        total ->
-                                    scope.launch {
-                                        libraryScanned =
-                                            maxOf(
-                                                libraryScanned,
-                                                completed
-                                            )
-                                        libraryScanTotal =
-                                            maxOf(
-                                                libraryScanTotal,
-                                                total
-                                            )
-                                    }
+                                    val progress:
+                                        (
+                                            Int,
+                                            Int
+                                        ) -> Unit =
+                                        {
+                                                completed,
+                                                total ->
+                                            scope.launch {
+                                                libraryScanned =
+                                                    maxOf(
+                                                        libraryScanned,
+                                                        completed
+                                                    )
+                                                libraryScanTotal =
+                                                    maxOf(
+                                                        libraryScanTotal,
+                                                        total
+                                                    )
+                                            }
+                                        }
+
+                                    Result.success(
+                                        if (
+                                            tree !=
+                                            null
+                                        ) {
+                                            libraryScanner
+                                                .scan(
+                                                    tree,
+                                                    progress
+                                                )
+                                        } else {
+                                            shizukuLibraryScanner
+                                                .scan(
+                                                    progress
+                                                )
+                                        }
+                                    )
                                 }
+                            }
+                        } catch (
+                            timeout:
+                                TimeoutCancellationException
+                        ) {
+                            Result.failure(
+                                IllegalStateException(
+                                    "RanobeLib слишком долго отвечает. Проверьте доступ и повторите сканирование."
+                                )
+                            )
+                        } catch (
+                            cancelled:
+                                CancellationException
+                        ) {
+                            throw cancelled
+                        } catch (
+                            throwable:
+                                Throwable
+                        ) {
+                            Result.failure(
+                                throwable
                             )
                         }
-                    }
-                } catch (
-                    timeout:
-                    TimeoutCancellationException
-                ) {
-                    Result.failure(
-                        IllegalStateException(
-                            "RanobeLib слишком долго отвечает. " +
-                                "Проверьте доступ к папке book " +
-                                "и повторите сканирование."
-                        )
-                    )
-                } catch (
-                    cancelled:
-                    CancellationException
-                ) {
-                    throw cancelled
-                } catch (
-                    throwable:
-                    Throwable
-                ) {
-                    Result.failure(throwable)
-                }
 
-                result.onSuccess {
-                        snapshot ->
-                    localLibrary =
-                        snapshot.items
-                    preferences
-                        .localLibraryCacheTree =
-                        tree
-                    preferences
-                        .localLibraryCacheJson =
-                        encodeLocalLibraryCache(
+                    result.onSuccess {
+                            snapshot ->
+                        localLibrary =
                             snapshot.items
-                        )
-                    librarySkipped =
-                        snapshot.skippedTitles
-                    libraryScanned =
-                        snapshot.items.size +
-                            snapshot.skippedTitles
-                    libraryScanTotal =
-                        maxOf(
-                            libraryScanTotal,
-                            libraryScanned
-                        )
-                    libraryStatus =
+                        preferences
+                            .localLibraryCacheTree =
+                            tree
+                        preferences
+                            .localLibraryCacheJson =
+                            encodeLocalLibraryCache(
+                                snapshot.items
+                            )
+                        librarySkipped =
+                            snapshot
+                                .skippedTitles
+                        libraryScanned =
+                            snapshot.items
+                                .size +
+                                snapshot
+                                    .skippedTitles
+                        libraryScanTotal =
+                            maxOf(
+                                libraryScanTotal,
+                                libraryScanned
+                            )
+                        libraryStatus =
+                            if (
+                                previous ==
+                                snapshot.items
+                            ) {
+                                "Локальные тайтлы уже актуальны"
+                            } else {
+                                "Обновлено: " +
+                                    snapshot.items
+                                        .size +
+                                    " тайтлов"
+                            }
+                    }.onFailure {
+                            throwable ->
+                        libraryError =
+                            throwable.message
+                                ?: "Не удалось прочитать библиотеку RanobeLib"
+
                         if (
-                            previous ==
-                            snapshot.items
+                            tree != null &&
+                            (
+                                throwable is
+                                    SecurityException ||
+                                    !hasPersistedTreePermission(
+                                        context,
+                                        tree
+                                    )
+                                )
                         ) {
-                            "Локальные тайтлы уже актуальны"
-                        } else {
-                            "Обновлено: " +
-                                snapshot.items.size +
-                                " тайтлов"
+                            preferences
+                                .ranobeLibBookTree =
+                                null
+                            preferences
+                                .localLibraryCacheTree =
+                                null
+                            preferences
+                                .localLibraryCacheJson =
+                                null
+                            localLibrary =
+                                emptyList()
+                            folderUri = null
+                            libraryError =
+                                "Доступ к RanobeLib потерян. ReaderLB проверит другой рабочий способ."
+                            showRanobeLibAccessSetup =
+                                true
+                        } else if (
+                            useShizuku
+                        ) {
+                            shizukuBridge.refresh()
+                            libraryError =
+                                "Shizuku потерял доступ к RanobeLib. ReaderLB перепроверяет подключение."
                         }
-                }.onFailure {
-                    libraryError =
-                        it.message
-                            ?: "Не удалось прочитать библиотеку RanobeLib"
-                    if (it is SecurityException || !hasPersistedTreePermission(context, tree)) {
-                        preferences.ranobeLibBookTree = null
-                        preferences.localLibraryCacheTree = null
-                        preferences.localLibraryCacheJson = null
-                        localLibrary = emptyList()
-                        folderUri = null
-                        libraryError = "Доступ к RanobeLib потерян. Импорт сохранит переносимый ZIP."
                     }
-                }
 
-                libraryLoading = false
-            } while (
-                libraryRefreshPending &&
-                folderUri == tree
-            )
-        }
+                    libraryLoading =
+                        false
+                } while (
+                    libraryRefreshPending &&
+                    (
+                        folderUri ==
+                            tree ||
+                            (
+                                tree ==
+                                    null &&
+                                    shizukuReady
+                                )
+                        )
+                )
+            }
     }
 
-    LaunchedEffect(folderUri) {
+    LaunchedEffect(
+        folderUri,
+        shizukuStatus?.state
+    ) {
         libraryScanJob?.cancel()
         libraryScanJob = null
         libraryRefreshPending = false
@@ -1598,15 +1966,30 @@ private fun MainApp(
         RanobeLibAccessSetupSheet(
             assessment =
                 ranobeLibAccess,
+            shizukuStatus =
+                shizukuStatus,
             onGrantLegacyAccess = {
                 folderPicker.launch(
                     RANOBELIB_BOOK_INITIAL_URI
                 )
             },
+            onShizukuAction = {
+                shizukuBridge
+                    .requestAccess()
+            },
             onContinueWithoutDirectAccess = {
-                preferences
-                    .ranobeLibAccessIntroDone =
-                    true
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.R
+                ) {
+                    preferences
+                        .shizukuAccessIntroDone =
+                        true
+                } else {
+                    preferences
+                        .ranobeLibAccessIntroDone =
+                        true
+                }
                 showRanobeLibAccessSetup =
                     false
             },
@@ -1683,11 +2066,20 @@ private fun MainApp(
                 modifier = Modifier.padding(padding),
                 history = history,
                 localLibrary = localLibrary,
-                libraryConnected = folderUri != null,
+                libraryConnected =
+                    libraryConnected,
                 libraryLoading = libraryLoading,
                 libraryScanned = libraryScanned,
                 libraryScanTotal = libraryScanTotal,
                 treeUri = folderUri,
+                shizukuBridge =
+                    if (
+                        shizukuReady
+                    ) {
+                        shizukuBridge
+                    } else {
+                        null
+                    },
                 updateInfo = latestUpdate,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
@@ -1702,6 +2094,10 @@ private fun MainApp(
             AppTab.IMPORT -> ImportScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
+                shizukuBridge =
+                    shizukuBridge,
+                directAccessAvailable =
+                    libraryConnected,
                 directImportEnabled =
                     directImportEnabled,
                 epubLimits =
@@ -1748,7 +2144,8 @@ private fun MainApp(
             AppTab.LIBRARY -> LibraryScreen(
                 modifier = Modifier.padding(padding),
                 items = localLibrary,
-                connected = folderUri != null,
+                connected =
+                    libraryConnected,
                 loading = libraryLoading,
                 scanned = libraryScanned,
                 scanTotal = libraryScanTotal,
@@ -1756,6 +2153,14 @@ private fun MainApp(
                 skippedTitles = librarySkipped,
                 error = libraryError,
                 treeUri = folderUri,
+                shizukuBridge =
+                    if (
+                        shizukuReady
+                    ) {
+                        shizukuBridge
+                    } else {
+                        null
+                    },
                 onRefresh = ::refreshLocalLibrary,
                 onPickFolder =
                     ::openRanobeLibAccessSetup,
@@ -1864,6 +2269,8 @@ private fun HomeScreen(
     libraryScanned: Int,
     libraryScanTotal: Int,
     treeUri: Uri?,
+    shizukuBridge:
+        ShizukuRanobeLibBridge?,
     updateInfo: UpdateInfo?,
     updateBusy: Boolean,
     updateMessage: String?,
@@ -1891,6 +2298,8 @@ private fun HomeScreen(
             modifier = modifier,
             item = selectedItem,
             treeUri = treeUri,
+            shizukuBridge =
+                shizukuBridge,
             onBack = {
                 selectedSlug = null
             },
@@ -2129,6 +2538,9 @@ private fun HomeScreen(
 private fun ImportScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    shizukuBridge:
+        ShizukuRanobeLibBridge,
+    directAccessAvailable: Boolean,
     directImportEnabled: Boolean,
     epubLimits: EpubImportLimits,
     onDirectImportChanged: (Boolean) -> Unit,
@@ -2201,11 +2613,15 @@ private fun ImportScreen(
     var direct by rememberSaveable {
         mutableStateOf(
             directImportEnabled &&
-                (folderUri != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R)
+                directAccessAvailable
         )
     }
-    LaunchedEffect(folderUri) {
-        if (folderUri == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+    LaunchedEffect(
+        directAccessAvailable
+    ) {
+        if (
+            !directAccessAvailable
+        ) {
             direct = false
         }
     }
@@ -2967,16 +3383,12 @@ private fun ImportScreen(
                         },
                     enabled =
                         !busy &&
-                            folderUri != null &&
+                            directAccessAvailable &&
                             selectedUri != null,
                     onClick = {
                         val rawUri =
                             selectedUri
                                 ?: return@GradientButton
-                        val tree =
-                            folderUri
-                                ?: return@GradientButton
-
                         busy = true
                         error = null
                         success = null
@@ -2986,15 +3398,30 @@ private fun ImportScreen(
                                 withContext(
                                     Dispatchers.IO
                                 ) {
-                                    transferManager
-                                        .install(
-                                            uri =
-                                                Uri.parse(
-                                                    rawUri
-                                                ),
-                                            treeUri =
-                                                tree
-                                        )
+                                    if (
+                                        folderUri !=
+                                        null
+                                    ) {
+                                        transferManager
+                                            .install(
+                                                uri =
+                                                    Uri.parse(
+                                                        rawUri
+                                                    ),
+                                                treeUri =
+                                                    folderUri
+                                            )
+                                    } else {
+                                        transferManager
+                                            .install(
+                                                uri =
+                                                    Uri.parse(
+                                                        rawUri
+                                                    ),
+                                                bridge =
+                                                    shizukuBridge
+                                            )
+                                    }
                                 }
                             }.onSuccess {
                                     result ->
@@ -3048,7 +3475,8 @@ private fun ImportScreen(
                 enabled = !busy &&
                     selectedCount > 0 &&
                     parsed != null &&
-                    (!direct || folderUri != null) &&
+                    (!direct ||
+                        directAccessAvailable) &&
                     (parsed?.issues?.none {
                         it.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING
                     } != false || warningsAcknowledged),
@@ -3070,8 +3498,20 @@ private fun ImportScreen(
                                     firstChapter = firstChapter.ifBlank { null },
                                     lastChapter = lastChapter.ifBlank { null },
                                     ranobeLibBookTree =
-                                        if (direct) {
+                                        if (
+                                            direct
+                                        ) {
                                             folderUri
+                                        } else {
+                                            null
+                                        },
+                                    shizukuBridge =
+                                        if (
+                                            direct &&
+                                            folderUri ==
+                                                null
+                                        ) {
+                                            shizukuBridge
                                         } else {
                                             null
                                         },
@@ -3578,6 +4018,8 @@ private fun LibraryScreen(
     skippedTitles: Int,
     error: String?,
     treeUri: Uri?,
+    shizukuBridge:
+        ShizukuRanobeLibBridge?,
     onRefresh: () -> Unit,
     onPickFolder: () -> Unit,
     onAdd: () -> Unit,
@@ -3609,6 +4051,8 @@ private fun LibraryScreen(
             modifier = modifier,
             item = selectedItem,
             treeUri = treeUri,
+            shizukuBridge =
+                shizukuBridge,
             onBack = {
                 selectedSlug = null
             },
@@ -4719,6 +5163,8 @@ private fun LibraryTitleDetail(
     modifier: Modifier,
     item: LocalLibraryItem,
     treeUri: Uri?,
+    shizukuBridge:
+        ShizukuRanobeLibBridge?,
     onBack: () -> Unit,
     onDeleted: (String) -> Unit
 ) {
@@ -4806,13 +5252,14 @@ private fun LibraryTitleDetail(
         ]
 
     fun startExport() {
-        val tree =
-            treeUri
-                ?: run {
-                    exportError =
-                        "Сначала подключите папку RanobeLib."
-                    return
-                }
+        if (
+            treeUri == null &&
+            shizukuBridge == null
+        ) {
+            exportError =
+                "ReaderLB пока не имеет доступа к локальной библиотеке RanobeLib."
+            return
+        }
 
         if (exportBusy) {
             return
@@ -4829,42 +5276,70 @@ private fun LibraryTitleDetail(
                     runInterruptible(
                         Dispatchers.IO
                     ) {
-                        exportManager.export(
-                            format =
-                                exportFormat,
-                            treeUri = tree,
-                            item = item,
-                            options =
-                                LocalExportOptions(
-                                    firstChapter =
-                                        if (
-                                            exportUseRange
-                                        ) {
-                                            exportFirstChapter
-                                        } else {
-                                            null
-                                        },
-                                    lastChapter =
-                                        if (
-                                            exportUseRange
-                                        ) {
-                                            exportLastChapter
-                                        } else {
-                                            null
-                                        },
-                                    includeCover =
-                                        exportIncludeCover,
-                                    includeImages =
-                                        exportIncludeImages
-                                ),
-                            onProgress = {
-                                    progress ->
-                                scope.launch {
-                                    exportProgress =
-                                        progress
-                                }
+                        val exportOptions =
+                            LocalExportOptions(
+                                firstChapter =
+                                    if (
+                                        exportUseRange
+                                    ) {
+                                        exportFirstChapter
+                                    } else {
+                                        null
+                                    },
+                                lastChapter =
+                                    if (
+                                        exportUseRange
+                                    ) {
+                                        exportLastChapter
+                                    } else {
+                                        null
+                                    },
+                                includeCover =
+                                    exportIncludeCover,
+                                includeImages =
+                                    exportIncludeImages
+                            )
+
+                        val progressCallback:
+                            (
+                                LocalExportProgress
+                            ) -> Unit = {
+                                progress ->
+                            scope.launch {
+                                exportProgress =
+                                    progress
                             }
-                        )
+                        }
+
+                        if (
+                            treeUri != null
+                        ) {
+                            exportManager.export(
+                                format =
+                                    exportFormat,
+                                treeUri =
+                                    treeUri,
+                                item = item,
+                                options =
+                                    exportOptions,
+                                onProgress =
+                                    progressCallback
+                            )
+                        } else {
+                            exportManager.export(
+                                format =
+                                    exportFormat,
+                                privilegedFiles =
+                                    requireNotNull(
+                                        shizukuBridge
+                                    ),
+                                item = item,
+                                options =
+                                    exportOptions,
+                                onProgress =
+                                    progressCallback
+                            )
+                        }
                     }
 
                 exportResult =
@@ -5025,9 +5500,16 @@ private fun LibraryTitleDetail(
                 TextButton(
                     enabled = !busy,
                     onClick = {
-                        val tree =
-                            treeUri
-                                ?: return@TextButton
+                        if (
+                            treeUri == null &&
+                            shizukuBridge ==
+                                null
+                        ) {
+                            error =
+                                "Доступ к RanobeLib потерян."
+                            return@TextButton
+                        }
+
                         busy = true
                         error = null
 
@@ -5036,13 +5518,28 @@ private fun LibraryTitleDetail(
                                 withContext(
                                     Dispatchers.IO
                                 ) {
-                                    transferManager
-                                        .deleteTitle(
-                                            treeUri =
-                                                tree,
-                                            folderName =
-                                                item.folderName
-                                        )
+                                    if (
+                                        treeUri !=
+                                        null
+                                    ) {
+                                        transferManager
+                                            .deleteTitle(
+                                                treeUri =
+                                                    treeUri,
+                                                folderName =
+                                                    item.folderName
+                                            )
+                                    } else {
+                                        transferManager
+                                            .deleteTitle(
+                                                bridge =
+                                                    requireNotNull(
+                                                        shizukuBridge
+                                                    ),
+                                                folderName =
+                                                    item.folderName
+                                            )
+                                    }
                                 }
                             }.onSuccess {
                                 confirmDelete =
@@ -5378,13 +5875,13 @@ private fun LibraryTitleDetail(
                         "Поделиться новеллой"
                     },
                     onClick = {
-                        val tree =
-                            treeUri
                         if (
-                            tree == null
+                            treeUri == null &&
+                            shizukuBridge ==
+                                null
                         ) {
                             error =
-                                "Сначала подключите папку RanobeLib."
+                                "ReaderLB пока не имеет доступа к RanobeLib."
                             return@OutlineAction
                         }
                         if (
@@ -5401,13 +5898,28 @@ private fun LibraryTitleDetail(
                                 withContext(
                                     Dispatchers.IO
                                 ) {
-                                    transferManager
-                                        .createShareUri(
-                                            treeUri =
-                                                tree,
-                                            item =
-                                                item
-                                        )
+                                    if (
+                                        treeUri !=
+                                        null
+                                    ) {
+                                        transferManager
+                                            .createShareUri(
+                                                treeUri =
+                                                    treeUri,
+                                                item =
+                                                    item
+                                            )
+                                    } else {
+                                        transferManager
+                                            .createShareUri(
+                                                bridge =
+                                                    requireNotNull(
+                                                        shizukuBridge
+                                                    ),
+                                                item =
+                                                    item
+                                            )
+                                    }
                                 }
                             }.onSuccess {
                                     shareUri ->
@@ -5441,7 +5953,12 @@ private fun LibraryTitleDetail(
                     enabled =
                         !busy &&
                             !exportBusy &&
-                            treeUri != null,
+                            (
+                                treeUri !=
+                                    null ||
+                                    shizukuBridge !=
+                                    null
+                                ),
                     onClick = {
                         confirmDelete = true
                     }
