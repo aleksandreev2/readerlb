@@ -29,6 +29,22 @@ class MainActivitySmokeTest {
 
         skipOnboardingIfNeeded()
 
+        if (
+            composeRule
+                .onAllNodesWithText(
+                    "Доступ к RanobeLib"
+                )
+                .fetchSemanticsNodes()
+                .isEmpty()
+        ) {
+            composeRule
+                .onNodeWithText(
+                    "Проверить доступ"
+                )
+                .performClick()
+            composeRule.waitForIdle()
+        }
+
         composeRule
             .onNodeWithText(
                 "Доступ к RanobeLib"
