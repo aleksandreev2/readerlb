@@ -4008,6 +4008,8 @@ private fun LibraryScreen(
             modifier = modifier,
             item = selectedItem,
             treeUri = treeUri,
+            shizukuBridge =
+                shizukuBridge,
             onBack = {
                 selectedSlug = null
             },
