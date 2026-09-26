@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — 1.2.0
+
+Built-in direct access for Android 11+.
+
+- ReaderLB can pair with Android Wireless Debugging itself; installing Shizuku is no longer required for the primary flow.
+- First-time setup discovers the local ADB pairing service and asks only for Android's six-digit pairing code.
+- ReaderLB starts a dedicated authenticated bridge process with shell privileges and exposes only the known RanobeLib `book` directory through a narrow file protocol.
+- The bridge blocks path traversal and symbolic-link escapes and does not expose arbitrary shell commands.
+- After the bridge starts, Wireless Debugging can be disabled until the next reboot.
+- The persistent ReaderLB ADB identity is reused after reboot, so enabling Wireless Debugging can restore the bridge without another pairing code.
+- Existing Shizuku access remains supported as a fallback backend.
+- Access probing stays independent of library size; title scanning remains a separate progress-reporting step.
+
 ## Unreleased — 1.1.2
 
 Shizuku access-probe hotfix.

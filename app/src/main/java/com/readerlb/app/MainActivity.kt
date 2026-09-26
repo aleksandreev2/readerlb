@@ -115,7 +115,10 @@ import com.readerlb.app.importer.ReaderBlock
 import com.readerlb.app.importer.chapterNumberInRange
 import com.readerlb.app.importer.shouldInspectReaderLbTransferFile
 import com.readerlb.app.importer.compareChapterNumbers
+import com.readerlb.app.access.ReaderLbBridgeAccess
 import com.readerlb.app.storage.HistoryStore
+import com.readerlb.app.storage.RanobeLibBackendKind
+import com.readerlb.app.storage.RanobeLibBackends
 import com.readerlb.app.storage.ImportHistoryItem
 import com.readerlb.app.storage.LocalLibraryItem
 import com.readerlb.app.storage.Preferences
@@ -308,6 +311,8 @@ private fun ReaderLBRoot(
 private fun RanobeLibAccessSetupSheet(
     assessment: RanobeLibAccessAssessment,
     onGrantLegacyAccess: () -> Unit,
+    onBuiltInAccessSetup: () -> Unit,
+    onSubmitPairingCode: (String) -> Unit,
     onShizukuAction: () -> Unit,
     onContinueWithoutDirectAccess: () -> Unit,
     onDismiss: () -> Unit
@@ -316,6 +321,13 @@ private fun RanobeLibAccessSetupSheet(
         rememberModalBottomSheetState(
             skipPartiallyExpanded = true
         )
+    var manualPairingCode by
+        rememberSaveable {
+            mutableStateOf("")
+        }
+    val pairingPort =
+        ReaderLbBridgeAccess
+            .pairingPort
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -433,6 +445,186 @@ private fun RanobeLibAccessSetupSheet(
                                 )
                             }
                         }
+                    }
+                }
+
+                RanobeLibAccessCapability
+                    .READERLB_SETUP_REQUIRED -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Info,
+                            title =
+                                "Настроить прямой доступ",
+                            text =
+                                "ReaderLB подключится к локальной библиотеке сам. Shizuku устанавливать не нужно.",
+                            success = false
+                        )
+                    }
+
+                    item {
+                        Text(
+                            "Нажмите кнопку ниже. ReaderLB откроет Wireless Debugging, найдёт pairing-порт и попросит только 6-значный код из настроек. Код можно ввести прямо в уведомлении или, если уведомления запрещены, после возврата в ReaderLB.",
+                            color = Muted,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp
+                        )
+                    }
+
+                    item {
+                        GradientButton(
+                            text =
+                                "Настроить прямой доступ",
+                            onClick =
+                                onBuiltInAccessSetup
+                        )
+                    }
+
+                    item {
+                        Text(
+                            "Pairing нужен только в первый раз. После перезагрузки достаточно снова включить Wireless Debugging — ReaderLB узнает сохранённый ключ и восстановит доступ автоматически. После запуска bridge отладку можно выключить.",
+                            color = Muted,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+
+                    item {
+                        TextButton(
+                            onClick =
+                                onContinueWithoutDirectAccess
+                        ) {
+                            Text(
+                                "Пока работать без прямого доступа"
+                            )
+                        }
+                    }
+                }
+
+                RanobeLibAccessCapability
+                    .READERLB_CONNECTING -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Info,
+                            title =
+                                "Подключаем ReaderLB",
+                            text =
+                                "Если ReaderLB уже подключали раньше — просто включите Wireless Debugging. При первом запуске выберите «Pair device with pairing code» и введите 6-значный код в уведомлении ReaderLB.",
+                            success = false
+                        )
+                    }
+
+                    item {
+                        LinearProgressIndicator(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            color = Blue
+                        )
+                    }
+
+                    if (
+                        pairingPort in
+                            1..65535
+                    ) {
+                        item {
+                            Text(
+                                "ReaderLB уже нашёл pairing-порт. Если уведомление с вводом кода не появилось, введите код здесь:",
+                                color = Muted,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                        }
+
+                        item {
+                            OutlinedTextField(
+                                value =
+                                    manualPairingCode,
+                                onValueChange = {
+                                        value ->
+                                    manualPairingCode =
+                                        value
+                                            .filter(
+                                                Char::isDigit
+                                            )
+                                            .take(6)
+                                },
+                                modifier =
+                                    Modifier.fillMaxWidth(),
+                                label = {
+                                    Text(
+                                        "6-значный код"
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions =
+                                    KeyboardOptions(
+                                        keyboardType =
+                                            KeyboardType.Number
+                                    )
+                            )
+                        }
+
+                        item {
+                            GradientButton(
+                                text =
+                                    "Подключить",
+                                enabled =
+                                    manualPairingCode
+                                        .length == 6,
+                                onClick = {
+                                    onSubmitPairingCode(
+                                        manualPairingCode
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    item {
+                        TextButton(
+                            onClick =
+                                onContinueWithoutDirectAccess
+                        ) {
+                            Text(
+                                "Скрыть и продолжить без прямого доступа"
+                            )
+                        }
+                    }
+                }
+
+                RanobeLibAccessCapability
+                    .READERLB_ERROR -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Warning,
+                            title =
+                                "Прямой доступ не подключён",
+                            text =
+                                ReaderLbBridgeAccess
+                                    .lastError
+                                    ?: "Не удалось завершить настройку.",
+                            success = false
+                        )
+                    }
+
+                    item {
+                        GradientButton(
+                            text =
+                                "Попробовать ещё раз",
+                            onClick =
+                                onBuiltInAccessSetup
+                        )
+                    }
+
+                    item {
+                        Text(
+                            "Если на устройстве уже настроен Shizuku, ReaderLB по-прежнему может использовать его как запасной способ.",
+                            color = Muted,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
                     }
                 }
 
@@ -980,16 +1172,19 @@ private fun MainApp(
     }
 
     val shizukuState = ShizukuAccess.state
+    val builtInAccessState = ReaderLbBridgeAccess.state
     var accessResumeTick by remember { mutableIntStateOf(0) }
     DisposableEffect(context) {
         val activity = context as ComponentActivity
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 accessResumeTick += 1
+                ReaderLbBridgeAccess.refresh(context)
                 ShizukuAccess.refresh(context)
             }
         }
         activity.lifecycle.addObserver(observer)
+        ReaderLbBridgeAccess.refresh(context)
         ShizukuAccess.refresh(context)
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
@@ -1009,22 +1204,66 @@ private fun MainApp(
         }
     }
 
-    LaunchedEffect(shizukuState) {
-        if (shizukuState == ShizukuAccessState.READY && folderUri == null) {
-            folderUri = ShizukuAccess.treeUri
-            showRanobeLibAccessSetup = false
-            preferences.ranobeLibAccessIntroDone = true
-        } else if (shizukuState !in setOf(
-                ShizukuAccessState.READY,
-                ShizukuAccessState.CHECKING,
-                ShizukuAccessState.CONNECTING
-            ) &&
-            folderUri == ShizukuAccess.treeUri
-        ) {
-            folderUri = null
-            showRanobeLibAccessSetup = true
+    LaunchedEffect(
+        builtInAccessState,
+        shizukuState
+    ) {
+        val backend =
+            RanobeLibBackends
+                .currentKind()
+
+        when {
+            builtInAccessState ==
+                com.readerlb.app.storage
+                    .ReaderLbBuiltInAccessState
+                    .READY &&
+                backend ==
+                    RanobeLibBackendKind
+                        .READERLB_BRIDGE -> {
+                folderUri =
+                    ReaderLbBridgeAccess
+                        .treeUri
+                showRanobeLibAccessSetup =
+                    false
+                preferences
+                    .ranobeLibAccessIntroDone =
+                    true
+            }
+
+            shizukuState ==
+                ShizukuAccessState.READY &&
+                backend ==
+                    RanobeLibBackendKind
+                        .SHIZUKU &&
+                folderUri == null -> {
+                folderUri =
+                    ShizukuAccess.treeUri
+                showRanobeLibAccessSetup =
+                    false
+                preferences
+                    .ranobeLibAccessIntroDone =
+                    true
+            }
+
+            folderUri ==
+                ReaderLbBridgeAccess.treeUri &&
+                backend == null -> {
+                folderUri = null
+                showRanobeLibAccessSetup =
+                    true
+            }
         }
     }
+
+    val activeAccessBackend =
+        remember(
+            builtInAccessState,
+            shizukuState,
+            folderUri
+        ) {
+            RanobeLibBackends
+                .currentKind()
+        }
 
     val ranobeLibAccess =
         assessRanobeLibAccess(
@@ -1036,7 +1275,20 @@ private fun MainApp(
             connected =
                 folderUri != null,
             shizukuState = shizukuState,
-            connectedWithShizuku = folderUri == ShizukuAccess.treeUri
+            connectedWithShizuku =
+                folderUri ==
+                    ShizukuAccess.treeUri &&
+                    activeAccessBackend ==
+                        RanobeLibBackendKind
+                            .SHIZUKU,
+            builtInState =
+                builtInAccessState,
+            connectedWithBuiltInBridge =
+                folderUri ==
+                    ReaderLbBridgeAccess.treeUri &&
+                    activeAccessBackend ==
+                        RanobeLibBackendKind
+                            .READERLB_BRIDGE
         )
 
     LaunchedEffect(Unit) {
@@ -1154,6 +1406,48 @@ private fun MainApp(
                     "Android не разрешил уведомления."
             }
         }
+
+    val directAccessNotificationPermissionLauncher =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts
+                    .RequestPermission()
+        ) {
+            // Notification permission only makes the inline pairing-code
+            // action more convenient. Direct access itself must not depend
+            // on it: the sheet has an in-app code-entry fallback.
+            ReaderLbBridgeAccess
+                .startSetup(context)
+        }
+
+    fun beginBuiltInAccessSetup() {
+        if (
+            Build.VERSION.SDK_INT <
+                Build.VERSION_CODES.R
+        ) {
+            return
+        }
+
+        if (
+            Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission
+                    .POST_NOTIFICATIONS
+            ) != PackageManager
+                .PERMISSION_GRANTED
+        ) {
+            directAccessNotificationPermissionLauncher
+                .launch(
+                    Manifest.permission
+                        .POST_NOTIFICATIONS
+                )
+        } else {
+            ReaderLbBridgeAccess
+                .startSetup(context)
+        }
+    }
 
     fun setReleaseNotifications(
         enabled: Boolean
@@ -1360,6 +1654,7 @@ private fun MainApp(
                         folderUri = null
                         libraryError = "Доступ к RanobeLib потерян. Импорт сохранит переносимый ZIP."
                         showRanobeLibAccessSetup = true
+                        ReaderLbBridgeAccess.refresh(context)
                         ShizukuAccess.refresh(context)
                     }
                 }
@@ -1588,12 +1883,44 @@ private fun MainApp(
     }
 
     fun openRanobeLibAccessSetup() {
-        if (folderUri == null && ShizukuAccess.state == ShizukuAccessState.READY) {
-            folderUri = ShizukuAccess.treeUri
-            showRanobeLibAccessSetup = false
+        val backend =
+            RanobeLibBackends
+                .currentKind()
+
+        if (
+            folderUri == null &&
+            backend ==
+                RanobeLibBackendKind
+                    .READERLB_BRIDGE &&
+            ReaderLbBridgeAccess.state ==
+                com.readerlb.app.storage
+                    .ReaderLbBuiltInAccessState
+                    .READY
+        ) {
+            folderUri =
+                ReaderLbBridgeAccess
+                    .treeUri
+            showRanobeLibAccessSetup =
+                false
+        } else if (
+            folderUri == null &&
+            backend ==
+                RanobeLibBackendKind
+                    .SHIZUKU &&
+            ShizukuAccess.state ==
+                ShizukuAccessState.READY
+        ) {
+            folderUri =
+                ShizukuAccess.treeUri
+            showRanobeLibAccessSetup =
+                false
         } else {
-            showRanobeLibAccessSetup = true
-            ShizukuAccess.refresh(context)
+            showRanobeLibAccessSetup =
+                true
+            ReaderLbBridgeAccess
+                .refresh(context)
+            ShizukuAccess
+                .refresh(context)
         }
     }
 
@@ -1605,6 +1932,17 @@ private fun MainApp(
                 folderPicker.launch(
                     RANOBELIB_BOOK_INITIAL_URI
                 )
+            },
+            onBuiltInAccessSetup = {
+                beginBuiltInAccessSetup()
+            },
+            onSubmitPairingCode = {
+                    code ->
+                ReaderLbBridgeAccess
+                    .submitPairingCode(
+                        context,
+                        code
+                    )
             },
             onShizukuAction = {
                 when (ranobeLibAccess.capability) {

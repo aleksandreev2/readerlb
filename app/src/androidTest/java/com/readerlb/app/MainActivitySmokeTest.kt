@@ -52,12 +52,8 @@ class MainActivitySmokeTest {
             .fetchSemanticsNode()
         composeRule
             .onNodeWithText(
-                "Подключите Shizuku"
-            )
-            .fetchSemanticsNode()
-        composeRule
-            .onNodeWithText(
-                "Установить Shizuku"
+                "Shizuku устанавливать не нужно.",
+                substring = true
             )
             .fetchSemanticsNode()
 

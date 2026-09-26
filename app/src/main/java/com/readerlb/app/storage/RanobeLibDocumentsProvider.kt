@@ -6,9 +6,10 @@ import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
+import com.readerlb.app.storage.bridge.ReaderLbBridgeFileBackend
 import java.io.FileNotFoundException
 
-/** Presents the verified Shizuku library through the same document API used by SAF. */
+/** Presents the active verified RanobeLib backend through Android's document API. */
 class RanobeLibDocumentsProvider : DocumentsProvider() {
     private val documentColumns = arrayOf(
         DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -48,11 +49,29 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         projection: Array<out String>?,
         sortOrder: String?
     ): Cursor {
-        val cursor = MatrixCursor(projection ?: documentColumns)
-        val parent = relative(parentDocumentId)
-        ShizukuAccess.service().list(parent).forEach { name ->
-            addDocument(cursor, "$parentDocumentId/$name")
-        }
+        val cursor =
+            MatrixCursor(
+                projection
+                    ?: documentColumns
+            )
+        val parent =
+            relative(
+                parentDocumentId
+            )
+        RanobeLibBackends
+            .requireBackend()
+            .listEntries(parent)
+            .forEach {
+                    entry ->
+                addDocument(
+                    cursor = cursor,
+                    documentId =
+                        parentDocumentId +
+                            "/" +
+                            entry.name,
+                    entry = entry
+                )
+            }
         return cursor
     }
 
@@ -60,7 +79,29 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         documentId: String,
         mode: String,
         signal: CancellationSignal?
-    ): ParcelFileDescriptor = ShizukuAccess.service().open(relative(documentId), mode)
+    ): ParcelFileDescriptor {
+        val backend =
+            RanobeLibBackends
+                .requireBackend()
+        val path =
+            relative(documentId)
+
+        return if (
+            backend is
+                ReaderLbBridgeFileBackend
+        ) {
+            backend.openProxy(
+                requireNotNull(context),
+                path,
+                mode
+            )
+        } else {
+            backend.open(
+                path,
+                mode
+            )
+        }
+    }
 
     override fun createDocument(
         parentDocumentId: String,
@@ -70,7 +111,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         require(displayName.isNotBlank() && '/' !in displayName && '\\' !in displayName &&
             displayName != "." && displayName != "..") { "Invalid document name" }
         val id = "$parentDocumentId/$displayName"
-        if (!ShizukuAccess.service().create(
+        if (!RanobeLibBackends.requireBackend().create(
                 relative(id), mimeType == DocumentsContract.Document.MIME_TYPE_DIR
             )
         ) throw FileNotFoundException(displayName)
@@ -78,7 +119,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
     }
 
     override fun deleteDocument(documentId: String) {
-        if (!ShizukuAccess.service().delete(relative(documentId))) {
+        if (!RanobeLibBackends.requireBackend().delete(relative(documentId))) {
             throw FileNotFoundException(documentId)
         }
     }
@@ -87,7 +128,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         require(displayName.isNotBlank() && '/' !in displayName && '\\' !in displayName &&
             displayName != "." && displayName != "..") { "Invalid document name" }
         val renamed = documentId.substringBeforeLast('/') + "/" + displayName
-        if (!ShizukuAccess.service().rename(relative(documentId), relative(renamed))) {
+        if (!RanobeLibBackends.requireBackend().rename(relative(documentId), relative(renamed))) {
             throw FileNotFoundException(documentId)
         }
         return renamed
@@ -96,30 +137,107 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
     override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean =
         documentId.startsWith("$parentDocumentId/")
 
-    private fun addDocument(cursor: MatrixCursor, documentId: String) {
-        val path = relative(documentId)
-        val remote = ShizukuAccess.service()
-        if (!remote.exists(path)) return
-        val directory = remote.isDirectory(path)
-        val flags = if (directory) {
-            DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE or
-                DocumentsContract.Document.FLAG_SUPPORTS_DELETE or
-                DocumentsContract.Document.FLAG_SUPPORTS_RENAME
-        } else {
-            DocumentsContract.Document.FLAG_SUPPORTS_WRITE or
-                DocumentsContract.Document.FLAG_SUPPORTS_DELETE or
-                DocumentsContract.Document.FLAG_SUPPORTS_RENAME
-        }
+    private fun addDocument(
+        cursor: MatrixCursor,
+        documentId: String,
+        entry: RanobeLibFileEntry? = null
+    ) {
+        val path =
+            relative(documentId)
+        val remote =
+            RanobeLibBackends
+                .requireBackend()
+
+        val resolved =
+            entry
+                ?: run {
+                    if (
+                        !remote.exists(path)
+                    ) {
+                        return
+                    }
+
+                    RanobeLibFileEntry(
+                        name =
+                            if (
+                                path.isEmpty()
+                            ) {
+                                "book"
+                            } else {
+                                path.substringAfterLast(
+                                    '/'
+                                )
+                            },
+                        isDirectory =
+                            remote.isDirectory(
+                                path
+                            ),
+                        length =
+                            remote.length(path),
+                        lastModified =
+                            remote.lastModified(
+                                path
+                            )
+                    )
+                }
+
+        val flags =
+            if (
+                resolved.isDirectory
+            ) {
+                DocumentsContract.Document
+                    .FLAG_DIR_SUPPORTS_CREATE or
+                    DocumentsContract.Document
+                        .FLAG_SUPPORTS_DELETE or
+                    DocumentsContract.Document
+                        .FLAG_SUPPORTS_RENAME
+            } else {
+                DocumentsContract.Document
+                    .FLAG_SUPPORTS_WRITE or
+                    DocumentsContract.Document
+                        .FLAG_SUPPORTS_DELETE or
+                    DocumentsContract.Document
+                        .FLAG_SUPPORTS_RENAME
+            }
+
         cursor.newRow().apply {
-            add(DocumentsContract.Document.COLUMN_DOCUMENT_ID, documentId)
-            add(DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                if (path.isEmpty()) "book" else path.substringAfterLast('/'))
-            add(DocumentsContract.Document.COLUMN_MIME_TYPE,
-                if (directory) DocumentsContract.Document.MIME_TYPE_DIR
-                else mimeType(path))
-            add(DocumentsContract.Document.COLUMN_SIZE, remote.length(path))
-            add(DocumentsContract.Document.COLUMN_LAST_MODIFIED, remote.lastModified(path))
-            add(DocumentsContract.Document.COLUMN_FLAGS, flags)
+            add(
+                DocumentsContract.Document
+                    .COLUMN_DOCUMENT_ID,
+                documentId
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_DISPLAY_NAME,
+                resolved.name
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_MIME_TYPE,
+                if (
+                    resolved.isDirectory
+                ) {
+                    DocumentsContract.Document
+                        .MIME_TYPE_DIR
+                } else {
+                    mimeType(path)
+                }
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_SIZE,
+                resolved.length
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_LAST_MODIFIED,
+                resolved.lastModified
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_FLAGS,
+                flags
+            )
         }
     }
 

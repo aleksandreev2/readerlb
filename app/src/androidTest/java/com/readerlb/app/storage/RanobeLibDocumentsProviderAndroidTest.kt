@@ -16,10 +16,12 @@ class RanobeLibDocumentsProviderAndroidTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "provider-test-${System.nanoTime()}")
         assertTrue(root.mkdir())
-        val serviceField = ShizukuAccess::class.java.getDeclaredField("files")
-        serviceField.isAccessible = true
-        val previous = serviceField.get(ShizukuAccess)
-        serviceField.set(ShizukuAccess, TestFiles(root))
+        RanobeLibBackends.install(
+            RanobeLibBackendKind.SHIZUKU,
+            ShizukuRanobeLibFileBackend(
+                TestFiles(root)
+            )
+        )
         try {
             val tree = DocumentFile.fromTreeUri(context, ShizukuAccess.treeUri)!!
             assertTrue(tree.isDirectory)
@@ -37,7 +39,9 @@ class RanobeLibDocumentsProviderAndroidTest {
             assertTrue(title.findFile("renamed.json")!!.delete())
             assertTrue(title.delete())
         } finally {
-            serviceField.set(ShizukuAccess, previous)
+            RanobeLibBackends.clear(
+                RanobeLibBackendKind.SHIZUKU
+            )
             root.deleteRecursively()
         }
     }
