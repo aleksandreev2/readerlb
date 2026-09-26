@@ -48,6 +48,11 @@ object ReaderLbBridgeAccess {
     >(null)
         private set
 
+    var pairingPort by mutableStateOf(
+        -1
+    )
+        private set
+
     val treeUri: Uri
         get() =
             DocumentsContract
@@ -99,6 +104,7 @@ object ReaderLbBridgeAccess {
         state =
             ReaderLbBuiltInAccessState.PAIRING
         lastError = null
+        pairingPort = -1
 
         ReaderLbPairingService.start(
             context.applicationContext
@@ -107,6 +113,38 @@ object ReaderLbBridgeAccess {
         openDeveloperOptions(
             context
         )
+    }
+
+    internal fun markPairingPort(
+        port: Int
+    ) {
+        if (port in 1..65535) {
+            pairingPort = port
+        }
+    }
+
+    fun submitPairingCode(
+        context: Context,
+        code: String
+    ) {
+        val port =
+            pairingPort
+                .takeIf {
+                    it in 1..65535
+                }
+                ?: run {
+                    markError(
+                        "ReaderLB ещё не нашёл pairing-порт. Оставьте экран Wireless Debugging открытым несколько секунд."
+                    )
+                    return
+                }
+
+        ReaderLbPairingService
+            .submitCode(
+                context.applicationContext,
+                port,
+                code
+            )
     }
 
     internal fun markStarting() {
@@ -146,6 +184,7 @@ object ReaderLbBridgeAccess {
         state =
             ReaderLbBuiltInAccessState.READY
         lastError = null
+        pairingPort = -1
     }
 
     internal fun markError(
@@ -174,6 +213,7 @@ object ReaderLbBridgeAccess {
         state =
             ReaderLbBuiltInAccessState.DISCONNECTED
         lastError = null
+        pairingPort = -1
     }
 
     private fun restoreBackend(
