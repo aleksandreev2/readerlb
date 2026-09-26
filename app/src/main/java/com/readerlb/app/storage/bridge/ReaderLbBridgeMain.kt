@@ -65,7 +65,7 @@ object ReaderLbBridgeMain {
             server.reuseAddress = false
             server.bind(
                 InetSocketAddress(
-                    InetAddress.getLoopbackAddress(),
+                    InetAddress.getByName("127.0.0.1"),
                     port
                 ),
                 16
