@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 class MainActivitySmokeTest {
 
     @Test
-    fun modernAndroidExplainsRestrictedRanobeLibAccessUpFront() {
+    fun modernAndroidOffersDirectAccessSetupUpFront() {
         if (
             Build.VERSION.SDK_INT <
             Build.VERSION_CODES.R
@@ -52,26 +52,18 @@ class MainActivitySmokeTest {
             .fetchSemanticsNode()
         composeRule
             .onNodeWithText(
-                "Android защищает папку RanobeLib"
+                "Подключите Shizuku"
             )
             .fetchSemanticsNode()
         composeRule
             .onNodeWithText(
-                "Работать через Downloads"
+                "Установить Shizuku"
             )
             .fetchSemanticsNode()
-        assertTrue(
-            composeRule
-                .onAllNodesWithText(
-                    "Дать доступ к RanobeLib"
-                )
-                .fetchSemanticsNodes()
-                .isEmpty()
-        )
 
         composeRule
             .onNodeWithText(
-                "Работать через Downloads"
+                "Пока работать без прямого доступа"
             )
             .performClick()
 
@@ -238,14 +230,14 @@ class MainActivitySmokeTest {
         val modern =
             composeRule
                 .onAllNodesWithText(
-                    "Работать через Downloads"
+                    "Пока работать без прямого доступа"
                 )
                 .fetchSemanticsNodes()
 
         if (modern.isNotEmpty()) {
             composeRule
                 .onNodeWithText(
-                    "Работать через Downloads"
+                    "Пока работать без прямого доступа"
                 )
                 .performClick()
             composeRule.waitForIdle()

@@ -23,7 +23,7 @@ android {
         applicationId = "com.readerlb.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 21
+        versionCode = 22
         versionName = "1.1.1"
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
@@ -77,6 +77,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        aidl = true
     }
 
     packaging {
@@ -117,6 +118,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.jsoup:jsoup:1.18.3")
 
     testImplementation("junit:junit:4.13.2")

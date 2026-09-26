@@ -92,6 +92,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.google.firebase.messaging.FirebaseMessaging
 import com.readerlb.app.export.ExportedLocalBookFile
 import com.readerlb.app.export.LocalBookExportFormat
@@ -121,6 +123,8 @@ import com.readerlb.app.storage.RanobeLibAccessAssessment
 import com.readerlb.app.storage.RanobeLibAccessCapability
 import com.readerlb.app.storage.assessRanobeLibAccess
 import com.readerlb.app.storage.RanobeLibLibraryScanner
+import com.readerlb.app.storage.ShizukuAccess
+import com.readerlb.app.storage.ShizukuAccessState
 import com.readerlb.app.storage.decodeLocalLibraryCache
 import com.readerlb.app.storage.encodeLocalLibraryCache
 import com.readerlb.app.update.UpdateDownloadProgress
@@ -304,6 +308,7 @@ private fun ReaderLBRoot(
 private fun RanobeLibAccessSetupSheet(
     assessment: RanobeLibAccessAssessment,
     onGrantLegacyAccess: () -> Unit,
+    onShizukuAction: () -> Unit,
     onContinueWithoutDirectAccess: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -431,110 +436,59 @@ private fun RanobeLibAccessSetupSheet(
                     }
                 }
 
-                RanobeLibAccessCapability
-                    .SYSTEM_RESTRICTED -> {
+                RanobeLibAccessCapability.SHIZUKU_PERMISSION_REQUIRED,
+                RanobeLibAccessCapability.SHIZUKU_STOPPED,
+                RanobeLibAccessCapability.SHIZUKU_NOT_INSTALLED,
+                RanobeLibAccessCapability.SHIZUKU_CONNECTING,
+                RanobeLibAccessCapability.SHIZUKU_FOLDER_MISSING -> {
+                    val title = when (assessment.capability) {
+                        RanobeLibAccessCapability.SHIZUKU_PERMISSION_REQUIRED ->
+                            "ReaderLB нужен доступ к книгам"
+                        RanobeLibAccessCapability.SHIZUKU_STOPPED ->
+                            "Запустите Shizuku"
+                        RanobeLibAccessCapability.SHIZUKU_NOT_INSTALLED ->
+                            "Подключите Shizuku"
+                        RanobeLibAccessCapability.SHIZUKU_FOLDER_MISSING ->
+                            "Библиотека RanobeLib недоступна"
+                        else -> "Проверяем доступ к книгам"
+                    }
+                    val detail = when (assessment.capability) {
+                        RanobeLibAccessCapability.SHIZUKU_NOT_INSTALLED ->
+                            "Для прямого доступа к скачанным книгам установите Shizuku."
+                        RanobeLibAccessCapability.SHIZUKU_STOPPED ->
+                            "Запустите сервис в приложении Shizuku и вернитесь сюда."
+                        RanobeLibAccessCapability.SHIZUKU_FOLDER_MISSING ->
+                            "Откройте RanobeLib, скачайте книгу и повторите проверку."
+                        else -> "ReaderLB проверит библиотеку автоматически."
+                    }
                     item {
                         AccessSetupStatusCard(
-                            icon =
-                                Icons.Default.Warning,
-                            title =
-                                "Android защищает папку RanobeLib",
-                            text =
-                                "Начиная с Android 11 система не разрешает обычным приложениям выбирать Android/data другого приложения. Обычное разрешение «Файлы» это не исправляет.",
+                            icon = Icons.Default.Info,
+                            title = title,
+                            text = detail,
                             success = false
                         )
                     }
-
-                    item {
-                        Card(
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        MaterialTheme
-                                            .colorScheme
-                                            .surface
-                                ),
-                            shape =
-                                RoundedCornerShape(
-                                    14.dp
-                                ),
-                            border =
-                                androidx.compose.foundation
-                                    .BorderStroke(
-                                        1.dp,
-                                        Line
-                                    )
-                        ) {
-                            Column(
-                                modifier =
-                                    Modifier.padding(
-                                        16.dp
-                                    ),
-                                verticalArrangement =
-                                    Arrangement.spacedBy(
-                                        8.dp
-                                    )
-                            ) {
-                                Text(
-                                    "Что работает сейчас",
-                                    color = Ink,
-                                    fontWeight =
-                                        FontWeight.Bold
-                                )
-                                Text(
-                                    "EPUB/TXT можно импортировать, а готовый пакет ReaderLB сохранит в Downloads/ReaderLB.",
-                                    color = Muted,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp
-                                )
-                                Divider()
-                                Text(
-                                    "Что требует прямого доступа",
-                                    color = Ink,
-                                    fontWeight =
-                                        FontWeight.Bold
-                                )
-                                Text(
-                                    "Просмотр уже скачанной библиотеки RanobeLib, экспорт её тайтлов и запись глав прямо в RanobeLib.",
-                                    color = Muted,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp
-                                )
-                            }
+                    if (assessment.capability !=
+                        RanobeLibAccessCapability.SHIZUKU_CONNECTING) {
+                        item {
+                            GradientButton(
+                                text = when (assessment.capability) {
+                                    RanobeLibAccessCapability.SHIZUKU_PERMISSION_REQUIRED ->
+                                        "Дать ReaderLB доступ"
+                                    RanobeLibAccessCapability.SHIZUKU_STOPPED ->
+                                        "Запустить Shizuku"
+                                    RanobeLibAccessCapability.SHIZUKU_NOT_INSTALLED ->
+                                        "Установить Shizuku"
+                                    else -> "Проверить снова"
+                                },
+                                onClick = onShizukuAction
+                            )
                         }
                     }
-
                     item {
-                        Text(
-                            "Для полного доступа на новых Android нужен отдельный привилегированный мост вроде Shizuku или root. ReaderLB не будет отправлять вас в системную настройку, которая всё равно не даст доступ к этой папке.",
-                            color = Muted,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-
-                    item {
-                        GradientButton(
-                            text =
-                                "Работать через Downloads",
-                            onClick =
-                                onContinueWithoutDirectAccess
-                        )
-                    }
-
-                    item {
-                        Box(
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                            contentAlignment =
-                                Alignment.Center
-                        ) {
-                            TextButton(
-                                onClick =
-                                    onDismiss
-                            ) {
-                                Text("Закрыть")
-                            }
+                        TextButton(onClick = onContinueWithoutDirectAccess) {
+                            Text("Пока работать без прямого доступа")
                         }
                     }
                 }
@@ -684,14 +638,7 @@ private fun RanobeLibAccessBanner(
                 )
             }
             Text(
-                if (
-                    Build.VERSION.SDK_INT >=
-                    Build.VERSION_CODES.R
-                ) {
-                    "ReaderLB определит ограничения этой версии Android и сразу покажет рабочий вариант."
-                } else {
-                    "ReaderLB может получить доступ к папке book через системный выбор папки."
-                },
+                "ReaderLB поможет подключить скачанные книги RanobeLib.",
                 color = Muted,
                 fontSize = 12.sp,
                 lineHeight = 17.sp
@@ -1029,12 +976,51 @@ private fun MainApp(
         )
     }
 
+    val shizukuState = ShizukuAccess.state
+    var accessResumeTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(context) {
+        val activity = context as ComponentActivity
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                accessResumeTick += 1
+                ShizukuAccess.refresh(context)
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        ShizukuAccess.refresh(context)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
     var showRanobeLibAccessSetup by rememberSaveable {
         mutableStateOf(
             folderUri == null &&
                 !preferences
                     .ranobeLibAccessIntroDone
         )
+    }
+
+    LaunchedEffect(accessResumeTick) {
+        if (folderUri != null && folderUri != ShizukuAccess.treeUri &&
+            !hasPersistedTreePermission(context, requireNotNull(folderUri))) {
+            folderUri = null
+            showRanobeLibAccessSetup = true
+        }
+    }
+
+    LaunchedEffect(shizukuState) {
+        if (shizukuState == ShizukuAccessState.READY && folderUri == null) {
+            folderUri = ShizukuAccess.treeUri
+            showRanobeLibAccessSetup = false
+            preferences.ranobeLibAccessIntroDone = true
+        } else if (shizukuState !in setOf(
+                ShizukuAccessState.READY,
+                ShizukuAccessState.CHECKING,
+                ShizukuAccessState.CONNECTING
+            ) &&
+            folderUri == ShizukuAccess.treeUri
+        ) {
+            folderUri = null
+            showRanobeLibAccessSetup = true
+        }
     }
 
     val ranobeLibAccess =
@@ -1045,11 +1031,15 @@ private fun MainApp(
                 Build.VERSION.RELEASE
                     .orEmpty(),
             connected =
-                folderUri != null
+                folderUri != null,
+            shizukuState = shizukuState,
+            connectedWithShizuku = folderUri == ShizukuAccess.treeUri
         )
 
     LaunchedEffect(Unit) {
-        preferences.ranobeLibBookTree = folderUri
+        if (folderUri != ShizukuAccess.treeUri) {
+            preferences.ranobeLibBookTree = folderUri
+        }
     }
     var importHintsDone by remember {
         mutableStateOf(preferences.importHintsDone)
@@ -1357,13 +1347,17 @@ private fun MainApp(
                     libraryError =
                         it.message
                             ?: "Не удалось прочитать библиотеку RanobeLib"
-                    if (it is SecurityException || !hasPersistedTreePermission(context, tree)) {
+                    if (it is SecurityException ||
+                        (tree != ShizukuAccess.treeUri &&
+                            !hasPersistedTreePermission(context, tree))) {
                         preferences.ranobeLibBookTree = null
                         preferences.localLibraryCacheTree = null
                         preferences.localLibraryCacheJson = null
                         localLibrary = emptyList()
                         folderUri = null
                         libraryError = "Доступ к RanobeLib потерян. Импорт сохранит переносимый ZIP."
+                        showRanobeLibAccessSetup = true
+                        ShizukuAccess.refresh(context)
                     }
                 }
 
@@ -1591,7 +1585,13 @@ private fun MainApp(
     }
 
     fun openRanobeLibAccessSetup() {
-        showRanobeLibAccessSetup = true
+        if (folderUri == null && ShizukuAccess.state == ShizukuAccessState.READY) {
+            folderUri = ShizukuAccess.treeUri
+            showRanobeLibAccessSetup = false
+        } else {
+            showRanobeLibAccessSetup = true
+            ShizukuAccess.refresh(context)
+        }
     }
 
     if (showRanobeLibAccessSetup) {
@@ -1602,6 +1602,17 @@ private fun MainApp(
                 folderPicker.launch(
                     RANOBELIB_BOOK_INITIAL_URI
                 )
+            },
+            onShizukuAction = {
+                when (ranobeLibAccess.capability) {
+                    RanobeLibAccessCapability.SHIZUKU_NOT_INSTALLED ->
+                        ShizukuAccess.openDownload(context)
+                    RanobeLibAccessCapability.SHIZUKU_STOPPED ->
+                        ShizukuAccess.openManager(context)
+                    RanobeLibAccessCapability.SHIZUKU_PERMISSION_REQUIRED ->
+                        ShizukuAccess.requestPermission()
+                    else -> ShizukuAccess.refresh(context)
+                }
             },
             onContinueWithoutDirectAccess = {
                 preferences
@@ -1702,6 +1713,7 @@ private fun MainApp(
             AppTab.IMPORT -> ImportScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
+                canUseSystemFolderPicker = ranobeLibAccess.canUseSystemFolderPicker,
                 directImportEnabled =
                     directImportEnabled,
                 epubLimits =
@@ -1767,6 +1779,7 @@ private fun MainApp(
             AppTab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
+                canUseSystemFolderPicker = ranobeLibAccess.canUseSystemFolderPicker,
                 updateInfo = latestUpdate,
                 autoUpdateChecks = autoUpdateChecks,
                 releaseNotificationsEnabled =
@@ -1831,8 +1844,7 @@ private fun MainApp(
                 },
                 onPickFolder = {
                     if (
-                        Build.VERSION.SDK_INT <
-                        Build.VERSION_CODES.R &&
+                        ranobeLibAccess.canUseSystemFolderPicker &&
                         folderUri != null
                     ) {
                         folderPicker.launch(
@@ -2129,6 +2141,7 @@ private fun HomeScreen(
 private fun ImportScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    canUseSystemFolderPicker: Boolean,
     directImportEnabled: Boolean,
     epubLimits: EpubImportLimits,
     onDirectImportChanged: (Boolean) -> Unit,
@@ -2201,12 +2214,17 @@ private fun ImportScreen(
     var direct by rememberSaveable {
         mutableStateOf(
             directImportEnabled &&
-                (folderUri != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R)
+                (folderUri != null || canUseSystemFolderPicker)
         )
     }
+    var waitingForDirectAccess by remember { mutableStateOf(false) }
     LaunchedEffect(folderUri) {
-        if (folderUri == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (folderUri == null && !canUseSystemFolderPicker) {
             direct = false
+        } else if (waitingForDirectAccess || directImportEnabled) {
+            direct = true
+            waitingForDirectAccess = false
+            onDirectImportChanged(true)
         }
     }
     var busy by remember {
@@ -2856,6 +2874,7 @@ private fun ImportScreen(
                                     folderUri == null
                                 ) {
                                     direct = false
+                                    waitingForDirectAccess = true
                                     onNeedRanobeLibAccess()
                                 } else {
                                     direct = enabled
@@ -2874,7 +2893,7 @@ private fun ImportScreen(
             parsed != null &&
             direct &&
             folderUri == null &&
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+            canUseSystemFolderPicker
         ) {
             item {
                 Card(
@@ -3775,17 +3794,7 @@ private fun LibraryScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            if (
-                                Build.VERSION.SDK_INT >=
-                                    Build.VERSION_CODES.R
-                            ) {
-                                "ReaderLB проверит доступ и сразу объяснит, " +
-                                    "что доступно на этой версии Android."
-                            } else {
-                                "ReaderLB прочитает только info.json, " +
-                                    "chapters.json и обложки. Главы не " +
-                                    "изменяются при просмотре библиотеки."
-                            },
+                            "ReaderLB проверит доступ и покажет скачанные книги.",
                             color = Muted,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
@@ -4241,6 +4250,7 @@ private fun EpubLimitField(
 private fun SettingsScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    canUseSystemFolderPicker: Boolean,
     updateInfo: UpdateInfo?,
     autoUpdateChecks: Boolean,
     releaseNotificationsEnabled: Boolean,
@@ -4292,8 +4302,7 @@ private fun SettingsScreen(
                     )
                     Text(
                         if (folderUri == null) {
-                            "Не подключено. Без доступа ReaderLB " +
-                                "сохраняет готовый ZIP в Downloads."
+                            "ReaderLB нужен доступ к книгам RanobeLib."
                         } else {
                             "Подключено. ReaderLB может читать локальную " +
                                 "библиотеку и добавлять главы напрямую."
@@ -4312,8 +4321,7 @@ private fun SettingsScreen(
                             folderUri == null ->
                                 "Настроить доступ"
 
-                            Build.VERSION.SDK_INT <
-                                Build.VERSION_CODES.R ->
+                            canUseSystemFolderPicker ->
                                 "Изменить папку"
 
                             else ->
