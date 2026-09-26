@@ -132,8 +132,20 @@ object ShizukuAccess {
                 runCatching { remote.probe() }.getOrDefault(false)
             }
             if (files === remote) {
-                state = if (available) ShizukuAccessState.READY
-                    else ShizukuAccessState.FOLDER_MISSING
+                if (available) {
+                    if (RanobeLibBackends.currentKind() !=
+                        RanobeLibBackendKind.READERLB_BRIDGE
+                    ) {
+                        RanobeLibBackends.install(
+                            RanobeLibBackendKind.SHIZUKU,
+                            ShizukuRanobeLibFileBackend(remote)
+                        )
+                    }
+                    state = ShizukuAccessState.READY
+                } else {
+                    RanobeLibBackends.clear(RanobeLibBackendKind.SHIZUKU)
+                    state = ShizukuAccessState.FOLDER_MISSING
+                }
             }
         }
     }
@@ -141,6 +153,7 @@ object ShizukuAccess {
     private fun disconnect(newState: ShizukuAccessState) {
         files = null
         binding = false
+        RanobeLibBackends.clear(RanobeLibBackendKind.SHIZUKU)
         state = newState
     }
 }
