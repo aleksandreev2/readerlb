@@ -23,8 +23,8 @@ android {
         applicationId = "com.readerlb.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 23
-        versionName = "1.1.2"
+        versionCode = 24
+        versionName = "1.2.0-dev"
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -120,6 +120,9 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
+    implementation("com.github.MuntashirAkon:sun-security-android:1.1")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
     implementation("org.jsoup:jsoup:1.18.3")
 
     testImplementation("junit:junit:4.13.2")

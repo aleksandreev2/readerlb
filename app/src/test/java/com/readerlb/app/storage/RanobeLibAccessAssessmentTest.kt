@@ -21,7 +21,10 @@ class RanobeLibAccessAssessmentTest {
             result.capability
         )
         assertTrue(result.connected)
-        assertEquals(RanobeLibStorageBackend.SAF, result.backend)
+        assertEquals(
+            RanobeLibStorageBackend.SAF,
+            result.backend
+        )
         assertFalse(
             result.blockedByModernAndroid
         )
@@ -47,11 +50,14 @@ class RanobeLibAccessAssessmentTest {
             "Android 10",
             result.androidLabel
         )
-        assertEquals(RanobeLibStorageBackend.SAF, result.backend)
+        assertEquals(
+            RanobeLibStorageBackend.SAF,
+            result.backend
+        )
     }
 
     @Test
-    fun modernAndroidGuidesToShizukuWhenMissing() {
+    fun modernAndroidDefaultsToBuiltInReaderLbSetup() {
         listOf(
             30 to "11",
             35 to "15",
@@ -61,60 +67,129 @@ class RanobeLibAccessAssessmentTest {
             val result =
                 assessRanobeLibAccess(
                     sdkInt = sdk,
-                    androidRelease =
-                        release,
+                    androidRelease = release,
                     connected = false
                 )
 
-            assertEquals(RanobeLibAccessCapability.SHIZUKU_NOT_INSTALLED, result.capability)
-            assertEquals(RanobeLibStorageBackend.PORTABLE, result.backend)
+            assertEquals(
+                RanobeLibAccessCapability
+                    .READERLB_SETUP_REQUIRED,
+                result.capability
+            )
+            assertEquals(
+                RanobeLibStorageBackend.PORTABLE,
+                result.backend
+            )
             assertTrue(
-                result
-                    .blockedByModernAndroid
-            )
-            assertFalse(
-                result
-                    .canUseSystemFolderPicker
+                result.blockedByModernAndroid
             )
         }
     }
 
     @Test
-    fun allShizukuStatesSelectOneActionOnAndroidElevenToSixteen() {
-        listOf(30, 35, 36).forEach { sdk ->
-            listOf(
-                ShizukuAccessState.STOPPED to RanobeLibAccessCapability.SHIZUKU_STOPPED,
-                ShizukuAccessState.PERMISSION_REQUIRED to
-                    RanobeLibAccessCapability.SHIZUKU_PERMISSION_REQUIRED,
-                ShizukuAccessState.CONNECTING to
-                    RanobeLibAccessCapability.SHIZUKU_CONNECTING,
-                ShizukuAccessState.FOLDER_MISSING to
-                    RanobeLibAccessCapability.SHIZUKU_FOLDER_MISSING,
-                ShizukuAccessState.READY to RanobeLibAccessCapability.CONNECTED
-            ).forEach { (state, expected) ->
-                val result = assessRanobeLibAccess(sdk, "", false, state)
-                assertEquals(expected, result.capability)
-                assertEquals(
-                    if (state == ShizukuAccessState.READY)
-                        RanobeLibStorageBackend.SHIZUKU
-                    else RanobeLibStorageBackend.PORTABLE,
-                    result.backend
+    fun builtInFlowReportsProgressAndReadyBackend() {
+        listOf(
+            ReaderLbBuiltInAccessState.CHECKING,
+            ReaderLbBuiltInAccessState.PAIRING,
+            ReaderLbBuiltInAccessState.STARTING
+        ).forEach { state ->
+            val result =
+                assessRanobeLibAccess(
+                    sdkInt = 36,
+                    androidRelease = "16",
+                    connected = false,
+                    builtInState = state
                 )
-            }
+            assertEquals(
+                RanobeLibAccessCapability
+                    .READERLB_CONNECTING,
+                result.capability
+            )
         }
+
+        val ready =
+            assessRanobeLibAccess(
+                sdkInt = 36,
+                androidRelease = "16",
+                connected = false,
+                builtInState =
+                    ReaderLbBuiltInAccessState.READY
+            )
+        assertEquals(
+            RanobeLibAccessCapability.CONNECTED,
+            ready.capability
+        )
+        assertEquals(
+            RanobeLibStorageBackend
+                .READERLB_BRIDGE,
+            ready.backend
+        )
     }
 
     @Test
-    fun persistedSafAccessWinsAndRevokedShizukuFallsBack() {
+    fun builtInFailureCanBeRetried() {
+        val result =
+            assessRanobeLibAccess(
+                sdkInt = 35,
+                androidRelease = "15",
+                connected = false,
+                builtInState =
+                    ReaderLbBuiltInAccessState.ERROR
+            )
+
         assertEquals(
-            RanobeLibStorageBackend.SAF,
-            assessRanobeLibAccess(36, "16", true, ShizukuAccessState.READY).backend
+            RanobeLibAccessCapability
+                .READERLB_ERROR,
+            result.capability
         )
-        val revoked = assessRanobeLibAccess(
-            36, "16", true, ShizukuAccessState.STOPPED,
-            connectedWithShizuku = true
+    }
+
+    @Test
+    fun alreadyReadyShizukuRemainsACompatibleBackend() {
+        val result =
+            assessRanobeLibAccess(
+                sdkInt = 36,
+                androidRelease = "16",
+                connected = false,
+                shizukuState =
+                    ShizukuAccessState.READY
+            )
+
+        assertEquals(
+            RanobeLibAccessCapability.CONNECTED,
+            result.capability
         )
-        assertEquals(RanobeLibAccessCapability.SHIZUKU_STOPPED, revoked.capability)
-        assertEquals(RanobeLibStorageBackend.PORTABLE, revoked.backend)
+        assertEquals(
+            RanobeLibStorageBackend.SHIZUKU,
+            result.backend
+        )
+    }
+
+    @Test
+    fun connectedBackendIdentityIsPreserved() {
+        assertEquals(
+            RanobeLibStorageBackend
+                .READERLB_BRIDGE,
+            assessRanobeLibAccess(
+                sdkInt = 36,
+                androidRelease = "16",
+                connected = true,
+                builtInState =
+                    ReaderLbBuiltInAccessState.READY,
+                connectedWithBuiltInBridge = true
+            ).backend
+        )
+
+        assertEquals(
+            RanobeLibStorageBackend.SHIZUKU,
+            assessRanobeLibAccess(
+                sdkInt = 36,
+                androidRelease = "16",
+                connected = true,
+                shizukuState =
+                    ShizukuAccessState.READY,
+                connectedWithShizuku = true
+            ).backend
+        )
     }
 }

@@ -50,7 +50,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
     ): Cursor {
         val cursor = MatrixCursor(projection ?: documentColumns)
         val parent = relative(parentDocumentId)
-        ShizukuAccess.service().list(parent).forEach { name ->
+        RanobeLibBackends.requireBackend().list(parent).forEach { name ->
             addDocument(cursor, "$parentDocumentId/$name")
         }
         return cursor
@@ -60,7 +60,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         documentId: String,
         mode: String,
         signal: CancellationSignal?
-    ): ParcelFileDescriptor = ShizukuAccess.service().open(relative(documentId), mode)
+    ): ParcelFileDescriptor = RanobeLibBackends.requireBackend().open(relative(documentId), mode)
 
     override fun createDocument(
         parentDocumentId: String,
@@ -70,7 +70,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         require(displayName.isNotBlank() && '/' !in displayName && '\\' !in displayName &&
             displayName != "." && displayName != "..") { "Invalid document name" }
         val id = "$parentDocumentId/$displayName"
-        if (!ShizukuAccess.service().create(
+        if (!RanobeLibBackends.requireBackend().create(
                 relative(id), mimeType == DocumentsContract.Document.MIME_TYPE_DIR
             )
         ) throw FileNotFoundException(displayName)
@@ -78,7 +78,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
     }
 
     override fun deleteDocument(documentId: String) {
-        if (!ShizukuAccess.service().delete(relative(documentId))) {
+        if (!RanobeLibBackends.requireBackend().delete(relative(documentId))) {
             throw FileNotFoundException(documentId)
         }
     }
@@ -87,7 +87,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         require(displayName.isNotBlank() && '/' !in displayName && '\\' !in displayName &&
             displayName != "." && displayName != "..") { "Invalid document name" }
         val renamed = documentId.substringBeforeLast('/') + "/" + displayName
-        if (!ShizukuAccess.service().rename(relative(documentId), relative(renamed))) {
+        if (!RanobeLibBackends.requireBackend().rename(relative(documentId), relative(renamed))) {
             throw FileNotFoundException(documentId)
         }
         return renamed
@@ -98,7 +98,7 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
 
     private fun addDocument(cursor: MatrixCursor, documentId: String) {
         val path = relative(documentId)
-        val remote = ShizukuAccess.service()
+        val remote = RanobeLibBackends.requireBackend()
         if (!remote.exists(path)) return
         val directory = remote.isDirectory(path)
         val flags = if (directory) {
