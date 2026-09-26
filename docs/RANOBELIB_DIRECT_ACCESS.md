@@ -17,7 +17,9 @@ rejects a nonempty library with no valid title directory.
 - Shizuku's UserService runs as shell (UID 2000) when started using ADB, or
   root when started using root. ReaderLB binds a service with a narrow file
   interface and probes the actual RanobeLib directory before reporting a
-  connection. Device vendors can restrict shell access, so a successful
+  connection. The probe opens only the known `book` directory and performs a
+  tiny temporary read/write check; it does not enumerate title folders or read
+  chapter contents. Device vendors can restrict shell access, so a successful
   Shizuku authorization alone is never treated as proof of file access.
 - Android 16's published behavior changes do not offer a new ordinary app
   permission for another app's `Android/data` directory. The same capability

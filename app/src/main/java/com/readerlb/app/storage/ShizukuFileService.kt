@@ -1,8 +1,6 @@
 package com.readerlb.app.storage
 
 import android.os.ParcelFileDescriptor
-import android.util.JsonReader
-import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -21,13 +19,14 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
                 }
             }
         }
-        bookRoot = candidates.firstOrNull { root ->
-            root.isDirectory && root.canRead() && canReadAndWrite(root) &&
-                root.listFiles().orEmpty().let { children ->
-                    val titleFolders = children.filter(File::isDirectory)
-                    titleFolders.isEmpty() || titleFolders.any(::hasValidMetadata)
-                }
-        }?.canonicalFile
+
+        // Access probing must stay constant-time with respect to library size.
+        // Do not enumerate title folders or parse title metadata here: a user can
+        // legitimately have tens of gigabytes of books. The normal library scanner
+        // owns title discovery and reports progress separately after connection.
+        bookRoot = candidates
+            .firstOrNull(::isUsableLibraryRoot)
+            ?.canonicalFile
         return bookRoot != null
     }
 
@@ -96,8 +95,17 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
         return file.delete()
     }
 
-    private fun canReadAndWrite(root: File): Boolean = runCatching {
-        if (root.listFiles() == null) return false
+}
+
+internal fun isUsableLibraryRoot(root: File): Boolean {
+    if (!root.isDirectory) return false
+
+    return runCatching {
+        // Opening a directory stream proves that the directory can be read without
+        // materialising every title name. This keeps the access check independent
+        // of the number and total size of downloaded books.
+        Files.newDirectoryStream(root.toPath()).use { }
+
         val probe = File.createTempFile(".readerlb-probe-", ".tmp", root)
         try {
             probe.outputStream().use { output -> output.write(1) }
@@ -105,21 +113,6 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
         } finally {
             probe.delete()
         }
-    }.getOrDefault(false)
-
-    private fun hasValidMetadata(title: File): Boolean = runCatching {
-        val info = File(title, "info.json")
-        val chapters = File(title, "chapters.json")
-        if (!info.isFile || info.length() !in 1..MAX_INFO_JSON_BYTES.toLong() ||
-            !chapters.isFile || chapters.length() !in 1..(64L * 1024 * 1024)) return false
-        val mediaPresent = JSONObject(info.readText()).optJSONObject("media") != null
-        val chaptersPresent = chapters.bufferedReader().use { input ->
-            JsonReader(input).use { reader ->
-                reader.beginArray()
-                reader.hasNext()
-            }
-        }
-        mediaPresent && chaptersPresent
     }.getOrDefault(false)
 }
 

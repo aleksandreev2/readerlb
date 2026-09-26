@@ -449,7 +449,7 @@ private fun RanobeLibAccessSetupSheet(
                         RanobeLibAccessCapability.SHIZUKU_NOT_INSTALLED ->
                             "Подключите Shizuku"
                         RanobeLibAccessCapability.SHIZUKU_FOLDER_MISSING ->
-                            "Библиотека RanobeLib недоступна"
+                            "Не удалось открыть папку RanobeLib"
                         else -> "Проверяем доступ к книгам"
                     }
                     val detail = when (assessment.capability) {
@@ -457,9 +457,12 @@ private fun RanobeLibAccessSetupSheet(
                             "Для прямого доступа к скачанным книгам установите Shizuku."
                         RanobeLibAccessCapability.SHIZUKU_STOPPED ->
                             "Запустите сервис в приложении Shizuku и вернитесь сюда."
+                        RanobeLibAccessCapability.SHIZUKU_PERMISSION_REQUIRED ->
+                            "Shizuku запущен. Разрешите ReaderLB использовать его для доступа к локальной папке RanobeLib."
                         RanobeLibAccessCapability.SHIZUKU_FOLDER_MISSING ->
-                            "Откройте RanobeLib, скачайте книгу и повторите проверку."
-                        else -> "ReaderLB проверит библиотеку автоматически."
+                            "Shizuku подключён, но ReaderLB не смог подтвердить чтение и запись в Android/data/ru.libappc/files/book. Папка может отсутствовать или прошивка может блокировать shell-доступ."
+                        else ->
+                            "ReaderLB проверяет только Android/data/ru.libappc/files/book. Весь накопитель и содержимое книг на этом этапе не сканируются."
                     }
                     item {
                         AccessSetupStatusCard(
