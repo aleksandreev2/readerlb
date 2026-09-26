@@ -17,8 +17,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.InetAddress
+import java.net.ServerSocket
 import java.security.SecureRandom
-import java.util.UUID
 
 /**
  * Owns ReaderLB's built-in privileged bridge lifecycle.
@@ -26,8 +27,8 @@ import java.util.UUID
 object ReaderLbBridgeAccess {
     private const val PREFS =
         "readerlb_privileged_bridge"
-    private const val KEY_SOCKET =
-        "socket"
+    private const val KEY_PORT =
+        "port"
     private const val KEY_TOKEN =
         "token"
 
@@ -116,7 +117,7 @@ object ReaderLbBridgeAccess {
 
     internal fun markReady(
         context: Context,
-        socketName: String,
+        port: Int,
         token: String,
         backend:
             ReaderLbBridgeFileBackend
@@ -126,9 +127,9 @@ object ReaderLbBridgeAccess {
             Context.MODE_PRIVATE
         )
             .edit()
-            .putString(
-                KEY_SOCKET,
-                socketName
+            .putInt(
+                KEY_PORT,
+                port
             )
             .putString(
                 KEY_TOKEN,
@@ -183,14 +184,14 @@ object ReaderLbBridgeAccess {
                 PREFS,
                 Context.MODE_PRIVATE
             )
-        val socketName =
-            preferences.getString(
-                KEY_SOCKET,
-                null
+        val port =
+            preferences.getInt(
+                KEY_PORT,
+                -1
             )
-                ?.takeIf(
-                    String::isNotBlank
-                )
+                .takeIf {
+                    it in 1024..65535
+                }
                 ?: return false
         val token =
             preferences.getString(
@@ -204,7 +205,7 @@ object ReaderLbBridgeAccess {
 
         val backend =
             ReaderLbBridgeFileBackend(
-                socketName,
+                port,
                 token
             )
 
@@ -291,12 +292,8 @@ internal object ReaderLbBridgeLauncher {
         ReaderLbBridgeAccess
             .markStarting()
 
-        val socketName =
-            "readerlb_" +
-                UUID.randomUUID()
-                    .toString()
-                    .replace("-", "")
-                    .take(24)
+        val port =
+            reserveLoopbackPort()
         val token =
             randomToken()
         val apk =
@@ -307,12 +304,12 @@ internal object ReaderLbBridgeLauncher {
         val command =
             "CLASSPATH=" +
                 shellQuote(apk) +
-                " setsid -d nohup app_process " +
+                " nohup setsid app_process " +
                 "/system/bin " +
                 "--nice-name=readerlb_bridge " +
                 "com.readerlb.app.storage.bridge." +
                 "ReaderLbBridgeMain " +
-                shellQuote(socketName) +
+                port +
                 " " +
                 shellQuote(token) +
                 " </dev/null >/dev/null " +
@@ -325,7 +322,7 @@ internal object ReaderLbBridgeLauncher {
 
         val backend =
             ReaderLbBridgeFileBackend(
-                socketName,
+                port,
                 token
             )
 
@@ -334,7 +331,7 @@ internal object ReaderLbBridgeLauncher {
                 ReaderLbBridgeAccess
                     .markReady(
                         appContext,
-                        socketName,
+                        port,
                         token,
                         backend
                     )
@@ -351,6 +348,16 @@ internal object ReaderLbBridgeLauncher {
             "ReaderLB Bridge не запустился"
         )
     }
+
+    private fun reserveLoopbackPort(): Int =
+        ServerSocket(
+            0,
+            1,
+            InetAddress
+                .getLoopbackAddress()
+        ).use {
+            it.localPort
+        }
 
     private fun randomToken(): String {
         val bytes =
