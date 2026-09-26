@@ -23,7 +23,7 @@ public final class ReaderLbApp extends Application {
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            HiddenApiBypass.addHiddenApiExemptions("Landroid/sun/");
+            HiddenApiBypass.addHiddenApiExemptions("L");
         }
     }
 }
