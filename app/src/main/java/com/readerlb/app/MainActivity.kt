@@ -1218,6 +1218,54 @@ private fun MainApp(
             }
         }
 
+    val directAccessNotificationPermissionLauncher =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts
+                    .RequestPermission()
+        ) { granted ->
+            if (granted) {
+                ReaderLbBridgeAccess
+                    .startSetup(context)
+            } else {
+                ReaderLbBridgeAccess
+                    .markError(
+                        "Для простой настройки прямого доступа Android должен разрешить уведомление с полем для 6-значного pairing-кода."
+                    )
+            }
+        }
+
+    fun beginBuiltInAccessSetup() {
+        if (
+            Build.VERSION.SDK_INT <
+                Build.VERSION_CODES.R
+        ) {
+            folderPicker@ run {
+                return@run
+            }
+        }
+
+        if (
+            Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission
+                    .POST_NOTIFICATIONS
+            ) != PackageManager
+                .PERMISSION_GRANTED
+        ) {
+            directAccessNotificationPermissionLauncher
+                .launch(
+                    Manifest.permission
+                        .POST_NOTIFICATIONS
+                )
+        } else {
+            ReaderLbBridgeAccess
+                .startSetup(context)
+        }
+    }
+
     fun setReleaseNotifications(
         enabled: Boolean
     ) {
@@ -1651,12 +1699,44 @@ private fun MainApp(
     }
 
     fun openRanobeLibAccessSetup() {
-        if (folderUri == null && ShizukuAccess.state == ShizukuAccessState.READY) {
-            folderUri = ShizukuAccess.treeUri
-            showRanobeLibAccessSetup = false
+        val backend =
+            RanobeLibBackends
+                .currentKind()
+
+        if (
+            folderUri == null &&
+            backend ==
+                RanobeLibBackendKind
+                    .READERLB_BRIDGE &&
+            ReaderLbBridgeAccess.state ==
+                com.readerlb.app.storage
+                    .ReaderLbBuiltInAccessState
+                    .READY
+        ) {
+            folderUri =
+                ReaderLbBridgeAccess
+                    .treeUri
+            showRanobeLibAccessSetup =
+                false
+        } else if (
+            folderUri == null &&
+            backend ==
+                RanobeLibBackendKind
+                    .SHIZUKU &&
+            ShizukuAccess.state ==
+                ShizukuAccessState.READY
+        ) {
+            folderUri =
+                ShizukuAccess.treeUri
+            showRanobeLibAccessSetup =
+                false
         } else {
-            showRanobeLibAccessSetup = true
-            ShizukuAccess.refresh(context)
+            showRanobeLibAccessSetup =
+                true
+            ReaderLbBridgeAccess
+                .refresh(context)
+            ShizukuAccess
+                .refresh(context)
         }
     }
 
@@ -1668,6 +1748,9 @@ private fun MainApp(
                 folderPicker.launch(
                     RANOBELIB_BOOK_INITIAL_URI
                 )
+            },
+            onBuiltInAccessSetup = {
+                beginBuiltInAccessSetup()
             },
             onShizukuAction = {
                 when (ranobeLibAccess.capability) {
