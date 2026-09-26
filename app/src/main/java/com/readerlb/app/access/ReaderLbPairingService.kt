@@ -54,6 +54,10 @@ class ReaderLbPairingService :
         -1
 
     @Volatile
+    private var connectPort =
+        -1
+
+    @Volatile
     private var reconnectInProgress =
         false
 
@@ -212,28 +216,37 @@ class ReaderLbPairingService :
             )
         )
 
-        val connected =
-            runCatching {
-                ReaderLbAdbClient
-                    .ensureConnected(
-                        this,
-                        8_000L
-                    )
-                ReaderLbBridgeLauncher
-                    .launchViaAdb(
-                        this
-                    )
-            }
+        val localPort =
+            connectPort
+                .takeIf {
+                    it in 1..65535
+                }
 
-        if (connected.isSuccess) {
-            completeSuccess()
-            return
+        if (localPort != null) {
+            val connected =
+                runCatching {
+                    ReaderLbAdbClient
+                        .disconnect(this)
+                    ReaderLbAdbClient
+                        .connect(
+                            this,
+                            localPort
+                        )
+                    ReaderLbBridgeLauncher
+                        .launchViaAdb(
+                            this
+                        )
+                }
+
+            if (connected.isSuccess) {
+                completeSuccess()
+                return
+            }
         }
 
-        // Some OEMs do not immediately publish a usable TLS-connect
-        // service after pairing. The ADB identity is already trusted, so
-        // never ask for another code: wait for Wireless Debugging to be
-        // toggled and reconnect with the saved identity.
+        // Pairing itself has already succeeded. If Android has not exposed
+        // a usable local TLS-connect port yet, keep the trusted key and wait
+        // for the local mDNS service instead of asking for another code.
         ReaderLbAdbClient
             .disconnect(this)
         reconnectInProgress =
@@ -241,7 +254,7 @@ class ReaderLbPairingService :
         update(
             progressNotification(
                 "Pairing уже сохранён",
-                "Если доступ не подключился сам, выключите и снова включите Wireless Debugging. Повторный код не нужен."
+                "Жду локальный Wireless Debugging. Если доступ не подключится сам, выключите и снова включите его. Повторный код не нужен."
             )
         )
         startConnectDiscovery()
@@ -496,9 +509,14 @@ class ReaderLbPairingService :
                 if (
                     !isLocalAdbPort(
                         port
-                    ) ||
-                    reconnectInProgress
+                    )
                 ) {
+                    return
+                }
+
+                connectPort = port
+
+                if (reconnectInProgress) {
                     return
                 }
 
