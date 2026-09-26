@@ -10,7 +10,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.os.Build
 import android.os.IBinder
 import com.readerlb.app.MainActivity
 import java.net.InetSocketAddress
@@ -18,11 +17,18 @@ import java.net.ServerSocket
 import java.util.concurrent.Executors
 
 /**
- * Foreground pairing flow for ReaderLB's built-in Wireless ADB client.
+ * Built-in Wireless ADB setup.
  *
- * The user stays on Android's Wireless Debugging screen. ReaderLB discovers the
- * local pairing port via mDNS and asks only for the six-digit pairing code
- * through an inline notification action.
+ * First setup:
+ *  - discover Android's local pairing service
+ *  - accept the six-digit code from an inline notification
+ *  - pair ReaderLB's persistent ADB identity
+ *  - launch ReaderLB Bridge
+ *
+ * Later boots:
+ *  - the same persistent ADB identity is already trusted
+ *  - once Wireless Debugging is enabled, discover the connect service
+ *  - reconnect and launch ReaderLB Bridge without asking for another code
  */
 class ReaderLbPairingService :
     Service() {
@@ -31,12 +37,21 @@ class ReaderLbPairingService :
 
     private lateinit var nsd:
         NsdManager
-    private var discovery:
+
+    private var pairingDiscovery:
         NsdManager.DiscoveryListener? =
         null
+    private var connectDiscovery:
+        NsdManager.DiscoveryListener? =
+        null
+
     @Volatile
     private var pairingPort =
         -1
+
+    @Volatile
+    private var reconnectInProgress =
+        false
 
     override fun onCreate() {
         super.onCreate()
@@ -54,54 +69,13 @@ class ReaderLbPairingService :
     ): Int {
         when (intent?.action) {
             ACTION_REPLY -> {
-                val results =
-                    RemoteInput
-                        .getResultsFromIntent(
-                            intent
-                        )
-                val code =
-                    results
-                        ?.getCharSequence(
-                            KEY_CODE
-                        )
-                        ?.toString()
-                        ?.trim()
-                val port =
-                    intent.getIntExtra(
-                        EXTRA_PORT,
-                        pairingPort
-                    )
-
-                if (
-                    code?.matches(
-                        Regex("\\d{6}")
-                    ) == true &&
-                    port in 1..65535
-                ) {
-                    stopDiscovery()
-                    update(
-                        progressNotification(
-                            "Подключаю ReaderLB…",
-                            "Выполняю pairing и запускаю прямой доступ."
-                        )
-                    )
-                    executor.execute {
-                        pairAndStart(
-                            port,
-                            code
-                        )
-                    }
-                } else {
-                    update(
-                        failureNotification(
-                            "Код должен состоять из 6 цифр."
-                        )
-                    )
-                }
+                handlePairingReply(
+                    intent
+                )
             }
 
             ACTION_STOP -> {
-                stopDiscovery()
+                stopDiscoveries()
                 stopForeground(
                     STOP_FOREGROUND_REMOVE
                 )
@@ -113,7 +87,8 @@ class ReaderLbPairingService :
                     NOTIFICATION_ID,
                     searchingNotification()
                 )
-                startDiscovery()
+                startPairingDiscovery()
+                startConnectDiscovery()
             }
         }
 
@@ -125,9 +100,60 @@ class ReaderLbPairingService :
     ): IBinder? = null
 
     override fun onDestroy() {
-        stopDiscovery()
+        stopDiscoveries()
         executor.shutdownNow()
         super.onDestroy()
+    }
+
+    private fun handlePairingReply(
+        intent: Intent
+    ) {
+        val results =
+            RemoteInput
+                .getResultsFromIntent(
+                    intent
+                )
+        val code =
+            results
+                ?.getCharSequence(
+                    KEY_CODE
+                )
+                ?.toString()
+                ?.trim()
+        val port =
+            intent.getIntExtra(
+                EXTRA_PORT,
+                pairingPort
+            )
+
+        if (
+            code?.matches(
+                Regex("\\d{6}")
+            ) != true ||
+            port !in 1..65535
+        ) {
+            update(
+                failureNotification(
+                    "Код должен состоять из 6 цифр."
+                )
+            )
+            return
+        }
+
+        stopPairingDiscovery()
+        update(
+            progressNotification(
+                "Подключаю ReaderLB…",
+                "Сохраняю pairing и запускаю прямой доступ."
+            )
+        )
+
+        executor.execute {
+            pairAndStart(
+                port,
+                code
+            )
+        }
     }
 
     private fun pairAndStart(
@@ -144,7 +170,7 @@ class ReaderLbPairingService :
             update(
                 progressNotification(
                     "Pairing выполнен",
-                    "Подключаюсь и запускаю ReaderLB Bridge…"
+                    "Запускаю ReaderLB Bridge…"
                 )
             )
 
@@ -160,46 +186,104 @@ class ReaderLbPairingService :
                 )
         }
             .onSuccess {
-                update(
-                    successNotification()
-                )
-                sendBroadcast(
-                    Intent(
-                        ACTION_READY
-                    ).setPackage(
-                        packageName
-                    )
-                )
-                stopForeground(
-                    STOP_FOREGROUND_DETACH
-                )
-                stopSelf()
+                completeSuccess()
             }
-            .onFailure { error ->
-                ReaderLbBridgeAccess
-                    .markError(
-                        error.message
-                            ?: "Не удалось настроить прямой доступ"
-                    )
-                ReaderLbAdbClient
-                    .disconnect(
-                        this
-                    )
-                update(
-                    failureNotification(
-                        error.message
-                            ?: "Не удалось настроить прямой доступ"
-                    )
+            .onFailure {
+                    error ->
+                failSetup(
+                    error.message
+                        ?: "Не удалось настроить прямой доступ"
                 )
-                stopForeground(
-                    STOP_FOREGROUND_DETACH
-                )
-                stopSelf()
             }
     }
 
-    private fun startDiscovery() {
-        if (discovery != null) {
+    private fun reconnectAndStart(
+        port: Int
+    ) {
+        runCatching {
+            ReaderLbAdbClient.connect(
+                this,
+                port
+            )
+
+            update(
+                progressNotification(
+                    "ReaderLB уже спарен",
+                    "Восстанавливаю прямой доступ после перезагрузки…"
+                )
+            )
+
+            ReaderLbBridgeLauncher
+                .launchViaAdb(
+                    this
+                )
+        }
+            .onSuccess {
+                completeSuccess()
+            }
+            .onFailure {
+                // A failed reconnect normally means this installation has
+                // never been paired (or Android revoked the trusted key).
+                // Keep pairing discovery alive instead of surfacing an error:
+                // the user can simply open "Pair device with pairing code".
+                ReaderLbAdbClient
+                    .disconnect(this)
+                reconnectInProgress =
+                    false
+                update(
+                    searchingNotification()
+                )
+            }
+    }
+
+    private fun completeSuccess() {
+        stopDiscoveries()
+        reconnectInProgress =
+            false
+
+        update(
+            successNotification()
+        )
+
+        sendBroadcast(
+            Intent(
+                ACTION_READY
+            ).setPackage(
+                packageName
+            )
+        )
+
+        stopForeground(
+            STOP_FOREGROUND_DETACH
+        )
+        stopSelf()
+    }
+
+    private fun failSetup(
+        message: String
+    ) {
+        stopDiscoveries()
+        ReaderLbBridgeAccess
+            .markError(message)
+        ReaderLbAdbClient
+            .disconnect(this)
+
+        update(
+            failureNotification(
+                message
+            )
+        )
+
+        stopForeground(
+            STOP_FOREGROUND_DETACH
+        )
+        stopSelf()
+    }
+
+    private fun startPairingDiscovery() {
+        if (
+            pairingDiscovery != null
+        ) {
             return
         }
 
@@ -218,7 +302,7 @@ class ReaderLbPairingService :
                     serviceType: String,
                     errorCode: Int
                 ) {
-                    failure(
+                    failSetup(
                         "Android не запустил поиск pairing-порта ($errorCode)."
                     )
                 }
@@ -240,13 +324,14 @@ class ReaderLbPairingService :
                     runCatching {
                         nsd.resolveService(
                             serviceInfo,
-                            resolveListener()
+                            pairingResolveListener()
                         )
                     }
                 }
             }
 
-        discovery = listener
+        pairingDiscovery =
+            listener
         nsd.discoverServices(
             PAIRING_SERVICE,
             NsdManager.PROTOCOL_DNS_SD,
@@ -254,7 +339,62 @@ class ReaderLbPairingService :
         )
     }
 
-    private fun resolveListener():
+    private fun startConnectDiscovery() {
+        if (
+            connectDiscovery != null
+        ) {
+            return
+        }
+
+        val listener =
+            object :
+                NsdManager.DiscoveryListener {
+                override fun onDiscoveryStarted(
+                    serviceType: String
+                ) = Unit
+
+                override fun onDiscoveryStopped(
+                    serviceType: String
+                ) = Unit
+
+                override fun onStartDiscoveryFailed(
+                    serviceType: String,
+                    errorCode: Int
+                ) = Unit
+
+                override fun onStopDiscoveryFailed(
+                    serviceType: String,
+                    errorCode: Int
+                ) = Unit
+
+                override fun onServiceLost(
+                    serviceInfo:
+                        NsdServiceInfo
+                ) = Unit
+
+                override fun onServiceFound(
+                    serviceInfo:
+                        NsdServiceInfo
+                ) {
+                    runCatching {
+                        nsd.resolveService(
+                            serviceInfo,
+                            connectResolveListener()
+                        )
+                    }
+                }
+            }
+
+        connectDiscovery =
+            listener
+        nsd.discoverServices(
+            CONNECT_SERVICE,
+            NsdManager.PROTOCOL_DNS_SD,
+            listener
+        )
+    }
+
+    private fun pairingResolveListener():
         NsdManager.ResolveListener =
         object :
             NsdManager.ResolveListener {
@@ -271,8 +411,7 @@ class ReaderLbPairingService :
                 val port =
                     serviceInfo.port
                 if (
-                    port !in 1..65535 ||
-                    !isOccupiedLocalPort(
+                    !isLocalAdbPort(
                         port
                     )
                 ) {
@@ -288,24 +427,53 @@ class ReaderLbPairingService :
             }
         }
 
-    private fun stopDiscovery() {
-        val listener =
-            discovery
-                ?: return
-        discovery = null
-        runCatching {
-            nsd.stopServiceDiscovery(
-                listener
-            )
-        }
-    }
+    private fun connectResolveListener():
+        NsdManager.ResolveListener =
+        object :
+            NsdManager.ResolveListener {
+            override fun onResolveFailed(
+                serviceInfo:
+                    NsdServiceInfo,
+                errorCode: Int
+            ) = Unit
 
-    private fun isOccupiedLocalPort(
+            override fun onServiceResolved(
+                serviceInfo:
+                    NsdServiceInfo
+            ) {
+                val port =
+                    serviceInfo.port
+                if (
+                    !isLocalAdbPort(
+                        port
+                    ) ||
+                    reconnectInProgress
+                ) {
+                    return
+                }
+
+                reconnectInProgress =
+                    true
+                executor.execute {
+                    reconnectAndStart(
+                        port
+                    )
+                }
+            }
+        }
+
+    private fun isLocalAdbPort(
         port: Int
-    ): Boolean =
-        runCatching {
+    ): Boolean {
+        if (
+            port !in 1..65535
+        ) {
+            return false
+        }
+
+        return runCatching {
             ServerSocket().use {
-                socket ->
+                    socket ->
                 socket.bind(
                     InetSocketAddress(
                         "127.0.0.1",
@@ -316,21 +484,37 @@ class ReaderLbPairingService :
             }
             false
         }.getOrDefault(true)
+    }
 
-    private fun failure(
-        message: String
-    ) {
-        ReaderLbBridgeAccess
-            .markError(message)
-        update(
-            failureNotification(
-                message
+    private fun stopPairingDiscovery() {
+        val listener =
+            pairingDiscovery
+                ?: return
+        pairingDiscovery = null
+
+        runCatching {
+            nsd.stopServiceDiscovery(
+                listener
             )
-        )
-        stopForeground(
-            STOP_FOREGROUND_DETACH
-        )
-        stopSelf()
+        }
+    }
+
+    private fun stopConnectDiscovery() {
+        val listener =
+            connectDiscovery
+                ?: return
+        connectDiscovery = null
+
+        runCatching {
+            nsd.stopServiceDiscovery(
+                listener
+            )
+        }
+    }
+
+    private fun stopDiscoveries() {
+        stopPairingDiscovery()
+        stopConnectDiscovery()
     }
 
     private fun searchingNotification():
@@ -340,7 +524,7 @@ class ReaderLbPairingService :
                 "ReaderLB — прямой доступ"
             )
             .setContentText(
-                "В Wireless Debugging выберите «Pair device with pairing code»."
+                "Уже подключали ReaderLB? Просто включите Wireless Debugging. В первый раз выберите «Pair device with pairing code»."
             )
             .addAction(
                 stopAction()
@@ -400,10 +584,10 @@ class ReaderLbPairingService :
 
         return baseBuilder()
             .setContentTitle(
-                "ReaderLB нашёл Wireless Debugging"
+                "ReaderLB нашёл pairing"
             )
             .setContentText(
-                "Введите 6-значный код pairing из настроек."
+                "Введите 6-значный код из Wireless Debugging."
             )
             .addAction(action)
             .addAction(
@@ -435,7 +619,7 @@ class ReaderLbPairingService :
                 "ReaderLB подключён"
             )
             .setContentText(
-                "Прямой доступ готов. Wireless Debugging можно выключить до перезагрузки."
+                "Прямой доступ готов. Wireless Debugging можно выключить до следующей перезагрузки."
             )
             .setContentIntent(
                 openAppIntent()
@@ -575,6 +759,8 @@ class ReaderLbPairingService :
             "pairing_port"
         private const val PAIRING_SERVICE =
             "_adb-tls-pairing._tcp"
+        private const val CONNECT_SERVICE =
+            "_adb-tls-connect._tcp"
 
         const val ACTION_READY =
             "com.readerlb.app.access.READY"
