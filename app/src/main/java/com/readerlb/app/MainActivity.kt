@@ -974,11 +974,22 @@ private fun Onboarding(onDone: () -> Unit) {
             Spacer(Modifier.height(18.dp))
 
             GradientButton(
-                text = if (page == pageCount - 1) {
-                    "Понятно"
-                } else {
-                    "Следующее"
-                },
+                text =
+                    if (
+                        page ==
+                        pageCount - 1
+                    ) {
+                        if (
+                            Build.VERSION.SDK_INT >=
+                            Build.VERSION_CODES.R
+                        ) {
+                            "Настроить доступ"
+                        } else {
+                            "Начать"
+                        }
+                    } else {
+                        "Следующее"
+                    },
                 trailingIcon =
                     if (
                         page ==
