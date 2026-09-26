@@ -1216,11 +1216,60 @@ private fun MainApp(
         )
     }
 
+    var shizukuStatus by remember {
+        mutableStateOf<
+            ShizukuRanobeLibStatus?
+        >(null)
+    }
+    val shizukuBridge = remember {
+        ShizukuRanobeLibBridge(
+            context
+        ) {
+                status ->
+            shizukuStatus =
+                status
+        }
+    }
+    val shizukuLibraryScanner =
+        remember(
+            shizukuBridge
+        ) {
+            ShizukuRanobeLibLibraryScanner(
+                context = context,
+                bridge =
+                    shizukuBridge
+            )
+        }
+
+    DisposableEffect(
+        shizukuBridge
+    ) {
+        shizukuBridge.start()
+        onDispose {
+            shizukuBridge.close()
+        }
+    }
+
+    val shizukuReady =
+        shizukuStatus?.ready ==
+            true
+    val libraryConnected =
+        folderUri != null ||
+            shizukuReady
+
     var showRanobeLibAccessSetup by rememberSaveable {
         mutableStateOf(
             folderUri == null &&
-                !preferences
-                    .ranobeLibAccessIntroDone
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.R
+                ) {
+                    !preferences
+                        .shizukuAccessIntroDone
+                } else {
+                    !preferences
+                        .ranobeLibAccessIntroDone
+                }
         )
     }
 
@@ -1232,11 +1281,21 @@ private fun MainApp(
                 Build.VERSION.RELEASE
                     .orEmpty(),
             connected =
-                folderUri != null
+                libraryConnected
         )
 
     LaunchedEffect(Unit) {
         preferences.ranobeLibBookTree = folderUri
+    }
+
+    LaunchedEffect(
+        shizukuStatus?.state
+    ) {
+        if (shizukuReady) {
+            preferences
+                .shizukuAccessIntroDone =
+                true
+        }
     }
     var importHintsDone by remember {
         mutableStateOf(preferences.importHintsDone)
@@ -1423,11 +1482,18 @@ private fun MainApp(
 
     fun refreshLocalLibrary() {
         val tree = folderUri
+        val useShizuku =
+            tree == null &&
+                shizukuReady
 
-        if (tree == null) {
+        if (
+            tree == null &&
+            !useShizuku
+        ) {
             libraryScanJob?.cancel()
             libraryScanJob = null
-            localLibrary = emptyList()
+            localLibrary =
+                emptyList()
             librarySkipped = 0
             libraryError = null
             libraryStatus = null
@@ -1438,131 +1504,203 @@ private fun MainApp(
         }
 
         if (
-            libraryScanJob?.isActive == true
+            libraryScanJob?.isActive ==
+            true
         ) {
-            libraryRefreshPending = true
+            libraryRefreshPending =
+                true
             return
         }
 
-        libraryScanJob = scope.launch {
-            do {
-                libraryRefreshPending = false
-                val previous = localLibrary
+        libraryScanJob =
+            scope.launch {
+                do {
+                    libraryRefreshPending =
+                        false
+                    val previous =
+                        localLibrary
 
-                libraryLoading = true
-                libraryError = null
-                libraryStatus = null
-                libraryScanned = 0
-                libraryScanTotal = 0
+                    libraryLoading =
+                        true
+                    libraryError =
+                        null
+                    libraryStatus =
+                        null
+                    libraryScanned = 0
+                    libraryScanTotal = 0
 
-                val result = try {
-                    withTimeout(
-                        120_000L
-                    ) {
-                        runInterruptible(
-                            Dispatchers.IO
-                        ) {
-                            Result.success(
-                                libraryScanner.scan(
-                                    tree
+                    val result =
+                        try {
+                            withTimeout(
+                                120_000L
+                            ) {
+                                runInterruptible(
+                                    Dispatchers.IO
                                 ) {
-                                        completed,
-                                        total ->
-                                    scope.launch {
-                                        libraryScanned =
-                                            maxOf(
-                                                libraryScanned,
-                                                completed
-                                            )
-                                        libraryScanTotal =
-                                            maxOf(
-                                                libraryScanTotal,
-                                                total
-                                            )
-                                    }
+                                    val progress:
+                                        (
+                                            Int,
+                                            Int
+                                        ) -> Unit =
+                                        {
+                                                completed,
+                                                total ->
+                                            scope.launch {
+                                                libraryScanned =
+                                                    maxOf(
+                                                        libraryScanned,
+                                                        completed
+                                                    )
+                                                libraryScanTotal =
+                                                    maxOf(
+                                                        libraryScanTotal,
+                                                        total
+                                                    )
+                                            }
+                                        }
+
+                                    Result.success(
+                                        if (
+                                            tree !=
+                                            null
+                                        ) {
+                                            libraryScanner
+                                                .scan(
+                                                    tree,
+                                                    progress
+                                                )
+                                        } else {
+                                            shizukuLibraryScanner
+                                                .scan(
+                                                    progress
+                                                )
+                                        }
+                                    )
                                 }
+                            }
+                        } catch (
+                            timeout:
+                                TimeoutCancellationException
+                        ) {
+                            Result.failure(
+                                IllegalStateException(
+                                    "RanobeLib слишком долго отвечает. Проверьте доступ и повторите сканирование."
+                                )
+                            )
+                        } catch (
+                            cancelled:
+                                CancellationException
+                        ) {
+                            throw cancelled
+                        } catch (
+                            throwable:
+                                Throwable
+                        ) {
+                            Result.failure(
+                                throwable
                             )
                         }
-                    }
-                } catch (
-                    timeout:
-                    TimeoutCancellationException
-                ) {
-                    Result.failure(
-                        IllegalStateException(
-                            "RanobeLib слишком долго отвечает. " +
-                                "Проверьте доступ к папке book " +
-                                "и повторите сканирование."
-                        )
-                    )
-                } catch (
-                    cancelled:
-                    CancellationException
-                ) {
-                    throw cancelled
-                } catch (
-                    throwable:
-                    Throwable
-                ) {
-                    Result.failure(throwable)
-                }
 
-                result.onSuccess {
-                        snapshot ->
-                    localLibrary =
-                        snapshot.items
-                    preferences
-                        .localLibraryCacheTree =
-                        tree
-                    preferences
-                        .localLibraryCacheJson =
-                        encodeLocalLibraryCache(
+                    result.onSuccess {
+                            snapshot ->
+                        localLibrary =
                             snapshot.items
-                        )
-                    librarySkipped =
-                        snapshot.skippedTitles
-                    libraryScanned =
-                        snapshot.items.size +
-                            snapshot.skippedTitles
-                    libraryScanTotal =
-                        maxOf(
-                            libraryScanTotal,
-                            libraryScanned
-                        )
-                    libraryStatus =
+                        preferences
+                            .localLibraryCacheTree =
+                            tree
+                        preferences
+                            .localLibraryCacheJson =
+                            encodeLocalLibraryCache(
+                                snapshot.items
+                            )
+                        librarySkipped =
+                            snapshot
+                                .skippedTitles
+                        libraryScanned =
+                            snapshot.items
+                                .size +
+                                snapshot
+                                    .skippedTitles
+                        libraryScanTotal =
+                            maxOf(
+                                libraryScanTotal,
+                                libraryScanned
+                            )
+                        libraryStatus =
+                            if (
+                                previous ==
+                                snapshot.items
+                            ) {
+                                "Локальные тайтлы уже актуальны"
+                            } else {
+                                "Обновлено: " +
+                                    snapshot.items
+                                        .size +
+                                    " тайтлов"
+                            }
+                    }.onFailure {
+                            throwable ->
+                        libraryError =
+                            throwable.message
+                                ?: "Не удалось прочитать библиотеку RanobeLib"
+
                         if (
-                            previous ==
-                            snapshot.items
+                            tree != null &&
+                            (
+                                throwable is
+                                    SecurityException ||
+                                    !hasPersistedTreePermission(
+                                        context,
+                                        tree
+                                    )
+                                )
                         ) {
-                            "Локальные тайтлы уже актуальны"
-                        } else {
-                            "Обновлено: " +
-                                snapshot.items.size +
-                                " тайтлов"
+                            preferences
+                                .ranobeLibBookTree =
+                                null
+                            preferences
+                                .localLibraryCacheTree =
+                                null
+                            preferences
+                                .localLibraryCacheJson =
+                                null
+                            localLibrary =
+                                emptyList()
+                            folderUri = null
+                            libraryError =
+                                "Доступ к RanobeLib потерян. ReaderLB проверит другой рабочий способ."
+                            showRanobeLibAccessSetup =
+                                true
+                        } else if (
+                            useShizuku
+                        ) {
+                            shizukuBridge.refresh()
+                            libraryError =
+                                "Shizuku потерял доступ к RanobeLib. ReaderLB перепроверяет подключение."
                         }
-                }.onFailure {
-                    libraryError =
-                        it.message
-                            ?: "Не удалось прочитать библиотеку RanobeLib"
-                    if (it is SecurityException || !hasPersistedTreePermission(context, tree)) {
-                        preferences.ranobeLibBookTree = null
-                        preferences.localLibraryCacheTree = null
-                        preferences.localLibraryCacheJson = null
-                        localLibrary = emptyList()
-                        folderUri = null
-                        libraryError = "Доступ к RanobeLib потерян. Импорт сохранит переносимый ZIP."
                     }
-                }
 
-                libraryLoading = false
-            } while (
-                libraryRefreshPending &&
-                folderUri == tree
-            )
-        }
+                    libraryLoading =
+                        false
+                } while (
+                    libraryRefreshPending &&
+                    (
+                        folderUri ==
+                            tree ||
+                            (
+                                tree ==
+                                    null &&
+                                    shizukuReady
+                                )
+                        )
+                )
+            }
     }
 
-    LaunchedEffect(folderUri) {
+    LaunchedEffect(
+        folderUri,
+        shizukuStatus?.state
+    ) {
         libraryScanJob?.cancel()
         libraryScanJob = null
         libraryRefreshPending = false
@@ -1785,15 +1923,30 @@ private fun MainApp(
         RanobeLibAccessSetupSheet(
             assessment =
                 ranobeLibAccess,
+            shizukuStatus =
+                shizukuStatus,
             onGrantLegacyAccess = {
                 folderPicker.launch(
                     RANOBELIB_BOOK_INITIAL_URI
                 )
             },
+            onShizukuAction = {
+                shizukuBridge
+                    .requestAccess()
+            },
             onContinueWithoutDirectAccess = {
-                preferences
-                    .ranobeLibAccessIntroDone =
-                    true
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.R
+                ) {
+                    preferences
+                        .shizukuAccessIntroDone =
+                        true
+                } else {
+                    preferences
+                        .ranobeLibAccessIntroDone =
+                        true
+                }
                 showRanobeLibAccessSetup =
                     false
             },
@@ -1870,7 +2023,8 @@ private fun MainApp(
                 modifier = Modifier.padding(padding),
                 history = history,
                 localLibrary = localLibrary,
-                libraryConnected = folderUri != null,
+                libraryConnected =
+                    libraryConnected,
                 libraryLoading = libraryLoading,
                 libraryScanned = libraryScanned,
                 libraryScanTotal = libraryScanTotal,
@@ -1889,6 +2043,10 @@ private fun MainApp(
             AppTab.IMPORT -> ImportScreen(
                 modifier = Modifier.padding(padding),
                 folderUri = folderUri,
+                shizukuBridge =
+                    shizukuBridge,
+                directAccessAvailable =
+                    libraryConnected,
                 directImportEnabled =
                     directImportEnabled,
                 epubLimits =
@@ -1935,7 +2093,8 @@ private fun MainApp(
             AppTab.LIBRARY -> LibraryScreen(
                 modifier = Modifier.padding(padding),
                 items = localLibrary,
-                connected = folderUri != null,
+                connected =
+                    libraryConnected,
                 loading = libraryLoading,
                 scanned = libraryScanned,
                 scanTotal = libraryScanTotal,
