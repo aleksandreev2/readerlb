@@ -11,6 +11,7 @@ import java.io.DataOutputStream
 import java.io.EOFException
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.concurrent.Executors
@@ -299,6 +300,138 @@ object ReaderLbBridgeMain {
                             input.copyTo(destination)
                             destination.flush()
                         }
+
+                    ok(output)
+                    output.flush()
+                }
+
+                ReaderLbBridgeProtocol.OP_READ_AT -> {
+                    val file = resolve(
+                        root,
+                        readRelativePath(input)
+                    )
+                    val offset =
+                        input.readLong()
+                    val requested =
+                        input.readInt()
+                    require(
+                        file.isFile &&
+                            offset >= 0L &&
+                            requested in
+                                0..ReaderLbBridgeProtocol
+                                    .MAX_IO_CHUNK_BYTES
+                    ) {
+                        "Invalid read request"
+                    }
+
+                    val buffer =
+                        ByteArray(requested)
+                    val count =
+                        RandomAccessFile(
+                            file,
+                            "r"
+                        ).use { random ->
+                            random.seek(offset)
+                            if (requested == 0) {
+                                0
+                            } else {
+                                random.read(buffer)
+                                    .coerceAtLeast(0)
+                            }
+                        }
+
+                    ok(output)
+                    output.writeInt(count)
+                    if (count > 0) {
+                        output.write(
+                            buffer,
+                            0,
+                            count
+                        )
+                    }
+                    output.flush()
+                }
+
+                ReaderLbBridgeProtocol.OP_WRITE_AT -> {
+                    val file = resolve(
+                        root,
+                        readRelativePath(input)
+                    )
+                    val offset =
+                        input.readLong()
+                    val count =
+                        input.readInt()
+                    require(
+                        offset >= 0L &&
+                            count in
+                                0..ReaderLbBridgeProtocol
+                                    .MAX_IO_CHUNK_BYTES &&
+                            file.parentFile?.isDirectory == true &&
+                            (!file.exists() ||
+                                file.isFile)
+                    ) {
+                        "Invalid write request"
+                    }
+
+                    val bytes =
+                        ByteArray(count)
+                    input.readFully(bytes)
+
+                    RandomAccessFile(
+                        file,
+                        "rw"
+                    ).use { random ->
+                        random.seek(offset)
+                        random.write(bytes)
+                    }
+
+                    ok(output)
+                    output.writeInt(count)
+                    output.flush()
+                }
+
+                ReaderLbBridgeProtocol.OP_TRUNCATE -> {
+                    val file = resolve(
+                        root,
+                        readRelativePath(input)
+                    )
+                    val length =
+                        input.readLong()
+                    require(
+                        length >= 0L &&
+                            file.parentFile?.isDirectory == true &&
+                            (!file.exists() ||
+                                file.isFile)
+                    ) {
+                        "Invalid truncate request"
+                    }
+
+                    RandomAccessFile(
+                        file,
+                        "rw"
+                    ).use {
+                        it.setLength(length)
+                    }
+
+                    ok(output)
+                    output.flush()
+                }
+
+                ReaderLbBridgeProtocol.OP_FSYNC -> {
+                    val file = resolve(
+                        root,
+                        readRelativePath(input)
+                    )
+                    require(file.isFile) {
+                        "File does not exist"
+                    }
+
+                    RandomAccessFile(
+                        file,
+                        "rw"
+                    ).use {
+                        it.fd.sync()
+                    }
 
                     ok(output)
                     output.flush()
