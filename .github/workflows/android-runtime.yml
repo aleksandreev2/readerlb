@@ -92,7 +92,93 @@ jobs:
           target: google_apis
           profile: pixel_2
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest --stacktrace
+          script: |
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace
+
+            if [ "${{ matrix.api-level }}" -ge 30 ]; then
+              set -euo pipefail
+
+              echo "Running real app_process ReaderLB Bridge smoke test"
+              adb shell mkdir -p /sdcard/Android/data/ru.libappc/files/book
+
+              APK_PATH="$(adb shell pm path com.readerlb.app | sed -n 's/^package://p' | head -n 1 | tr -d '\r')"
+              test -n "$APK_PATH"
+
+              PROBE_OUTPUT="$(adb shell "CLASSPATH='$APK_PATH' /system/bin/app_process /system/bin com.readerlb.app.storage.bridge.ReaderLbBridgeMain --probe" | tr -d '\r')"
+              printf '%s\n' "$PROBE_OUTPUT"
+              printf '%s\n' "$PROBE_OUTPUT" | grep -q '^READERLB_BRIDGE_READY:'
+
+              BRIDGE_PORT=39731
+              FORWARD_PORT=39732
+              TOKEN="$(printf 'ab%.0s' {1..32})"
+
+              adb shell "CLASSPATH='$APK_PATH' nohup setsid /system/bin/app_process /system/bin --nice-name=readerlb_bridge com.readerlb.app.storage.bridge.ReaderLbBridgeMain '$BRIDGE_PORT' '$TOKEN' </dev/null >/data/local/tmp/readerlb-bridge.log 2>&1 &"
+
+              for attempt in $(seq 1 50); do
+                if adb shell "toybox nc -z 127.0.0.1 '$BRIDGE_PORT'" >/dev/null 2>&1; then
+                  break
+                fi
+                if [ "$attempt" -eq 50 ]; then
+                  adb shell cat /data/local/tmp/readerlb-bridge.log || true
+                  echo "::error::ReaderLB Bridge did not start"
+                  exit 1
+                fi
+                sleep 0.1
+              done
+
+              adb forward "tcp:$FORWARD_PORT" "tcp:$BRIDGE_PORT"
+
+              python3 - <<'PY'
+            import socket
+            import struct
+
+            HOST = "127.0.0.1"
+            PORT = 39732
+            MAGIC = 0x524C4231
+            VERSION = 1
+            TOKEN = "ab" * 32
+            OP = "ping"
+
+            def write_utf(value: str) -> bytes:
+                raw = value.encode("utf-8")
+                if len(raw) > 65535:
+                    raise ValueError("UTF payload too long")
+                return struct.pack(">H", len(raw)) + raw
+
+            def read_exact(sock, size):
+                chunks = []
+                remaining = size
+                while remaining:
+                    chunk = sock.recv(remaining)
+                    if not chunk:
+                        raise RuntimeError("Bridge closed connection")
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                return b"".join(chunks)
+
+            with socket.create_connection((HOST, PORT), timeout=5) as sock:
+                sock.sendall(
+                    struct.pack(">II", MAGIC, VERSION)
+                    + write_utf(TOKEN)
+                    + write_utf(OP)
+                )
+
+                ok = read_exact(sock, 1)
+                assert ok == b"\x01", ok
+
+                version = struct.unpack(">I", read_exact(sock, 4))[0]
+                assert version == VERSION, version
+
+                length = struct.unpack(">H", read_exact(sock, 2))[0]
+                root = read_exact(sock, length).decode("utf-8")
+                assert root.endswith("/Android/data/ru.libappc/files/book"), root
+
+                print("ReaderLB Bridge PING OK:", root)
+            PY
+
+              adb forward --remove "tcp:$FORWARD_PORT" || true
+              adb shell pkill -f readerlb_bridge || true
+            fi
 
       - name: Upload Android test results
         if: always()
