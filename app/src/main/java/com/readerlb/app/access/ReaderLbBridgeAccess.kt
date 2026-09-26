@@ -301,6 +301,41 @@ internal object ReaderLbBridgeLauncher {
                 .applicationInfo
                 .sourceDir
 
+        val probeCommand =
+            "CLASSPATH=" +
+                shellQuote(apk) +
+                " /system/bin/app_process " +
+                "/system/bin " +
+                "--nice-name=readerlb_probe " +
+                "com.readerlb.app.storage.bridge." +
+                "ReaderLbBridgeMain --probe"
+
+        val probeResult =
+            ReaderLbAdbClient.runShell(
+                appContext,
+                probeCommand
+            )
+
+        require(
+            probeResult
+                .lineSequence()
+                .any {
+                    it.startsWith(
+                        "READERLB_BRIDGE_READY:"
+                    )
+                }
+        ) {
+            if (
+                "READERLB_BRIDGE_ERROR:" +
+                    "book_unavailable" in
+                probeResult
+            ) {
+                "ReaderLB получил ADB-доступ, но Android не дал shell читать и записывать Android/data/ru.libappc/files/book. Проверьте, что в RanobeLib есть скачанная книга; на некоторых прошивках shell-доступ дополнительно ограничен."
+            } else {
+                "Android не смог запустить ReaderLB Bridge через app_process."
+            }
+        }
+
         val command =
             "CLASSPATH=" +
                 shellQuote(apk) +
