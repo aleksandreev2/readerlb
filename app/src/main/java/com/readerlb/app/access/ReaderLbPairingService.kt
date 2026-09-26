@@ -187,41 +187,64 @@ class ReaderLbPairingService :
         port: Int,
         code: String
     ) {
-        runCatching {
-            ReaderLbAdbClient.pair(
-                this,
-                port,
-                code
-            )
-
-            update(
-                progressNotification(
-                    "Pairing выполнен",
-                    "Запускаю ReaderLB Bridge…"
-                )
-            )
-
-            ReaderLbAdbClient
-                .ensureConnected(
+        val paired =
+            runCatching {
+                ReaderLbAdbClient.pair(
                     this,
-                    20_000L
+                    port,
+                    code
                 )
+            }
 
-            ReaderLbBridgeLauncher
-                .launchViaAdb(
-                    this
-                )
+        if (paired.isFailure) {
+            failSetup(
+                paired.exceptionOrNull()
+                    ?.message
+                    ?: "Не удалось выполнить pairing"
+            )
+            return
         }
-            .onSuccess {
-                completeSuccess()
+
+        update(
+            progressNotification(
+                "Pairing сохранён",
+                "Подключаю ReaderLB Bridge…"
+            )
+        )
+
+        val connected =
+            runCatching {
+                ReaderLbAdbClient
+                    .ensureConnected(
+                        this,
+                        8_000L
+                    )
+                ReaderLbBridgeLauncher
+                    .launchViaAdb(
+                        this
+                    )
             }
-            .onFailure {
-                    error ->
-                failSetup(
-                    error.message
-                        ?: "Не удалось настроить прямой доступ"
-                )
-            }
+
+        if (connected.isSuccess) {
+            completeSuccess()
+            return
+        }
+
+        // Some OEMs do not immediately publish a usable TLS-connect
+        // service after pairing. The ADB identity is already trusted, so
+        // never ask for another code: wait for Wireless Debugging to be
+        // toggled and reconnect with the saved identity.
+        ReaderLbAdbClient
+            .disconnect(this)
+        reconnectInProgress =
+            false
+        update(
+            progressNotification(
+                "Pairing уже сохранён",
+                "Если доступ не подключился сам, выключите и снова включите Wireless Debugging. Повторный код не нужен."
+            )
+        )
+        startConnectDiscovery()
     }
 
     private fun reconnectAndStart(
