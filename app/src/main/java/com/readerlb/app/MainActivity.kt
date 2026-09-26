@@ -4737,7 +4737,13 @@ private fun LibraryTitleDetail(
                     )
 
                     Text(
-                        "Локальный тайтл",
+                        if (
+                            item.createdByReaderLB
+                        ) {
+                            "Импорт ReaderLB"
+                        } else {
+                            "Скачано в RanobeLib"
+                        },
                         color = Muted,
                         fontSize = 13.sp,
                         modifier =
@@ -4809,9 +4815,9 @@ private fun LibraryTitleDetail(
                             if (
                                 item.createdByReaderLB
                             ) {
-                                "Импортировано ReaderLB"
+                                "Импорт ReaderLB"
                             } else {
-                                "Локальная библиотека RanobeLib"
+                                "Скачано в RanobeLib"
                             }
                     )
                     TitleInfoRow(
@@ -6028,9 +6034,9 @@ private fun LocalLibraryCard(
                             if (
                                 item.createdByReaderLB
                             ) {
-                                "ReaderLB"
+                                "Импорт ReaderLB"
                             } else {
-                                "RanobeLib"
+                                "Скачано в RanobeLib"
                             },
                             color = Blue,
                             fontSize = 10.sp,
