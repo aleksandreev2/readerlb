@@ -1,5 +1,12 @@
 package com.readerlb.app.storage.bridge
 
+import android.content.Context
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.ProxyFileDescriptorCallback
+import android.os.storage.StorageManager
+import android.system.ErrnoException
+import android.system.OsConstants
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -131,6 +138,279 @@ class ReaderLbBridgeFileBackend(
             }
         ) { _, input ->
             input.readBoolean()
+        }
+
+    fun openProxy(
+        context: Context,
+        relativePath: String,
+        mode: String
+    ): ParcelFileDescriptor {
+        require(
+            mode in setOf(
+                "r",
+                "w",
+                "wt",
+                "wa",
+                "rw",
+                "rwt"
+            )
+        ) {
+            "Unsupported mode"
+        }
+
+        val append =
+            mode == "wa"
+        val writable =
+            mode != "r"
+
+        if (
+            writable &&
+            mode in setOf(
+                "w",
+                "wt",
+                "rwt"
+            )
+        ) {
+            truncate(
+                relativePath,
+                0L
+            )
+        }
+
+        val appendBase =
+            if (append) {
+                length(relativePath)
+            } else {
+                0L
+            }
+
+        val proxyMode =
+            when (mode) {
+                "r" ->
+                    ParcelFileDescriptor
+                        .MODE_READ_ONLY
+
+                "rw",
+                "rwt" ->
+                    ParcelFileDescriptor
+                        .MODE_READ_WRITE
+
+                else ->
+                    ParcelFileDescriptor
+                        .MODE_WRITE_ONLY
+            }
+
+        val callback =
+            object :
+                ProxyFileDescriptorCallback() {
+                override fun onGetSize():
+                    Long =
+                    bridgeCall(
+                        "getSize"
+                    ) {
+                        length(
+                            relativePath
+                        )
+                    }
+
+                override fun onRead(
+                    offset: Long,
+                    size: Int,
+                    data: ByteArray
+                ): Int =
+                    bridgeCall(
+                        "read"
+                    ) {
+                        readAt(
+                            relativePath,
+                            offset,
+                            size,
+                            data
+                        )
+                    }
+
+                override fun onWrite(
+                    offset: Long,
+                    size: Int,
+                    data: ByteArray
+                ): Int =
+                    bridgeCall(
+                        "write"
+                    ) {
+                        require(writable) {
+                            "File is read-only"
+                        }
+                        writeAt(
+                            relativePath,
+                            appendBase +
+                                offset,
+                            size,
+                            data
+                        )
+                    }
+
+                override fun onFsync() {
+                    bridgeCall(
+                        "fsync"
+                    ) {
+                        if (writable) {
+                            fsync(
+                                relativePath
+                            )
+                        }
+                    }
+                }
+
+                override fun onRelease() =
+                    Unit
+            }
+
+        return context
+            .getSystemService(
+                StorageManager::class.java
+            )
+            .openProxyFileDescriptor(
+                proxyMode,
+                callback,
+                proxyHandler
+            )
+    }
+
+    private fun readAt(
+        relativePath: String,
+        offset: Long,
+        size: Int,
+        destination: ByteArray
+    ): Int {
+        require(
+            offset >= 0L &&
+                size in
+                    0..minOf(
+                        destination.size,
+                        ReaderLbBridgeProtocol
+                            .MAX_IO_CHUNK_BYTES
+                    )
+        )
+
+        return request(
+            ReaderLbBridgeProtocol
+                .OP_READ_AT,
+            relativePath,
+            writeExtra = {
+                it.writeLong(offset)
+                it.writeInt(size)
+            }
+        ) { _, input ->
+            val count =
+                input.readInt()
+            require(
+                count in 0..size
+            ) {
+                "Invalid bridge read size"
+            }
+            if (count > 0) {
+                input.readFully(
+                    destination,
+                    0,
+                    count
+                )
+            }
+            count
+        }
+    }
+
+    private fun writeAt(
+        relativePath: String,
+        offset: Long,
+        size: Int,
+        source: ByteArray
+    ): Int {
+        require(
+            offset >= 0L &&
+                size in
+                    0..minOf(
+                        source.size,
+                        ReaderLbBridgeProtocol
+                            .MAX_IO_CHUNK_BYTES
+                    )
+        )
+
+        return request(
+            ReaderLbBridgeProtocol
+                .OP_WRITE_AT,
+            relativePath,
+            writeExtra = {
+                it.writeLong(offset)
+                it.writeInt(size)
+                if (size > 0) {
+                    it.write(
+                        source,
+                        0,
+                        size
+                    )
+                }
+            }
+        ) { _, input ->
+            input.readInt()
+                .also {
+                    require(
+                        it == size
+                    ) {
+                        "Incomplete bridge write"
+                    }
+                }
+        }
+    }
+
+    private fun truncate(
+        relativePath: String,
+        length: Long
+    ) {
+        require(length >= 0L)
+
+        request(
+            ReaderLbBridgeProtocol
+                .OP_TRUNCATE,
+            relativePath,
+            writeExtra = {
+                it.writeLong(length)
+            }
+        ) { _, _ ->
+            Unit
+        }
+    }
+
+    private fun fsync(
+        relativePath: String
+    ) {
+        request(
+            ReaderLbBridgeProtocol
+                .OP_FSYNC,
+            relativePath
+        ) { _, _ ->
+            Unit
+        }
+    }
+
+    private inline fun <T> bridgeCall(
+        operation: String,
+        block: () -> T
+    ): T =
+        try {
+            block()
+        } catch (
+            error:
+            ErrnoException
+        ) {
+            throw error
+        } catch (error: Throwable) {
+            val errno =
+                ErrnoException(
+                    "ReaderLB bridge $operation",
+                    OsConstants.EIO
+                )
+            errno.initCause(error)
+            throw errno
         }
 
     override fun open(
@@ -390,4 +670,22 @@ class ReaderLbBridgeFileBackend(
             )
         }
     }
+    private companion object {
+        val proxyThread:
+            HandlerThread by lazy {
+                HandlerThread(
+                    "ReaderLB-Bridge-PFD"
+                ).apply {
+                    start()
+                }
+            }
+
+        val proxyHandler:
+            Handler by lazy {
+                Handler(
+                    proxyThread.looper
+                )
+            }
+    }
+
 }
