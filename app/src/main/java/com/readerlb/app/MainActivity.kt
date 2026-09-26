@@ -474,7 +474,7 @@ private fun RanobeLibAccessSetupSheet(
 
                     item {
                         Text(
-                            "Настройка нужна один раз до перезагрузки телефона. После запуска ReaderLB Bridge беспроводную отладку можно выключить.",
+                            "Pairing нужен только в первый раз. После перезагрузки достаточно снова включить Wireless Debugging — ReaderLB узнает сохранённый ключ и восстановит доступ автоматически. После запуска bridge отладку можно выключить.",
                             color = Muted,
                             fontSize = 12.sp,
                             lineHeight = 18.sp
@@ -502,7 +502,7 @@ private fun RanobeLibAccessSetupSheet(
                             title =
                                 "Подключаем ReaderLB",
                             text =
-                                "Откройте в Wireless Debugging пункт «Pair device with pairing code» и введите код в уведомлении ReaderLB. Остальное приложение сделает само.",
+                                "Если ReaderLB уже подключали раньше — просто включите Wireless Debugging. При первом запуске выберите «Pair device with pairing code» и введите 6-значный код в уведомлении ReaderLB.",
                             success = false
                         )
                     }
