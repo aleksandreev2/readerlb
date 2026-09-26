@@ -10,8 +10,39 @@ import java.io.FileNotFoundException
  * The contract deliberately exposes only filesystem operations under the verified
  * RanobeLib book root; it is not an arbitrary shell-command interface.
  */
+data class RanobeLibFileEntry(
+    val name: String,
+    val isDirectory: Boolean,
+    val length: Long,
+    val lastModified: Long
+)
+
 interface RanobeLibFileBackend {
     fun list(relativePath: String): Array<String>
+
+    fun listEntries(
+        relativePath: String
+    ): List<RanobeLibFileEntry> =
+        list(relativePath).map {
+                name ->
+            val child =
+                if (
+                    relativePath.isEmpty()
+                ) {
+                    name
+                } else {
+                    "$relativePath/$name"
+                }
+
+            RanobeLibFileEntry(
+                name = name,
+                isDirectory =
+                    isDirectory(child),
+                length = length(child),
+                lastModified =
+                    lastModified(child)
+            )
+        }
     fun exists(relativePath: String): Boolean
     fun isDirectory(relativePath: String): Boolean
     fun length(relativePath: String): Long
