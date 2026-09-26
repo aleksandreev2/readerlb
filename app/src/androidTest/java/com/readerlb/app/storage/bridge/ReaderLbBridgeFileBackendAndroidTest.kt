@@ -325,6 +325,32 @@ class ReaderLbBridgeFileBackendAndroidTest {
                 backend.list("")
             )
 
+            val entries =
+                backend.listEntries("")
+            assertEquals(
+                2,
+                entries.size
+            )
+            assertEquals(
+                "alpha",
+                entries[0].name
+            )
+            assertTrue(
+                entries[0].isDirectory
+            )
+            assertEquals(
+                11L,
+                entries[0].lastModified
+            )
+            assertEquals(
+                "beta",
+                entries[1].name
+            )
+            assertEquals(
+                7L,
+                entries[1].length
+            )
+
             val readBytes =
                 ParcelFileDescriptor
                     .AutoCloseInputStream(
