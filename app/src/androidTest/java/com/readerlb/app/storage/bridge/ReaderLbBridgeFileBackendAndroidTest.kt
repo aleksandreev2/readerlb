@@ -8,6 +8,7 @@ import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.SocketException
 import java.net.SocketTimeoutException
@@ -53,12 +54,21 @@ class ReaderLbBridgeFileBackendAndroidTest {
             )
 
         val server =
-            ServerSocket(
-                0,
-                8,
-                InetAddress
-                    .getLoopbackAddress()
-            ).apply {
+            ServerSocket().apply {
+                reuseAddress = false
+                bind(
+                    InetSocketAddress(
+                        InetAddress.getByName(
+                            "127.0.0.1"
+                        ),
+                        0
+                    ),
+                    8
+                )
+                check(
+                    localPort in
+                        1024..65535
+                )
                 soTimeout = 500
             }
 
