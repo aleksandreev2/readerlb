@@ -58,6 +58,15 @@ object ReaderLbBridgeAccess {
     fun refresh(
         context: Context
     ) {
+        if (
+            state ==
+                ReaderLbBuiltInAccessState.PAIRING ||
+            state ==
+                ReaderLbBuiltInAccessState.STARTING
+        ) {
+            return
+        }
+
         state =
             ReaderLbBuiltInAccessState.CHECKING
         lastError = null
