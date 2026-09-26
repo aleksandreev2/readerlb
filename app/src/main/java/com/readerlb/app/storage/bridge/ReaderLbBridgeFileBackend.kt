@@ -32,14 +32,17 @@ class ReaderLbBridgeFileBackend(
 
     fun ping(): Boolean =
         runCatching {
-            request(
-                ReaderLbBridgeProtocol.OP_PING
-            ) { _, input ->
-                input.readInt() ==
-                    ReaderLbBridgeProtocol.VERSION &&
-                    input.readUTF().isNotBlank()
-            }
+            pingOrThrow()
         }.getOrDefault(false)
+
+    internal fun pingOrThrow(): Boolean =
+        request(
+            ReaderLbBridgeProtocol.OP_PING
+        ) { _, input ->
+            input.readInt() ==
+                ReaderLbBridgeProtocol.VERSION &&
+                input.readUTF().isNotBlank()
+        }
 
     override fun list(
         relativePath: String
