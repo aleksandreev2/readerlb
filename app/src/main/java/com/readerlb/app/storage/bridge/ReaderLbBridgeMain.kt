@@ -257,17 +257,10 @@ object ReaderLbBridgeMain {
                     ok(output)
                     output.flush()
 
-                    file.outputStream()
-                        .let { raw ->
-                            if (append) {
-                                java.io.FileOutputStream(
-                                    file,
-                                    true
-                                )
-                            } else {
-                                raw
-                            }
-                        }
+                    java.io.FileOutputStream(
+                        file,
+                        append
+                    )
                         .buffered()
                         .use { destination ->
                             input.copyTo(destination)
