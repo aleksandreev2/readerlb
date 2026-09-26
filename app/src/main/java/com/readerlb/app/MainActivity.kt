@@ -117,6 +117,8 @@ import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
 import com.readerlb.app.storage.LocalLibraryItem
 import com.readerlb.app.storage.Preferences
+import com.readerlb.app.storage.RanobeLibAccessCapability
+import com.readerlb.app.storage.assessRanobeLibAccess
 import com.readerlb.app.storage.RanobeLibLibraryScanner
 import com.readerlb.app.storage.decodeLocalLibraryCache
 import com.readerlb.app.storage.encodeLocalLibraryCache
@@ -620,6 +622,25 @@ private fun MainApp(
             }
         )
     }
+
+    var showRanobeLibAccessSetup by rememberSaveable {
+        mutableStateOf(
+            folderUri == null &&
+                !preferences
+                    .ranobeLibAccessIntroDone
+        )
+    }
+
+    val ranobeLibAccess =
+        assessRanobeLibAccess(
+            sdkInt =
+                Build.VERSION.SDK_INT,
+            androidRelease =
+                Build.VERSION.RELEASE
+                    .orEmpty(),
+            connected =
+                folderUri != null
+        )
 
     LaunchedEffect(Unit) {
         preferences.ranobeLibBookTree = folderUri
@@ -1147,7 +1168,47 @@ private fun MainApp(
                 } else {
                     null
                 }
+            if (
+                persisted &&
+                hasPersistedTreePermission(
+                    context,
+                    uri
+                )
+            ) {
+                preferences
+                    .ranobeLibAccessIntroDone =
+                    true
+                showRanobeLibAccessSetup =
+                    false
+            }
         }
+    }
+
+    fun openRanobeLibAccessSetup() {
+        showRanobeLibAccessSetup = true
+    }
+
+    if (showRanobeLibAccessSetup) {
+        RanobeLibAccessSetupSheet(
+            assessment =
+                ranobeLibAccess,
+            onGrantLegacyAccess = {
+                folderPicker.launch(
+                    RANOBELIB_BOOK_INITIAL_URI
+                )
+            },
+            onContinueWithoutDirectAccess = {
+                preferences
+                    .ranobeLibAccessIntroDone =
+                    true
+                showRanobeLibAccessSetup =
+                    false
+            },
+            onDismiss = {
+                showRanobeLibAccessSetup =
+                    false
+            }
+        )
     }
 
     if (
@@ -1228,6 +1289,8 @@ private fun MainApp(
                 onAdd = { tab = AppTab.IMPORT },
                 onOpenLibrary = { tab = AppTab.LIBRARY },
                 onSettings = { tab = AppTab.SETTINGS },
+                onConfigureRanobeLibAccess =
+                    ::openRanobeLibAccessSetup,
                 onTitleDeleted = ::removeLocalTitleFromUi
             )
             AppTab.IMPORT -> ImportScreen(
@@ -1265,6 +1328,8 @@ private fun MainApp(
                         RANOBELIB_BOOK_INITIAL_URI
                     )
                 },
+                onNeedRanobeLibAccess =
+                    ::openRanobeLibAccessSetup,
                 onImported = {
                     historyStore.add(it)
                     history = historyStore.load()
@@ -1286,11 +1351,8 @@ private fun MainApp(
                 error = libraryError,
                 treeUri = folderUri,
                 onRefresh = ::refreshLocalLibrary,
-                onPickFolder = {
-                    folderPicker.launch(
-                        RANOBELIB_BOOK_INITIAL_URI
-                    )
-                },
+                onPickFolder =
+                    ::openRanobeLibAccessSetup,
                 onAdd = {
                     tab = AppTab.IMPORT
                 },
@@ -1361,11 +1423,8 @@ private fun MainApp(
                     importHintsDone = false
                     tab = AppTab.IMPORT
                 },
-                onPickFolder = {
-                    folderPicker.launch(
-                        RANOBELIB_BOOK_INITIAL_URI
-                    )
-                },
+                onPickFolder =
+                    ::openRanobeLibAccessSetup,
                 onForgetFolder = {
                     preferences.ranobeLibBookTree = null
                     preferences.localLibraryCacheTree = null
@@ -1395,6 +1454,7 @@ private fun HomeScreen(
     onAdd: () -> Unit,
     onOpenLibrary: () -> Unit,
     onSettings: () -> Unit,
+    onConfigureRanobeLibAccess: () -> Unit,
     onTitleDeleted: (String) -> Unit
 ) {
     var selectedSlug by rememberSaveable {
@@ -1486,6 +1546,15 @@ private fun HomeScreen(
                     Icons.Default.Add,
                 onClick = onAdd
             )
+        }
+
+        if (!libraryConnected) {
+            item {
+                RanobeLibAccessBanner(
+                    onClick =
+                        onConfigureRanobeLibAccess
+                )
+            }
         }
 
         if (updateInfo != null) {
@@ -1652,6 +1721,7 @@ private fun ImportScreen(
     onHintsDone: () -> Unit,
     onBack: () -> Unit,
     onPickFolder: () -> Unit,
+    onNeedRanobeLibAccess: () -> Unit,
     onImported: (com.readerlb.app.importer.ExportResult) -> Unit,
     onOpenLibrary: () -> Unit
 ) {
@@ -2361,13 +2431,21 @@ private fun ImportScreen(
                         }
                         Switch(
                             checked = direct,
-                            enabled = folderUri != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R,
+                            enabled = !busy,
                             onCheckedChange = {
                                 enabled ->
-                                direct = enabled
-                                onDirectImportChanged(
-                                    enabled
-                                )
+                                if (
+                                    enabled &&
+                                    folderUri == null
+                                ) {
+                                    direct = false
+                                    onNeedRanobeLibAccess()
+                                } else {
+                                    direct = enabled
+                                    onDirectImportChanged(
+                                        enabled
+                                    )
+                                }
                             }
                         )
                     }
@@ -2399,7 +2477,10 @@ private fun ImportScreen(
                             lineHeight = 18.sp,
                             modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
                         )
-                        OutlineAction("Выбрать папку RanobeLib", onPickFolder)
+                        OutlineAction(
+                            "Настроить доступ",
+                            onNeedRanobeLibAccess
+                        )
                     }
                 }
             }
@@ -3253,17 +3334,7 @@ private fun LibraryScreen(
             }
         }
 
-        if (!connected && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            item {
-                Text(
-                    "Нет доступа к локальной библиотеке RanobeLib. На Android 11+ импорт сохраняет переносимый ZIP в Downloads/ReaderLB.",
-                    color = Muted,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-            }
-        }
-        if (!connected && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        if (!connected) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(
@@ -3287,15 +3358,23 @@ private fun LibraryScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            "ReaderLB прочитает только info.json, " +
-                                "chapters.json и обложки. Главы не " +
-                                "изменяются при просмотре библиотеки.",
+                            if (
+                                Build.VERSION.SDK_INT >=
+                                    Build.VERSION_CODES.R
+                            ) {
+                                "ReaderLB проверит доступ и сразу объяснит, " +
+                                    "что доступно на этой версии Android."
+                            } else {
+                                "ReaderLB прочитает только info.json, " +
+                                    "chapters.json и обложки. Главы не " +
+                                    "изменяются при просмотре библиотеки."
+                            },
                             color = Muted,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
                         )
                         OutlineAction(
-                            "Выбрать папку book",
+                            "Настроить доступ",
                             onPickFolder
                         )
                     }
@@ -3811,12 +3890,14 @@ private fun SettingsScreen(
                                 bottom = 14.dp
                             )
                     )
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                        OutlineAction(
-                            if (folderUri == null) "Подключить RanobeLib" else "Изменить доступ",
-                            onPickFolder
-                        )
-                    }
+                    OutlineAction(
+                        if (folderUri == null) {
+                            "Настроить доступ"
+                        } else {
+                            "Проверить доступ"
+                        },
+                        onPickFolder
+                    )
                     if (folderUri != null) {
                         Text(
                             "Отключить RanobeLib",
