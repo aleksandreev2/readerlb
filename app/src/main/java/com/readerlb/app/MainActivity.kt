@@ -1829,8 +1829,19 @@ private fun MainApp(
                     importHintsDone = false
                     tab = AppTab.IMPORT
                 },
-                onPickFolder =
-                    ::openRanobeLibAccessSetup,
+                onPickFolder = {
+                    if (
+                        Build.VERSION.SDK_INT <
+                        Build.VERSION_CODES.R &&
+                        folderUri != null
+                    ) {
+                        folderPicker.launch(
+                            RANOBELIB_BOOK_INITIAL_URI
+                        )
+                    } else {
+                        openRanobeLibAccessSetup()
+                    }
+                },
                 onForgetFolder = {
                     preferences.ranobeLibBookTree = null
                     preferences.localLibraryCacheTree = null
@@ -4297,10 +4308,16 @@ private fun SettingsScreen(
                             )
                     )
                     OutlineAction(
-                        if (folderUri == null) {
-                            "Настроить доступ"
-                        } else {
-                            "Проверить доступ"
+                        when {
+                            folderUri == null ->
+                                "Настроить доступ"
+
+                            Build.VERSION.SDK_INT <
+                                Build.VERSION_CODES.R ->
+                                "Изменить папку"
+
+                            else ->
+                                "Проверить доступ"
                         },
                         onPickFolder
                     )
