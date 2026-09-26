@@ -27,6 +27,7 @@ jobs:
         api-level:
           - 29
           - 35
+          - 36
 
     steps:
       - name: Checkout
