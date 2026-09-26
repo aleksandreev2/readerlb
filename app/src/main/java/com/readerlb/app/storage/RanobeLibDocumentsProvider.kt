@@ -49,11 +49,29 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         projection: Array<out String>?,
         sortOrder: String?
     ): Cursor {
-        val cursor = MatrixCursor(projection ?: documentColumns)
-        val parent = relative(parentDocumentId)
-        RanobeLibBackends.requireBackend().list(parent).forEach { name ->
-            addDocument(cursor, "$parentDocumentId/$name")
-        }
+        val cursor =
+            MatrixCursor(
+                projection
+                    ?: documentColumns
+            )
+        val parent =
+            relative(
+                parentDocumentId
+            )
+        RanobeLibBackends
+            .requireBackend()
+            .listEntries(parent)
+            .forEach {
+                    entry ->
+                addDocument(
+                    cursor = cursor,
+                    documentId =
+                        parentDocumentId +
+                            "/" +
+                            entry.name,
+                    entry = entry
+                )
+            }
         return cursor
     }
 
@@ -119,30 +137,107 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
     override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean =
         documentId.startsWith("$parentDocumentId/")
 
-    private fun addDocument(cursor: MatrixCursor, documentId: String) {
-        val path = relative(documentId)
-        val remote = RanobeLibBackends.requireBackend()
-        if (!remote.exists(path)) return
-        val directory = remote.isDirectory(path)
-        val flags = if (directory) {
-            DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE or
-                DocumentsContract.Document.FLAG_SUPPORTS_DELETE or
-                DocumentsContract.Document.FLAG_SUPPORTS_RENAME
-        } else {
-            DocumentsContract.Document.FLAG_SUPPORTS_WRITE or
-                DocumentsContract.Document.FLAG_SUPPORTS_DELETE or
-                DocumentsContract.Document.FLAG_SUPPORTS_RENAME
-        }
+    private fun addDocument(
+        cursor: MatrixCursor,
+        documentId: String,
+        entry: RanobeLibFileEntry? = null
+    ) {
+        val path =
+            relative(documentId)
+        val remote =
+            RanobeLibBackends
+                .requireBackend()
+
+        val resolved =
+            entry
+                ?: run {
+                    if (
+                        !remote.exists(path)
+                    ) {
+                        return
+                    }
+
+                    RanobeLibFileEntry(
+                        name =
+                            if (
+                                path.isEmpty()
+                            ) {
+                                "book"
+                            } else {
+                                path.substringAfterLast(
+                                    '/'
+                                )
+                            },
+                        isDirectory =
+                            remote.isDirectory(
+                                path
+                            ),
+                        length =
+                            remote.length(path),
+                        lastModified =
+                            remote.lastModified(
+                                path
+                            )
+                    )
+                }
+
+        val flags =
+            if (
+                resolved.isDirectory
+            ) {
+                DocumentsContract.Document
+                    .FLAG_DIR_SUPPORTS_CREATE or
+                    DocumentsContract.Document
+                        .FLAG_SUPPORTS_DELETE or
+                    DocumentsContract.Document
+                        .FLAG_SUPPORTS_RENAME
+            } else {
+                DocumentsContract.Document
+                    .FLAG_SUPPORTS_WRITE or
+                    DocumentsContract.Document
+                        .FLAG_SUPPORTS_DELETE or
+                    DocumentsContract.Document
+                        .FLAG_SUPPORTS_RENAME
+            }
+
         cursor.newRow().apply {
-            add(DocumentsContract.Document.COLUMN_DOCUMENT_ID, documentId)
-            add(DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                if (path.isEmpty()) "book" else path.substringAfterLast('/'))
-            add(DocumentsContract.Document.COLUMN_MIME_TYPE,
-                if (directory) DocumentsContract.Document.MIME_TYPE_DIR
-                else mimeType(path))
-            add(DocumentsContract.Document.COLUMN_SIZE, remote.length(path))
-            add(DocumentsContract.Document.COLUMN_LAST_MODIFIED, remote.lastModified(path))
-            add(DocumentsContract.Document.COLUMN_FLAGS, flags)
+            add(
+                DocumentsContract.Document
+                    .COLUMN_DOCUMENT_ID,
+                documentId
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_DISPLAY_NAME,
+                resolved.name
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_MIME_TYPE,
+                if (
+                    resolved.isDirectory
+                ) {
+                    DocumentsContract.Document
+                        .MIME_TYPE_DIR
+                } else {
+                    mimeType(path)
+                }
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_SIZE,
+                resolved.length
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_LAST_MODIFIED,
+                resolved.lastModified
+            )
+            add(
+                DocumentsContract.Document
+                    .COLUMN_FLAGS,
+                flags
+            )
         }
     }
 
