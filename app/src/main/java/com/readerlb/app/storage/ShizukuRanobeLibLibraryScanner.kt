@@ -5,13 +5,13 @@ import android.net.Uri
 import android.util.JsonReader
 import androidx.core.content.FileProvider
 import com.readerlb.app.BuildConfig
-import com.readerlb.app.shizuku.ShizukuRanobeLibBridge
+import com.readerlb.app.shizuku.RanobeLibPrivilegedFiles
 import org.json.JSONObject
 import java.io.File
 
 class ShizukuRanobeLibLibraryScanner(
     private val context: Context,
-    private val bridge: ShizukuRanobeLibBridge
+    private val bridge: RanobeLibPrivilegedFiles
 ) {
     fun scan(
         onProgress: (
