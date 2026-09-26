@@ -117,6 +117,7 @@ import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
 import com.readerlb.app.storage.LocalLibraryItem
 import com.readerlb.app.storage.Preferences
+import com.readerlb.app.storage.RanobeLibAccessAssessment
 import com.readerlb.app.storage.RanobeLibAccessCapability
 import com.readerlb.app.storage.assessRanobeLibAccess
 import com.readerlb.app.storage.RanobeLibLibraryScanner
@@ -295,6 +296,411 @@ private fun ReaderLBRoot(
             openUpdatesRequested = openUpdatesRequested,
             onOpenUpdatesConsumed = onOpenUpdatesConsumed
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RanobeLibAccessSetupSheet(
+    assessment: RanobeLibAccessAssessment,
+    onGrantLegacyAccess: () -> Unit,
+    onContinueWithoutDirectAccess: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState =
+        rememberModalBottomSheetState(
+            skipPartiallyExpanded = true
+        )
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor =
+            MaterialTheme
+                .colorScheme
+                .background
+    ) {
+        LazyColumn(
+            modifier =
+                Modifier.fillMaxWidth(),
+            contentPadding =
+                PaddingValues(
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = 28.dp
+                ),
+            verticalArrangement =
+                Arrangement.spacedBy(
+                    14.dp
+                )
+        ) {
+            item {
+                Text(
+                    "Доступ к RanobeLib",
+                    color = Ink,
+                    fontSize = 22.sp,
+                    fontWeight =
+                        FontWeight.Bold
+                )
+                Text(
+                    assessment.androidLabel,
+                    color = Blue,
+                    fontSize = 13.sp,
+                    fontWeight =
+                        FontWeight.SemiBold,
+                    modifier =
+                        Modifier.padding(
+                            top = 4.dp
+                        )
+                )
+            }
+
+            when (
+                assessment.capability
+            ) {
+                RanobeLibAccessCapability
+                    .CONNECTED -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Check,
+                            title =
+                                "Доступ уже есть",
+                            text =
+                                "ReaderLB может читать локальную библиотеку RanobeLib и добавлять главы напрямую.",
+                            success = true
+                        )
+                    }
+
+                    item {
+                        GradientButton(
+                            text = "Готово",
+                            onClick = onDismiss
+                        )
+                    }
+                }
+
+                RanobeLibAccessCapability
+                    .USER_PICKER -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Info,
+                            title =
+                                "Нужен доступ к папке book",
+                            text =
+                                "Android позволяет выдать его напрямую. ReaderLB откроет системный выбор папки сразу в каталоге RanobeLib.",
+                            success = false
+                        )
+                    }
+
+                    item {
+                        Text(
+                            "Выберите папку book и подтвердите доступ. ReaderLB сохранит системное разрешение, чтобы не спрашивать его при каждом запуске.",
+                            color = Muted,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp
+                        )
+                    }
+
+                    item {
+                        GradientButton(
+                            text =
+                                "Дать доступ к RanobeLib",
+                            onClick =
+                                onGrantLegacyAccess
+                        )
+                    }
+
+                    item {
+                        Box(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            contentAlignment =
+                                Alignment.Center
+                        ) {
+                            TextButton(
+                                onClick =
+                                    onContinueWithoutDirectAccess
+                            ) {
+                                Text(
+                                    "Пока работать через Downloads"
+                                )
+                            }
+                        }
+                    }
+                }
+
+                RanobeLibAccessCapability
+                    .SYSTEM_RESTRICTED -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Warning,
+                            title =
+                                "Android защищает папку RanobeLib",
+                            text =
+                                "Начиная с Android 11 система не разрешает обычным приложениям выбирать Android/data другого приложения. Обычное разрешение «Файлы» это не исправляет.",
+                            success = false
+                        )
+                    }
+
+                    item {
+                        Card(
+                            colors =
+                                CardDefaults.cardColors(
+                                    containerColor =
+                                        MaterialTheme
+                                            .colorScheme
+                                            .surface
+                                ),
+                            shape =
+                                RoundedCornerShape(
+                                    14.dp
+                                ),
+                            border =
+                                androidx.compose.foundation
+                                    .BorderStroke(
+                                        1.dp,
+                                        Line
+                                    )
+                        ) {
+                            Column(
+                                modifier =
+                                    Modifier.padding(
+                                        16.dp
+                                    ),
+                                verticalArrangement =
+                                    Arrangement.spacedBy(
+                                        8.dp
+                                    )
+                            ) {
+                                Text(
+                                    "Что работает сейчас",
+                                    color = Ink,
+                                    fontWeight =
+                                        FontWeight.Bold
+                                )
+                                Text(
+                                    "EPUB/TXT можно импортировать, а готовый пакет ReaderLB сохранит в Downloads/ReaderLB.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp
+                                )
+                                Divider()
+                                Text(
+                                    "Что требует прямого доступа",
+                                    color = Ink,
+                                    fontWeight =
+                                        FontWeight.Bold
+                                )
+                                Text(
+                                    "Просмотр уже скачанной библиотеки RanobeLib, экспорт её тайтлов и запись глав прямо в RanobeLib.",
+                                    color = Muted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Text(
+                            "Для полного доступа на новых Android нужен отдельный привилегированный мост вроде Shizuku или root. ReaderLB не будет отправлять вас в системную настройку, которая всё равно не даст доступ к этой папке.",
+                            color = Muted,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+
+                    item {
+                        GradientButton(
+                            text =
+                                "Работать через Downloads",
+                            onClick =
+                                onContinueWithoutDirectAccess
+                        )
+                    }
+
+                    item {
+                        Box(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            contentAlignment =
+                                Alignment.Center
+                        ) {
+                            TextButton(
+                                onClick =
+                                    onDismiss
+                            ) {
+                                Text("Закрыть")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccessSetupStatusCard(
+    icon: ImageVector,
+    title: String,
+    text: String,
+    success: Boolean
+) {
+    Card(
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    MaterialTheme
+                        .colorScheme
+                        .surface
+            ),
+        shape =
+            RoundedCornerShape(
+                14.dp
+            ),
+        border =
+            androidx.compose.foundation
+                .BorderStroke(
+                    1.dp,
+                    if (success) {
+                        Success
+                    } else {
+                        Color(
+                            0xFFE1B95B
+                        )
+                    }
+                )
+    ) {
+        Row(
+            modifier =
+                Modifier.padding(
+                    16.dp
+                ),
+            verticalAlignment =
+                Alignment.Top
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint =
+                    if (success) {
+                        Success
+                    } else {
+                        Color(
+                            0xFFE1B95B
+                        )
+                    },
+                modifier =
+                    Modifier.size(
+                        24.dp
+                    )
+            )
+            Column(
+                modifier =
+                    Modifier.padding(
+                        start = 12.dp
+                    )
+            ) {
+                Text(
+                    title,
+                    color = Ink,
+                    fontWeight =
+                        FontWeight.Bold
+                )
+                Text(
+                    text,
+                    color = Muted,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    modifier =
+                        Modifier.padding(
+                            top = 5.dp
+                        )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RanobeLibAccessBanner(
+    onClick: () -> Unit
+) {
+    Card(
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    MaterialTheme
+                        .colorScheme
+                        .surface
+            ),
+        shape =
+            RoundedCornerShape(
+                14.dp
+            ),
+        border =
+            androidx.compose.foundation
+                .BorderStroke(
+                    1.dp,
+                    Line
+                )
+    ) {
+        Column(
+            modifier =
+                Modifier.padding(
+                    16.dp
+                ),
+            verticalArrangement =
+                Arrangement.spacedBy(
+                    9.dp
+                )
+        ) {
+            Row(
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = Blue,
+                    modifier =
+                        Modifier.size(
+                            22.dp
+                        )
+                )
+                Text(
+                    "RanobeLib не подключена",
+                    color = Ink,
+                    fontWeight =
+                        FontWeight.Bold,
+                    modifier =
+                        Modifier.padding(
+                            start = 9.dp
+                        )
+                )
+            }
+            Text(
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.R
+                ) {
+                    "ReaderLB определит ограничения этой версии Android и сразу покажет рабочий вариант."
+                } else {
+                    "ReaderLB может получить доступ к папке book через системный выбор папки."
+                },
+                color = Muted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+            OutlineAction(
+                text = "Проверить доступ",
+                onClick = onClick
+            )
+        }
     }
 }
 
