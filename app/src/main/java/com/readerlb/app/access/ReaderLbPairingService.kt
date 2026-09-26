@@ -92,6 +92,13 @@ class ReaderLbPairingService :
     ): Int {
         when (intent?.action) {
             ACTION_REPLY -> {
+                startForeground(
+                    NOTIFICATION_ID,
+                    progressNotification(
+                        "Подключаю ReaderLB…",
+                        "Проверяю pairing-код."
+                    )
+                )
                 handlePairingReply(
                     intent
                 )
@@ -883,7 +890,7 @@ class ReaderLbPairingService :
                         EXTRA_DIRECT_CODE,
                         code
                     )
-            context.startService(
+            context.startForegroundService(
                 intent
             )
         }
