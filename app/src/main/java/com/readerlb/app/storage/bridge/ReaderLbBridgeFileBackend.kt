@@ -667,7 +667,7 @@ class ReaderLbBridgeFileBackend(
             soTimeout = 15_000
             connect(
                 InetSocketAddress(
-                    InetAddress.getLoopbackAddress(),
+                    InetAddress.getByName("127.0.0.1"),
                     port
                 ),
                 5_000
