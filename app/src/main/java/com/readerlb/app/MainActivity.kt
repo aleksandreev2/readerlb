@@ -2029,6 +2029,14 @@ private fun MainApp(
                 libraryScanned = libraryScanned,
                 libraryScanTotal = libraryScanTotal,
                 treeUri = folderUri,
+                shizukuBridge =
+                    if (
+                        shizukuReady
+                    ) {
+                        shizukuBridge
+                    } else {
+                        null
+                    },
                 updateInfo = latestUpdate,
                 updateBusy = updateBusy,
                 updateMessage = updateMessage,
@@ -2102,6 +2110,14 @@ private fun MainApp(
                 skippedTitles = librarySkipped,
                 error = libraryError,
                 treeUri = folderUri,
+                shizukuBridge =
+                    if (
+                        shizukuReady
+                    ) {
+                        shizukuBridge
+                    } else {
+                        null
+                    },
                 onRefresh = ::refreshLocalLibrary,
                 onPickFolder =
                     ::openRanobeLibAccessSetup,
@@ -2210,6 +2226,8 @@ private fun HomeScreen(
     libraryScanned: Int,
     libraryScanTotal: Int,
     treeUri: Uri?,
+    shizukuBridge:
+        ShizukuRanobeLibBridge?,
     updateInfo: UpdateInfo?,
     updateBusy: Boolean,
     updateMessage: String?,
@@ -2237,6 +2255,8 @@ private fun HomeScreen(
             modifier = modifier,
             item = selectedItem,
             treeUri = treeUri,
+            shizukuBridge =
+                shizukuBridge,
             onBack = {
                 selectedSlug = null
             },
@@ -3955,6 +3975,8 @@ private fun LibraryScreen(
     skippedTitles: Int,
     error: String?,
     treeUri: Uri?,
+    shizukuBridge:
+        ShizukuRanobeLibBridge?,
     onRefresh: () -> Unit,
     onPickFolder: () -> Unit,
     onAdd: () -> Unit,
@@ -5096,6 +5118,8 @@ private fun LibraryTitleDetail(
     modifier: Modifier,
     item: LocalLibraryItem,
     treeUri: Uri?,
+    shizukuBridge:
+        ShizukuRanobeLibBridge?,
     onBack: () -> Unit,
     onDeleted: (String) -> Unit
 ) {
@@ -5183,13 +5207,14 @@ private fun LibraryTitleDetail(
         ]
 
     fun startExport() {
-        val tree =
-            treeUri
-                ?: run {
-                    exportError =
-                        "Сначала подключите папку RanobeLib."
-                    return
-                }
+        if (
+            treeUri == null &&
+            shizukuBridge == null
+        ) {
+            exportError =
+                "ReaderLB пока не имеет доступа к локальной библиотеке RanobeLib."
+            return
+        }
 
         if (exportBusy) {
             return
@@ -5206,42 +5231,70 @@ private fun LibraryTitleDetail(
                     runInterruptible(
                         Dispatchers.IO
                     ) {
-                        exportManager.export(
-                            format =
-                                exportFormat,
-                            treeUri = tree,
-                            item = item,
-                            options =
-                                LocalExportOptions(
-                                    firstChapter =
-                                        if (
-                                            exportUseRange
-                                        ) {
-                                            exportFirstChapter
-                                        } else {
-                                            null
-                                        },
-                                    lastChapter =
-                                        if (
-                                            exportUseRange
-                                        ) {
-                                            exportLastChapter
-                                        } else {
-                                            null
-                                        },
-                                    includeCover =
-                                        exportIncludeCover,
-                                    includeImages =
-                                        exportIncludeImages
-                                ),
-                            onProgress = {
-                                    progress ->
-                                scope.launch {
-                                    exportProgress =
-                                        progress
-                                }
+                        val exportOptions =
+                            LocalExportOptions(
+                                firstChapter =
+                                    if (
+                                        exportUseRange
+                                    ) {
+                                        exportFirstChapter
+                                    } else {
+                                        null
+                                    },
+                                lastChapter =
+                                    if (
+                                        exportUseRange
+                                    ) {
+                                        exportLastChapter
+                                    } else {
+                                        null
+                                    },
+                                includeCover =
+                                    exportIncludeCover,
+                                includeImages =
+                                    exportIncludeImages
+                            )
+
+                        val progressCallback:
+                            (
+                                LocalExportProgress
+                            ) -> Unit = {
+                                progress ->
+                            scope.launch {
+                                exportProgress =
+                                    progress
                             }
-                        )
+                        }
+
+                        if (
+                            treeUri != null
+                        ) {
+                            exportManager.export(
+                                format =
+                                    exportFormat,
+                                treeUri =
+                                    treeUri,
+                                item = item,
+                                options =
+                                    exportOptions,
+                                onProgress =
+                                    progressCallback
+                            )
+                        } else {
+                            exportManager.export(
+                                format =
+                                    exportFormat,
+                                privilegedFiles =
+                                    requireNotNull(
+                                        shizukuBridge
+                                    ),
+                                item = item,
+                                options =
+                                    exportOptions,
+                                onProgress =
+                                    progressCallback
+                            )
+                        }
                     }
 
                 exportResult =
@@ -5402,9 +5455,16 @@ private fun LibraryTitleDetail(
                 TextButton(
                     enabled = !busy,
                     onClick = {
-                        val tree =
-                            treeUri
-                                ?: return@TextButton
+                        if (
+                            treeUri == null &&
+                            shizukuBridge ==
+                                null
+                        ) {
+                            error =
+                                "Доступ к RanobeLib потерян."
+                            return@TextButton
+                        }
+
                         busy = true
                         error = null
 
@@ -5413,13 +5473,28 @@ private fun LibraryTitleDetail(
                                 withContext(
                                     Dispatchers.IO
                                 ) {
-                                    transferManager
-                                        .deleteTitle(
-                                            treeUri =
-                                                tree,
-                                            folderName =
-                                                item.folderName
-                                        )
+                                    if (
+                                        treeUri !=
+                                        null
+                                    ) {
+                                        transferManager
+                                            .deleteTitle(
+                                                treeUri =
+                                                    treeUri,
+                                                folderName =
+                                                    item.folderName
+                                            )
+                                    } else {
+                                        transferManager
+                                            .deleteTitle(
+                                                bridge =
+                                                    requireNotNull(
+                                                        shizukuBridge
+                                                    ),
+                                                folderName =
+                                                    item.folderName
+                                            )
+                                    }
                                 }
                             }.onSuccess {
                                 confirmDelete =
@@ -5755,13 +5830,13 @@ private fun LibraryTitleDetail(
                         "Поделиться новеллой"
                     },
                     onClick = {
-                        val tree =
-                            treeUri
                         if (
-                            tree == null
+                            treeUri == null &&
+                            shizukuBridge ==
+                                null
                         ) {
                             error =
-                                "Сначала подключите папку RanobeLib."
+                                "ReaderLB пока не имеет доступа к RanobeLib."
                             return@OutlineAction
                         }
                         if (
@@ -5778,13 +5853,28 @@ private fun LibraryTitleDetail(
                                 withContext(
                                     Dispatchers.IO
                                 ) {
-                                    transferManager
-                                        .createShareUri(
-                                            treeUri =
-                                                tree,
-                                            item =
-                                                item
-                                        )
+                                    if (
+                                        treeUri !=
+                                        null
+                                    ) {
+                                        transferManager
+                                            .createShareUri(
+                                                treeUri =
+                                                    treeUri,
+                                                item =
+                                                    item
+                                            )
+                                    } else {
+                                        transferManager
+                                            .createShareUri(
+                                                bridge =
+                                                    requireNotNull(
+                                                        shizukuBridge
+                                                    ),
+                                                item =
+                                                    item
+                                            )
+                                    }
                                 }
                             }.onSuccess {
                                     shareUri ->
@@ -5818,7 +5908,12 @@ private fun LibraryTitleDetail(
                     enabled =
                         !busy &&
                             !exportBusy &&
-                            treeUri != null,
+                            (
+                                treeUri !=
+                                    null ||
+                                    shizukuBridge !=
+                                    null
+                                ),
                     onClick = {
                         confirmDelete = true
                     }
