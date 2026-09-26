@@ -113,24 +113,12 @@ jobs:
               TOKEN="$(printf 'ab%.0s' {1..32})"
 
               adb shell "CLASSPATH='$APK_PATH' nohup setsid /system/bin/app_process /system/bin --nice-name=readerlb_bridge com.readerlb.app.storage.bridge.ReaderLbBridgeMain '$BRIDGE_PORT' '$TOKEN' </dev/null >/data/local/tmp/readerlb-bridge.log 2>&1 &"
-
-              for attempt in $(seq 1 50); do
-                if adb shell "toybox nc -z 127.0.0.1 '$BRIDGE_PORT'" >/dev/null 2>&1; then
-                  break
-                fi
-                if [ "$attempt" -eq 50 ]; then
-                  adb shell cat /data/local/tmp/readerlb-bridge.log || true
-                  echo "::error::ReaderLB Bridge did not start"
-                  exit 1
-                fi
-                sleep 0.1
-              done
-
               adb forward "tcp:$FORWARD_PORT" "tcp:$BRIDGE_PORT"
 
               python3 - <<'PY'
             import socket
             import struct
+            import time
 
             HOST = "127.0.0.1"
             PORT = 39732
@@ -156,24 +144,35 @@ jobs:
                     remaining -= len(chunk)
                 return b"".join(chunks)
 
-            with socket.create_connection((HOST, PORT), timeout=5) as sock:
-                sock.sendall(
-                    struct.pack(">II", MAGIC, VERSION)
-                    + write_utf(TOKEN)
-                    + write_utf(OP)
+            last_error = None
+            for attempt in range(50):
+                try:
+                    with socket.create_connection((HOST, PORT), timeout=1) as sock:
+                        sock.sendall(
+                            struct.pack(">II", MAGIC, VERSION)
+                            + write_utf(TOKEN)
+                            + write_utf(OP)
+                        )
+
+                        ok = read_exact(sock, 1)
+                        assert ok == b"\x01", ok
+
+                        version = struct.unpack(">I", read_exact(sock, 4))[0]
+                        assert version == VERSION, version
+
+                        length = struct.unpack(">H", read_exact(sock, 2))[0]
+                        root = read_exact(sock, length).decode("utf-8")
+                        assert root.endswith("/Android/data/ru.libappc/files/book"), root
+
+                        print("ReaderLB Bridge PING OK:", root)
+                        break
+                except Exception as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            else:
+                raise RuntimeError(
+                    f"ReaderLB Bridge did not become reachable: {last_error}"
                 )
-
-                ok = read_exact(sock, 1)
-                assert ok == b"\x01", ok
-
-                version = struct.unpack(">I", read_exact(sock, 4))[0]
-                assert version == VERSION, version
-
-                length = struct.unpack(">H", read_exact(sock, 2))[0]
-                root = read_exact(sock, length).decode("utf-8")
-                assert root.endswith("/Android/data/ru.libappc/files/book"), root
-
-                print("ReaderLB Bridge PING OK:", root)
             PY
 
               adb forward --remove "tcp:$FORWARD_PORT" || true
