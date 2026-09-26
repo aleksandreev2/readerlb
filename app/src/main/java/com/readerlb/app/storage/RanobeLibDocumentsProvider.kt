@@ -6,9 +6,10 @@ import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
+import com.readerlb.app.storage.bridge.ReaderLbBridgeFileBackend
 import java.io.FileNotFoundException
 
-/** Presents the verified Shizuku library through the same document API used by SAF. */
+/** Presents the active verified RanobeLib backend through Android's document API. */
 class RanobeLibDocumentsProvider : DocumentsProvider() {
     private val documentColumns = arrayOf(
         DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -60,7 +61,29 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         documentId: String,
         mode: String,
         signal: CancellationSignal?
-    ): ParcelFileDescriptor = RanobeLibBackends.requireBackend().open(relative(documentId), mode)
+    ): ParcelFileDescriptor {
+        val backend =
+            RanobeLibBackends
+                .requireBackend()
+        val path =
+            relative(documentId)
+
+        return if (
+            backend is
+                ReaderLbBridgeFileBackend
+        ) {
+            backend.openProxy(
+                requireNotNull(context),
+                path,
+                mode
+            )
+        } else {
+            backend.open(
+                path,
+                mode
+            )
+        }
+    }
 
     override fun createDocument(
         parentDocumentId: String,
