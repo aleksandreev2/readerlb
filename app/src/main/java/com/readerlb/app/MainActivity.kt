@@ -92,6 +92,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import com.google.firebase.messaging.FirebaseMessaging
 import com.readerlb.app.export.ExportedLocalBookFile
 import com.readerlb.app.export.LocalBookExportFormat
@@ -1242,10 +1245,39 @@ private fun MainApp(
         }
 
     DisposableEffect(
-        shizukuBridge
+        shizukuBridge,
+        context
     ) {
+        val lifecycleOwner =
+            context as?
+                LifecycleOwner
+        val observer =
+            LifecycleEventObserver {
+                    _,
+                    event ->
+                if (
+                    event ==
+                    Lifecycle.Event
+                        .ON_RESUME
+                ) {
+                    shizukuBridge
+                        .refresh()
+                }
+            }
+
+        lifecycleOwner
+            ?.lifecycle
+            ?.addObserver(
+                observer
+            )
         shizukuBridge.start()
+
         onDispose {
+            lifecycleOwner
+                ?.lifecycle
+                ?.removeObserver(
+                    observer
+                )
             shizukuBridge.close()
         }
     }
