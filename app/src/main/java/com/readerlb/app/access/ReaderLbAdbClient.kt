@@ -27,6 +27,32 @@ internal object ReaderLbAdbClient {
         )
     }
 
+    fun connect(
+        context: Context,
+        port: Int
+    ) {
+        require(port in 1..65535)
+        val manager =
+            manager(context)
+        if (manager.isConnected) {
+            return
+        }
+
+        val connected =
+            manager.connect(
+                HOST,
+                port
+            )
+        if (
+            !connected &&
+            !manager.isConnected
+        ) {
+            throw IOException(
+                "Не удалось подключиться к Wireless Debugging"
+            )
+        }
+    }
+
     fun ensureConnected(
         context: Context,
         discoveryTimeoutMillis: Long =
