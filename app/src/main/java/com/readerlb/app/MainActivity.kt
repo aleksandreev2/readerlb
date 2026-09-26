@@ -2475,6 +2475,9 @@ private fun HomeScreen(
 private fun ImportScreen(
     modifier: Modifier,
     folderUri: Uri?,
+    shizukuBridge:
+        ShizukuRanobeLibBridge,
+    directAccessAvailable: Boolean,
     directImportEnabled: Boolean,
     epubLimits: EpubImportLimits,
     onDirectImportChanged: (Boolean) -> Unit,
@@ -2547,11 +2550,15 @@ private fun ImportScreen(
     var direct by rememberSaveable {
         mutableStateOf(
             directImportEnabled &&
-                (folderUri != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R)
+                directAccessAvailable
         )
     }
-    LaunchedEffect(folderUri) {
-        if (folderUri == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+    LaunchedEffect(
+        directAccessAvailable
+    ) {
+        if (
+            !directAccessAvailable
+        ) {
             direct = false
         }
     }
@@ -3394,7 +3401,8 @@ private fun ImportScreen(
                 enabled = !busy &&
                     selectedCount > 0 &&
                     parsed != null &&
-                    (!direct || folderUri != null) &&
+                    (!direct ||
+                        directAccessAvailable) &&
                     (parsed?.issues?.none {
                         it.severity == com.readerlb.app.importer.ImportIssueSeverity.WARNING
                     } != false || warningsAcknowledged),
@@ -3416,8 +3424,20 @@ private fun ImportScreen(
                                     firstChapter = firstChapter.ifBlank { null },
                                     lastChapter = lastChapter.ifBlank { null },
                                     ranobeLibBookTree =
-                                        if (direct) {
+                                        if (
+                                            direct
+                                        ) {
                                             folderUri
+                                        } else {
+                                            null
+                                        },
+                                    shizukuBridge =
+                                        if (
+                                            direct &&
+                                            folderUri ==
+                                                null
+                                        ) {
+                                            shizukuBridge
                                         } else {
                                             null
                                         },
