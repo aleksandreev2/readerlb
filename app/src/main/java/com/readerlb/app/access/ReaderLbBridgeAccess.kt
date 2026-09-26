@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.readerlb.app.storage.RanobeLibBackendKind
+import com.readerlb.app.storage.ReaderLbBuiltInAccessState
 import com.readerlb.app.storage.RanobeLibBackends
 import com.readerlb.app.storage.bridge.ReaderLbBridgeFileBackend
 import kotlinx.coroutines.CoroutineScope
@@ -18,15 +19,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.SecureRandom
 import java.util.UUID
-
-enum class ReaderLbBridgeState {
-    CHECKING,
-    DISCONNECTED,
-    PAIRING,
-    STARTING,
-    READY,
-    ERROR
-}
 
 /**
  * Owns ReaderLB's built-in privileged bridge lifecycle.
@@ -46,7 +38,7 @@ object ReaderLbBridgeAccess {
         )
 
     var state by mutableStateOf(
-        ReaderLbBridgeState.CHECKING
+        ReaderLbBuiltInAccessState.CHECKING
     )
         private set
 
@@ -67,7 +59,7 @@ object ReaderLbBridgeAccess {
         context: Context
     ) {
         state =
-            ReaderLbBridgeState.CHECKING
+            ReaderLbBuiltInAccessState.CHECKING
         lastError = null
 
         scope.launch {
@@ -83,9 +75,9 @@ object ReaderLbBridgeAccess {
 
             state =
                 if (restored) {
-                    ReaderLbBridgeState.READY
+                    ReaderLbBuiltInAccessState.READY
                 } else {
-                    ReaderLbBridgeState
+                    ReaderLbBuiltInAccessState
                         .DISCONNECTED
                 }
         }
@@ -95,7 +87,7 @@ object ReaderLbBridgeAccess {
         context: Context
     ) {
         state =
-            ReaderLbBridgeState.PAIRING
+            ReaderLbBuiltInAccessState.PAIRING
         lastError = null
 
         ReaderLbPairingService.start(
@@ -109,7 +101,7 @@ object ReaderLbBridgeAccess {
 
     internal fun markStarting() {
         state =
-            ReaderLbBridgeState.STARTING
+            ReaderLbBuiltInAccessState.STARTING
         lastError = null
     }
 
@@ -142,7 +134,7 @@ object ReaderLbBridgeAccess {
         )
 
         state =
-            ReaderLbBridgeState.READY
+            ReaderLbBuiltInAccessState.READY
         lastError = null
     }
 
@@ -150,7 +142,7 @@ object ReaderLbBridgeAccess {
         message: String
     ) {
         state =
-            ReaderLbBridgeState.ERROR
+            ReaderLbBuiltInAccessState.ERROR
         lastError =
             message.take(500)
     }
@@ -170,7 +162,7 @@ object ReaderLbBridgeAccess {
             .clear()
             .apply()
         state =
-            ReaderLbBridgeState.DISCONNECTED
+            ReaderLbBuiltInAccessState.DISCONNECTED
         lastError = null
     }
 
