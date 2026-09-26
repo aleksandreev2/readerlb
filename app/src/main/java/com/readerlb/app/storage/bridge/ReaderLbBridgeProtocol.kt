@@ -2,7 +2,7 @@ package com.readerlb.app.storage.bridge
 
 internal object ReaderLbBridgeProtocol {
     const val MAGIC = 0x524C4231 // RLB1
-    const val VERSION = 1
+    const val VERSION = 2
 
     const val OP_PING = "ping"
     const val OP_LIST = "list"
