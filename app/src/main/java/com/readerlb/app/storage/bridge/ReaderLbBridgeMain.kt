@@ -152,6 +152,78 @@ object ReaderLbBridgeMain {
                     output.flush()
                 }
 
+                ReaderLbBridgeProtocol.OP_LIST_META -> {
+                    val relative =
+                        readRelativePath(input)
+                    val directory =
+                        resolve(
+                            root,
+                            relative
+                        )
+                    require(directory.isDirectory) {
+                        "Not a directory"
+                    }
+
+                    val entries =
+                        directory
+                            .listFiles()
+                            .orEmpty()
+                            .asSequence()
+                            .mapNotNull {
+                                    child ->
+                                val childRelative =
+                                    if (
+                                        relative.isEmpty()
+                                    ) {
+                                        child.name
+                                    } else {
+                                        relative +
+                                            "/" +
+                                            child.name
+                                    }
+
+                                runCatching {
+                                    resolve(
+                                        root,
+                                        childRelative
+                                    )
+                                }.getOrNull()
+                            }
+                            .sortedBy {
+                                it.name
+                            }
+                            .toList()
+
+                    require(
+                        entries.size <=
+                            ReaderLbBridgeProtocol
+                                .MAX_LIST_ENTRIES
+                    ) {
+                        "Directory contains too many entries"
+                    }
+
+                    ok(output)
+                    output.writeInt(
+                        entries.size
+                    )
+                    entries.forEach {
+                            child ->
+                        output.writeUTF(
+                            child.name
+                        )
+                        output.writeBoolean(
+                            child.isDirectory
+                        )
+                        output.writeLong(
+                            child.length()
+                        )
+                        output.writeLong(
+                            child.lastModified()
+                        )
+                    }
+                    output.flush()
+                }
+
                 ReaderLbBridgeProtocol.OP_EXISTS ->
                     writeBoolean(
                         output,
