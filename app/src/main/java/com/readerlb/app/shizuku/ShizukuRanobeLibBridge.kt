@@ -41,7 +41,7 @@ class ShizukuRanobeLibBridge(
     private val onStatusChanged: (
         ShizukuRanobeLibStatus
     ) -> Unit
-) : AutoCloseable {
+) : RanobeLibPrivilegedFiles, AutoCloseable {
 
     private val appContext =
         context.applicationContext
@@ -390,7 +390,7 @@ class ShizukuRanobeLibBridge(
         }
     }
 
-    fun listNames(
+    override fun listNames(
         relativePath: String = ""
     ): List<String> =
         requireService()
@@ -399,7 +399,7 @@ class ShizukuRanobeLibBridge(
             )
             .toList()
 
-    fun exists(
+    override fun exists(
         relativePath: String
     ): Boolean =
         requireService()
@@ -407,7 +407,7 @@ class ShizukuRanobeLibBridge(
                 relativePath
             )
 
-    fun isDirectory(
+    override fun isDirectory(
         relativePath: String
     ): Boolean =
         requireService()
@@ -415,7 +415,7 @@ class ShizukuRanobeLibBridge(
                 relativePath
             )
 
-    fun length(
+    override fun length(
         relativePath: String
     ): Long =
         requireService()
@@ -423,7 +423,7 @@ class ShizukuRanobeLibBridge(
                 relativePath
             )
 
-    fun mkdirs(
+    override fun mkdirs(
         relativePath: String
     ): Boolean =
         requireService()
@@ -431,7 +431,7 @@ class ShizukuRanobeLibBridge(
                 relativePath
             )
 
-    fun deleteRecursively(
+    override fun deleteRecursively(
         relativePath: String
     ): Boolean =
         requireService()
@@ -439,7 +439,7 @@ class ShizukuRanobeLibBridge(
                 relativePath
             )
 
-    fun rename(
+    override fun rename(
         fromRelativePath: String,
         toRelativePath: String
     ): Boolean =
@@ -449,7 +449,7 @@ class ShizukuRanobeLibBridge(
                 toRelativePath
             )
 
-    fun openInput(
+    override fun openInput(
         relativePath: String
     ): InputStream =
         ParcelFileDescriptor
@@ -460,7 +460,7 @@ class ShizukuRanobeLibBridge(
                     )
             )
 
-    fun openOutput(
+    override fun openOutput(
         relativePath: String
     ): OutputStream =
         ParcelFileDescriptor
@@ -471,7 +471,7 @@ class ShizukuRanobeLibBridge(
                     )
             )
 
-    fun readBytes(
+    override fun readBytes(
         relativePath: String,
         limitBytes: Long
     ): ByteArray =
@@ -517,7 +517,7 @@ class ShizukuRanobeLibBridge(
             output.toByteArray()
         }
 
-    fun writeBytes(
+    override fun writeBytes(
         relativePath: String,
         bytes: ByteArray
     ) {
