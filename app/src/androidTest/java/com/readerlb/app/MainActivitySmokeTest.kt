@@ -19,18 +19,72 @@ import org.junit.runner.RunWith
 class MainActivitySmokeTest {
 
     @Test
-    fun modernAndroidShowsPortableFallbackWithoutBlockedFolderPicker() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-        if (composeRule.onAllNodesWithText("Пропустить").fetchSemanticsNodes().isNotEmpty()) {
-            composeRule.onNodeWithText("Пропустить").performClick()
+    fun modernAndroidExplainsRestrictedRanobeLibAccessUpFront() {
+        if (
+            Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.R
+        ) {
+            return
         }
-        composeRule.onNodeWithText("Настройки").performClick()
+
+        skipOnboardingIfNeeded()
+
+        if (
+            composeRule
+                .onAllNodesWithText(
+                    "Доступ к RanobeLib"
+                )
+                .fetchSemanticsNodes()
+                .isEmpty()
+        ) {
+            composeRule
+                .onNodeWithText(
+                    "Проверить доступ"
+                )
+                .performClick()
+            composeRule.waitForIdle()
+        }
+
+        composeRule
+            .onNodeWithText(
+                "Доступ к RanobeLib"
+            )
+            .fetchSemanticsNode()
+        composeRule
+            .onNodeWithText(
+                "Android защищает папку RanobeLib"
+            )
+            .fetchSemanticsNode()
+        composeRule
+            .onNodeWithText(
+                "Работать через Downloads"
+            )
+            .fetchSemanticsNode()
         assertTrue(
-            composeRule.onAllNodesWithText("Не подключено. Без доступа ReaderLB сохраняет готовый ZIP в Downloads.").fetchSemanticsNodes().isNotEmpty()
+            composeRule
+                .onAllNodesWithText(
+                    "Дать доступ к RanobeLib"
+                )
+                .fetchSemanticsNodes()
+                .isEmpty()
         )
-        assertTrue(
-            composeRule.onAllNodesWithText("Подключить RanobeLib").fetchSemanticsNodes().isEmpty()
-        )
+
+        composeRule
+            .onNodeWithText(
+                "Работать через Downloads"
+            )
+            .performClick()
+
+        composeRule
+            .onNodeWithText(
+                "Настройки"
+            )
+            .performClick()
+        composeRule
+            .onNodeWithText(
+                "Настроить доступ"
+            )
+            .fetchSemanticsNode()
     }
 
     @get:Rule
@@ -39,22 +93,8 @@ class MainActivitySmokeTest {
 
     @Test
     fun launchCanReachHomeScreen() {
-        val skipNodes =
-            composeRule
-                .onAllNodesWithText("Пропустить")
-                .fetchSemanticsNodes()
-
-        if (skipNodes.isNotEmpty()) {
-            composeRule
-                .onNodeWithContentDescription(
-                    "Экран знакомства ReaderLB 1"
-                )
-                .fetchSemanticsNode()
-
-            composeRule
-                .onNodeWithText("Пропустить")
-                .performClick()
-        }
+        skipOnboardingIfNeeded()
+        dismissAccessSetupIfNeeded()
 
         composeRule
             .onNodeWithText(
@@ -78,16 +118,8 @@ class MainActivitySmokeTest {
 
     @Test
     fun emptyImportHeroIsCenteredInTheScreen() {
-        val skipNodes =
-            composeRule
-                .onAllNodesWithText("Пропустить")
-                .fetchSemanticsNodes()
-
-        if (skipNodes.isNotEmpty()) {
-            composeRule
-                .onNodeWithText("Пропустить")
-                .performClick()
-        }
+        skipOnboardingIfNeeded()
+        dismissAccessSetupIfNeeded()
 
         composeRule
             .onAllNodesWithText(
@@ -127,16 +159,8 @@ class MainActivitySmokeTest {
 
     @Test
     fun systemBackReturnsFromSettingsToHome() {
-        if (
-            composeRule
-                .onAllNodesWithText("Пропустить")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        ) {
-            composeRule
-                .onNodeWithText("Пропустить")
-                .performClick()
-        }
+        skipOnboardingIfNeeded()
+        dismissAccessSetupIfNeeded()
 
         composeRule
             .onNodeWithContentDescription(
@@ -163,16 +187,8 @@ class MainActivitySmokeTest {
 
     @Test
     fun systemBackReturnsFromImportToHome() {
-        if (
-            composeRule
-                .onAllNodesWithText("Пропустить")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        ) {
-            composeRule
-                .onNodeWithText("Пропустить")
-                .performClick()
-        }
+        skipOnboardingIfNeeded()
+        dismissAccessSetupIfNeeded()
 
         composeRule
             .onAllNodesWithText(
@@ -198,6 +214,59 @@ class MainActivitySmokeTest {
         composeRule
             .onNodeWithText("Импортер глав для")
             .fetchSemanticsNode()
+    }
+
+    private fun skipOnboardingIfNeeded() {
+        if (
+            composeRule
+                .onAllNodesWithText(
+                    "Пропустить"
+                )
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        ) {
+            composeRule
+                .onNodeWithText(
+                    "Пропустить"
+                )
+                .performClick()
+            composeRule.waitForIdle()
+        }
+    }
+
+    private fun dismissAccessSetupIfNeeded() {
+        val modern =
+            composeRule
+                .onAllNodesWithText(
+                    "Работать через Downloads"
+                )
+                .fetchSemanticsNodes()
+
+        if (modern.isNotEmpty()) {
+            composeRule
+                .onNodeWithText(
+                    "Работать через Downloads"
+                )
+                .performClick()
+            composeRule.waitForIdle()
+            return
+        }
+
+        val legacy =
+            composeRule
+                .onAllNodesWithText(
+                    "Пока работать через Downloads"
+                )
+                .fetchSemanticsNodes()
+
+        if (legacy.isNotEmpty()) {
+            composeRule
+                .onNodeWithText(
+                    "Пока работать через Downloads"
+                )
+                .performClick()
+            composeRule.waitForIdle()
+        }
     }
 
 }

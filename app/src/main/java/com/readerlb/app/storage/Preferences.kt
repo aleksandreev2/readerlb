@@ -13,6 +13,18 @@ class Preferences(context: Context) {
         get() = prefs.getBoolean("onboarding_done", false)
         set(value) = prefs.edit().putBoolean("onboarding_done", value).apply()
 
+    var ranobeLibAccessIntroDone: Boolean
+        get() = prefs.getBoolean(
+            "ranobelib_access_intro_done",
+            false
+        )
+        set(value) = prefs.edit()
+            .putBoolean(
+                "ranobelib_access_intro_done",
+                value
+            )
+            .apply()
+
     var ranobeLibBookTree: Uri?
         get() = prefs.getString(
             "ranobelib_book_tree",
