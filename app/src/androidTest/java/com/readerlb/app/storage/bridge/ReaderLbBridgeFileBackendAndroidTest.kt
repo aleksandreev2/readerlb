@@ -2,16 +2,19 @@ package com.readerlb.app.storage.bridge
 
 import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
-import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.CountDownLatch
+import java.util.Collections
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import org.junit.Assert.assertArrayEquals
@@ -24,172 +27,275 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ReaderLbBridgeFileBackendAndroidTest {
     @Test
-    fun backendUsesAuthenticatedStreamingProtocol() {
-        val token = "ab".repeat(32)
+    fun backendUsesAuthenticatedProxyFileProtocol() {
+        val context =
+            InstrumentationRegistry
+                .getInstrumentation()
+                .targetContext
+        val token =
+            "ab".repeat(32)
+        val readPayload =
+            "reader-data"
+                .toByteArray(
+                    StandardCharsets.UTF_8
+                )
         val written =
-            AtomicReference<ByteArray>()
+            AtomicReference(
+                ByteArray(0)
+            )
         val failure =
             AtomicReference<Throwable>()
-        val handled =
-            CountDownLatch(4)
+        val stop =
+            AtomicBoolean(false)
+        val operations =
+            Collections.synchronizedSet(
+                linkedSetOf<String>()
+            )
 
-        ServerSocket(
-            0,
-            4,
-            InetAddress.getLoopbackAddress()
-        ).use { server ->
+        val server =
+            ServerSocket(
+                0,
+                8,
+                InetAddress
+                    .getLoopbackAddress()
+            ).apply {
+                soTimeout = 500
+            }
+
+        val serverThread =
             thread(
                 name =
                     "readerlb-bridge-test"
             ) {
                 try {
-                    repeat(4) {
-                        server.accept()
-                            .use { socket ->
-                                socket.soTimeout =
-                                    5_000
-                                val input =
-                                    DataInputStream(
-                                        BufferedInputStream(
-                                            socket.inputStream
-                                        )
+                    while (!stop.get()) {
+                        val socket =
+                            try {
+                                server.accept()
+                            } catch (
+                                timeout:
+                                SocketTimeoutException
+                            ) {
+                                continue
+                            }
+
+                        socket.use {
+                            it.soTimeout =
+                                5_000
+                            val input =
+                                DataInputStream(
+                                    BufferedInputStream(
+                                        it.inputStream
                                     )
-                                val output =
-                                    DataOutputStream(
-                                        BufferedOutputStream(
-                                            socket.outputStream
-                                        )
+                                )
+                            val output =
+                                DataOutputStream(
+                                    BufferedOutputStream(
+                                        it.outputStream
                                     )
-
-                                assertEquals(
-                                    ReaderLbBridgeProtocol.MAGIC,
-                                    input.readInt()
-                                )
-                                assertEquals(
-                                    ReaderLbBridgeProtocol.VERSION,
-                                    input.readInt()
-                                )
-                                assertEquals(
-                                    token,
-                                    input.readUTF()
                                 )
 
-                                when (
-                                    input.readUTF()
-                                ) {
-                                    ReaderLbBridgeProtocol.OP_PING -> {
-                                        output.writeBoolean(
-                                            true
-                                        )
-                                        output.writeInt(
-                                            ReaderLbBridgeProtocol.VERSION
-                                        )
-                                        output.writeUTF(
-                                            "/fake/book"
-                                        )
-                                    }
+                            assertEquals(
+                                ReaderLbBridgeProtocol.MAGIC,
+                                input.readInt()
+                            )
+                            assertEquals(
+                                ReaderLbBridgeProtocol.VERSION,
+                                input.readInt()
+                            )
+                            assertEquals(
+                                token,
+                                input.readUTF()
+                            )
 
-                                    ReaderLbBridgeProtocol.OP_LIST -> {
-                                        assertEquals(
-                                            "",
-                                            input.readUTF()
-                                        )
-                                        output.writeBoolean(
-                                            true
-                                        )
-                                        output.writeInt(2)
-                                        output.writeUTF(
-                                            "alpha"
-                                        )
-                                        output.writeUTF(
-                                            "beta"
-                                        )
-                                    }
+                            val operation =
+                                input.readUTF()
+                            operations.add(
+                                operation
+                            )
 
-                                    ReaderLbBridgeProtocol.OP_READ -> {
-                                        assertEquals(
-                                            "chapter/data.txt",
-                                            input.readUTF()
-                                        )
-                                        val payload =
-                                            "reader-data"
-                                                .toByteArray(
-                                                    StandardCharsets.UTF_8
-                                                )
-                                        output.writeBoolean(
-                                            true
-                                        )
-                                        output.writeLong(
-                                            payload.size
-                                                .toLong()
-                                        )
-                                        output.write(
-                                            payload
-                                        )
-                                    }
-
-                                    ReaderLbBridgeProtocol.OP_WRITE -> {
-                                        assertEquals(
-                                            "chapter/out.txt",
-                                            input.readUTF()
-                                        )
-                                        assertEquals(
-                                            false,
-                                            input.readBoolean()
-                                        )
-                                        output.writeBoolean(
-                                            true
-                                        )
-                                        output.flush()
-
-                                        val bytes =
-                                            ByteArrayOutputStream()
-                                        val buffer =
-                                            ByteArray(1024)
-                                        while (true) {
-                                            val count =
-                                                input.read(
-                                                    buffer
-                                                )
-                                            if (count < 0) {
-                                                break
-                                            }
-                                            bytes.write(
-                                                buffer,
-                                                0,
-                                                count
-                                            )
-                                        }
-                                        written.set(
-                                            bytes.toByteArray()
-                                        )
-
-                                        output.writeBoolean(
-                                            true
-                                        )
-                                    }
-
-                                    else ->
-                                        error(
-                                            "Unexpected operation"
-                                        )
+                            when (operation) {
+                                ReaderLbBridgeProtocol.OP_PING -> {
+                                    output.writeBoolean(
+                                        true
+                                    )
+                                    output.writeInt(
+                                        ReaderLbBridgeProtocol.VERSION
+                                    )
+                                    output.writeUTF(
+                                        "/fake/book"
+                                    )
                                 }
 
-                                output.flush()
+                                ReaderLbBridgeProtocol.OP_LIST -> {
+                                    assertEquals(
+                                        "",
+                                        input.readUTF()
+                                    )
+                                    output.writeBoolean(
+                                        true
+                                    )
+                                    output.writeInt(2)
+                                    output.writeUTF(
+                                        "alpha"
+                                    )
+                                    output.writeUTF(
+                                        "beta"
+                                    )
+                                }
+
+                                ReaderLbBridgeProtocol.OP_LENGTH -> {
+                                    val path =
+                                        input.readUTF()
+                                    output.writeBoolean(
+                                        true
+                                    )
+                                    output.writeLong(
+                                        if (
+                                            path ==
+                                                "chapter/data.txt"
+                                        ) {
+                                            readPayload.size
+                                                .toLong()
+                                        } else {
+                                            written.get()
+                                                .size
+                                                .toLong()
+                                        }
+                                    )
+                                }
+
+                                ReaderLbBridgeProtocol.OP_READ_AT -> {
+                                    assertEquals(
+                                        "chapter/data.txt",
+                                        input.readUTF()
+                                    )
+                                    val offset =
+                                        input.readLong()
+                                            .toInt()
+                                    val requested =
+                                        input.readInt()
+                                    val count =
+                                        if (
+                                            offset >=
+                                                readPayload.size
+                                        ) {
+                                            0
+                                        } else {
+                                            minOf(
+                                                requested,
+                                                readPayload.size -
+                                                    offset
+                                            )
+                                        }
+
+                                    output.writeBoolean(
+                                        true
+                                    )
+                                    output.writeInt(
+                                        count
+                                    )
+                                    if (count > 0) {
+                                        output.write(
+                                            readPayload,
+                                            offset,
+                                            count
+                                        )
+                                    }
+                                }
+
+                                ReaderLbBridgeProtocol.OP_TRUNCATE -> {
+                                    assertEquals(
+                                        "chapter/out.txt",
+                                        input.readUTF()
+                                    )
+                                    val length =
+                                        input.readLong()
+                                    assertEquals(
+                                        0L,
+                                        length
+                                    )
+                                    written.set(
+                                        ByteArray(0)
+                                    )
+                                    output.writeBoolean(
+                                        true
+                                    )
+                                }
+
+                                ReaderLbBridgeProtocol.OP_WRITE_AT -> {
+                                    assertEquals(
+                                        "chapter/out.txt",
+                                        input.readUTF()
+                                    )
+                                    val offset =
+                                        input.readLong()
+                                            .toInt()
+                                    val count =
+                                        input.readInt()
+                                    val bytes =
+                                        ByteArray(count)
+                                    input.readFully(
+                                        bytes
+                                    )
+
+                                    val old =
+                                        written.get()
+                                    val next =
+                                        ByteArray(
+                                            maxOf(
+                                                old.size,
+                                                offset +
+                                                    count
+                                            )
+                                        )
+                                    old.copyInto(next)
+                                    bytes.copyInto(
+                                        next,
+                                        offset
+                                    )
+                                    written.set(next)
+
+                                    output.writeBoolean(
+                                        true
+                                    )
+                                    output.writeInt(
+                                        count
+                                    )
+                                }
+
+                                ReaderLbBridgeProtocol.OP_FSYNC -> {
+                                    input.readUTF()
+                                    output.writeBoolean(
+                                        true
+                                    )
+                                }
+
+                                else ->
+                                    error(
+                                        "Unexpected operation: " +
+                                            operation
+                                    )
                             }
-                        handled.countDown()
+
+                            output.flush()
+                        }
+                    }
+                } catch (
+                    closed:
+                    SocketException
+                ) {
+                    if (!stop.get()) {
+                        failure.set(
+                            closed
+                        )
                     }
                 } catch (error: Throwable) {
                     failure.set(error)
-                    while (
-                        handled.count >
-                        0
-                    ) {
-                        handled.countDown()
-                    }
                 }
             }
 
+        try {
             val backend =
                 ReaderLbBridgeFileBackend(
                     server.localPort,
@@ -210,7 +316,8 @@ class ReaderLbBridgeFileBackendAndroidTest {
             val readBytes =
                 ParcelFileDescriptor
                     .AutoCloseInputStream(
-                        backend.open(
+                        backend.openProxy(
+                            context,
                             "chapter/data.txt",
                             "r"
                         )
@@ -227,7 +334,8 @@ class ReaderLbBridgeFileBackendAndroidTest {
 
             ParcelFileDescriptor
                 .AutoCloseOutputStream(
-                    backend.open(
+                    backend.openProxy(
+                        context,
                         "chapter/out.txt",
                         "w"
                     )
@@ -239,23 +347,65 @@ class ReaderLbBridgeFileBackendAndroidTest {
                                 StandardCharsets.UTF_8
                             )
                     )
+                    it.flush()
                 }
 
-            assertTrue(
-                handled.await(
-                    5,
+            val deadline =
+                System.nanoTime() +
                     TimeUnit.SECONDS
+                        .toNanos(5)
+            while (
+                System.nanoTime() <
+                    deadline &&
+                !operations.containsAll(
+                    setOf(
+                        ReaderLbBridgeProtocol
+                            .OP_PING,
+                        ReaderLbBridgeProtocol
+                            .OP_LIST,
+                        ReaderLbBridgeProtocol
+                            .OP_READ_AT,
+                        ReaderLbBridgeProtocol
+                            .OP_TRUNCATE,
+                        ReaderLbBridgeProtocol
+                            .OP_WRITE_AT
+                    )
                 )
-            )
-            assertNull(
-                failure.get()
+            ) {
+                Thread.sleep(25)
+            }
+
+            assertTrue(
+                operations.containsAll(
+                    setOf(
+                        ReaderLbBridgeProtocol
+                            .OP_PING,
+                        ReaderLbBridgeProtocol
+                            .OP_LIST,
+                        ReaderLbBridgeProtocol
+                            .OP_READ_AT,
+                        ReaderLbBridgeProtocol
+                            .OP_TRUNCATE,
+                        ReaderLbBridgeProtocol
+                            .OP_WRITE_AT
+                    )
+                )
             )
             assertEquals(
                 "written-data",
                 written.get()
-                    ?.toString(
+                    .toString(
                         StandardCharsets.UTF_8
                     )
+            )
+            assertNull(
+                failure.get()
+            )
+        } finally {
+            stop.set(true)
+            server.close()
+            serverThread.join(
+                2_000
             )
         }
     }
