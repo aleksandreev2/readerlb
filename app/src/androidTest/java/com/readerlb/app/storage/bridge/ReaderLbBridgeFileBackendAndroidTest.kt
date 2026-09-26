@@ -127,7 +127,7 @@ class ReaderLbBridgeFileBackendAndroidTest {
                                     )
                                 }
 
-                                ReaderLbBridgeProtocol.OP_LIST -> {
+                                ReaderLbBridgeProtocol.OP_LIST_META -> {
                                     assertEquals(
                                         "",
                                         input.readUTF()
@@ -136,12 +136,24 @@ class ReaderLbBridgeFileBackendAndroidTest {
                                         true
                                     )
                                     output.writeInt(2)
+
                                     output.writeUTF(
                                         "alpha"
                                     )
+                                    output.writeBoolean(
+                                        true
+                                    )
+                                    output.writeLong(0L)
+                                    output.writeLong(11L)
+
                                     output.writeUTF(
                                         "beta"
                                     )
+                                    output.writeBoolean(
+                                        false
+                                    )
+                                    output.writeLong(7L)
+                                    output.writeLong(22L)
                                 }
 
                                 ReaderLbBridgeProtocol.OP_LENGTH -> {
@@ -362,7 +374,7 @@ class ReaderLbBridgeFileBackendAndroidTest {
                         ReaderLbBridgeProtocol
                             .OP_PING,
                         ReaderLbBridgeProtocol
-                            .OP_LIST,
+                            .OP_LIST_META,
                         ReaderLbBridgeProtocol
                             .OP_READ_AT,
                         ReaderLbBridgeProtocol
@@ -381,7 +393,7 @@ class ReaderLbBridgeFileBackendAndroidTest {
                         ReaderLbBridgeProtocol
                             .OP_PING,
                         ReaderLbBridgeProtocol
-                            .OP_LIST,
+                            .OP_LIST_META,
                         ReaderLbBridgeProtocol
                             .OP_READ_AT,
                         ReaderLbBridgeProtocol
