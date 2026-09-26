@@ -311,6 +311,7 @@ private fun ReaderLBRoot(
 private fun RanobeLibAccessSetupSheet(
     assessment: RanobeLibAccessAssessment,
     onGrantLegacyAccess: () -> Unit,
+    onBuiltInAccessSetup: () -> Unit,
     onShizukuAction: () -> Unit,
     onContinueWithoutDirectAccess: () -> Unit,
     onDismiss: () -> Unit
@@ -436,6 +437,128 @@ private fun RanobeLibAccessSetupSheet(
                                 )
                             }
                         }
+                    }
+                }
+
+                RanobeLibAccessCapability
+                    .READERLB_SETUP_REQUIRED -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Info,
+                            title =
+                                "Настроить прямой доступ",
+                            text =
+                                "ReaderLB подключится к локальной библиотеке сам. Shizuku устанавливать не нужно.",
+                            success = false
+                        )
+                    }
+
+                    item {
+                        Text(
+                            "Нажмите кнопку ниже. ReaderLB откроет Wireless Debugging, найдёт pairing-порт и попросит только 6-значный код из настроек. После подключения библиотека найдётся автоматически.",
+                            color = Muted,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp
+                        )
+                    }
+
+                    item {
+                        GradientButton(
+                            text =
+                                "Настроить прямой доступ",
+                            onClick =
+                                onBuiltInAccessSetup
+                        )
+                    }
+
+                    item {
+                        Text(
+                            "Настройка нужна один раз до перезагрузки телефона. После запуска ReaderLB Bridge беспроводную отладку можно выключить.",
+                            color = Muted,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+
+                    item {
+                        TextButton(
+                            onClick =
+                                onContinueWithoutDirectAccess
+                        ) {
+                            Text(
+                                "Пока работать без прямого доступа"
+                            )
+                        }
+                    }
+                }
+
+                RanobeLibAccessCapability
+                    .READERLB_CONNECTING -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Info,
+                            title =
+                                "Подключаем ReaderLB",
+                            text =
+                                "Откройте в Wireless Debugging пункт «Pair device with pairing code» и введите код в уведомлении ReaderLB. Остальное приложение сделает само.",
+                            success = false
+                        )
+                    }
+
+                    item {
+                        LinearProgressIndicator(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            color = Blue
+                        )
+                    }
+
+                    item {
+                        TextButton(
+                            onClick =
+                                onContinueWithoutDirectAccess
+                        ) {
+                            Text(
+                                "Скрыть и продолжить без прямого доступа"
+                            )
+                        }
+                    }
+                }
+
+                RanobeLibAccessCapability
+                    .READERLB_ERROR -> {
+                    item {
+                        AccessSetupStatusCard(
+                            icon =
+                                Icons.Default.Warning,
+                            title =
+                                "Прямой доступ не подключён",
+                            text =
+                                ReaderLbBridgeAccess
+                                    .lastError
+                                    ?: "Не удалось завершить настройку.",
+                            success = false
+                        )
+                    }
+
+                    item {
+                        GradientButton(
+                            text =
+                                "Попробовать ещё раз",
+                            onClick =
+                                onBuiltInAccessSetup
+                        )
+                    }
+
+                    item {
+                        Text(
+                            "Если на устройстве уже настроен Shizuku, ReaderLB по-прежнему может использовать его как запасной способ.",
+                            color = Muted,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
                     }
                 }
 
@@ -1240,9 +1363,7 @@ private fun MainApp(
             Build.VERSION.SDK_INT <
                 Build.VERSION_CODES.R
         ) {
-            folderPicker@ run {
-                return@run
-            }
+            return
         }
 
         if (
