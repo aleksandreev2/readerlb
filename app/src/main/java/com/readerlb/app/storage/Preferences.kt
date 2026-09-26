@@ -25,6 +25,19 @@ class Preferences(context: Context) {
             )
             .apply()
 
+    var shizukuAccessIntroDone: Boolean
+        get() = prefs.getBoolean(
+            "shizuku_access_intro_done",
+            false
+        )
+        set(value) = prefs.edit()
+            .putBoolean(
+                "shizuku_access_intro_done",
+                value
+            )
+            .apply()
+
+
     var ranobeLibBookTree: Uri?
         get() = prefs.getString(
             "ranobelib_book_tree",
