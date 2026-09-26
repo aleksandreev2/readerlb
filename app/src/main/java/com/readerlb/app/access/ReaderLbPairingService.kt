@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.os.IBinder
 import com.readerlb.app.MainActivity
 import java.net.InetSocketAddress
@@ -37,6 +38,9 @@ class ReaderLbPairingService :
 
     private lateinit var nsd:
         NsdManager
+    private var multicastLock:
+        WifiManager.MulticastLock? =
+        null
 
     private var pairingDiscovery:
         NsdManager.DiscoveryListener? =
@@ -59,6 +63,21 @@ class ReaderLbPairingService :
             getSystemService(
                 NsdManager::class.java
             )
+
+        multicastLock =
+            getSystemService(
+                WifiManager::class.java
+            )
+                ?.createMulticastLock(
+                    "ReaderLB:adb-mdns"
+                )
+                ?.apply {
+                    setReferenceCounted(
+                        false
+                    )
+                    acquire()
+                }
+
         createChannel()
     }
 
@@ -101,6 +120,14 @@ class ReaderLbPairingService :
 
     override fun onDestroy() {
         stopDiscoveries()
+        runCatching {
+            multicastLock
+                ?.takeIf {
+                    it.isHeld
+                }
+                ?.release()
+        }
+        multicastLock = null
         executor.shutdownNow()
         super.onDestroy()
     }
