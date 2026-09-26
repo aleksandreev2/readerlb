@@ -1,7 +1,8 @@
 package com.readerlb.app.storage.bridge
 
-import android.net.LocalSocket
-import android.net.LocalSocketAddress
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 import android.os.ParcelFileDescriptor
 import com.readerlb.app.storage.RanobeLibFileBackend
 import java.io.BufferedInputStream
@@ -15,7 +16,7 @@ import java.util.concurrent.Executors
  * App-side backend for ReaderLB's privileged local bridge.
  */
 class ReaderLbBridgeFileBackend(
-    private val socketName: String,
+    private val port: Int,
     private val token: String
 ) : RanobeLibFileBackend {
     private val ioExecutor =
@@ -354,15 +355,15 @@ class ReaderLbBridgeFileBackend(
             )
         }
 
-    private fun openSocket(): LocalSocket =
-        LocalSocket().apply {
+    private fun openSocket(): Socket =
+        Socket().apply {
             soTimeout = 15_000
             connect(
-                LocalSocketAddress(
-                    socketName,
-                    LocalSocketAddress
-                        .Namespace.ABSTRACT
-                )
+                InetSocketAddress(
+                    InetAddress.getLoopbackAddress(),
+                    port
+                ),
+                5_000
             )
         }
 
