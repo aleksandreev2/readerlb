@@ -9,6 +9,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import android.provider.DocumentsContract
 import java.io.StringReader
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
 data class LocalLibraryItem(
     val title: String,
@@ -310,17 +312,21 @@ class RanobeLibLibraryScanner(
                 directory.name
             }
 
-        val coverName = media
-            .optString("imageUrl")
-            .trim()
-            .takeIf(
-                String::isNotBlank
+        val coverName =
+            resolveLocalCoverName(
+                imageUrl =
+                    media
+                        .optString(
+                            "imageUrl"
+                        ),
+                availableFileNames =
+                    children.keys
             )
-            ?.substringAfterLast('/')
 
-        val coverUri = coverName
-            ?.let(children::get)
-            ?.uri
+        val coverUri =
+            coverName
+                ?.let(children::get)
+                ?.uri
 
         return LocalLibraryItem(
             title = title,
@@ -468,6 +474,134 @@ class RanobeLibLibraryScanner(
         val uri: Uri
     )
 }
+
+internal fun resolveLocalCoverName(
+    imageUrl: String,
+    availableFileNames: Set<String>
+): String? {
+    val imageFiles =
+        availableFileNames
+            .asSequence()
+            .filter(
+                ::isLocalCoverImageName
+            )
+            .toList()
+
+    if (
+        imageFiles.isEmpty()
+    ) {
+        return null
+    }
+
+    val requestedRaw =
+        imageUrl
+            .trim()
+            .substringBefore('#')
+            .substringBefore('?')
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .trim()
+    val requested =
+        runCatching {
+            URLDecoder.decode(
+                requestedRaw,
+                StandardCharsets.UTF_8
+                    .name()
+            )
+        }
+            .getOrDefault(
+                requestedRaw
+            )
+            .trim()
+
+    if (
+        requested.isNotBlank()
+    ) {
+        imageFiles
+            .firstOrNull {
+                it.equals(
+                    requested,
+                    ignoreCase = true
+                )
+            }
+            ?.let {
+                return it
+            }
+
+        val requestedStem =
+            requested
+                .substringBeforeLast(
+                    '.',
+                    missingDelimiterValue =
+                        requested
+                )
+
+        imageFiles
+            .firstOrNull {
+                it.substringBeforeLast(
+                    '.',
+                    missingDelimiterValue =
+                        it
+                ).equals(
+                    requestedStem,
+                    ignoreCase = true
+                )
+            }
+            ?.let {
+                return it
+            }
+    }
+
+    PREFERRED_LOCAL_COVER_STEMS
+        .forEach {
+                stem ->
+            imageFiles
+                .firstOrNull {
+                    it.substringBeforeLast(
+                        '.',
+                        missingDelimiterValue =
+                            it
+                    ).equals(
+                        stem,
+                        ignoreCase = true
+                    )
+                }
+                ?.let {
+                    return it
+                }
+        }
+
+    return imageFiles
+        .singleOrNull()
+}
+
+private fun isLocalCoverImageName(
+    name: String
+): Boolean =
+    name
+        .substringAfterLast(
+            '.',
+            ""
+        )
+        .lowercase() in
+        LOCAL_COVER_EXTENSIONS
+
+private val LOCAL_COVER_EXTENSIONS =
+    setOf(
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "gif"
+    )
+
+private val PREFERRED_LOCAL_COVER_STEMS =
+    listOf(
+        "cover",
+        "poster",
+        "thumbnail",
+        "thumb"
+    )
 
 internal data class LocalChapterSummary(
     val chapterCount: Int,
