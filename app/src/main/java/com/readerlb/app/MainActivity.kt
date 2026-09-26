@@ -3320,16 +3320,12 @@ private fun ImportScreen(
                         },
                     enabled =
                         !busy &&
-                            folderUri != null &&
+                            directAccessAvailable &&
                             selectedUri != null,
                     onClick = {
                         val rawUri =
                             selectedUri
                                 ?: return@GradientButton
-                        val tree =
-                            folderUri
-                                ?: return@GradientButton
-
                         busy = true
                         error = null
                         success = null
@@ -3339,15 +3335,30 @@ private fun ImportScreen(
                                 withContext(
                                     Dispatchers.IO
                                 ) {
-                                    transferManager
-                                        .install(
-                                            uri =
-                                                Uri.parse(
-                                                    rawUri
-                                                ),
-                                            treeUri =
-                                                tree
-                                        )
+                                    if (
+                                        folderUri !=
+                                        null
+                                    ) {
+                                        transferManager
+                                            .install(
+                                                uri =
+                                                    Uri.parse(
+                                                        rawUri
+                                                    ),
+                                                treeUri =
+                                                    folderUri
+                                            )
+                                    } else {
+                                        transferManager
+                                            .install(
+                                                uri =
+                                                    Uri.parse(
+                                                        rawUri
+                                                    ),
+                                                bridge =
+                                                    shizukuBridge
+                                            )
+                                    }
                                 }
                             }.onSuccess {
                                     result ->
