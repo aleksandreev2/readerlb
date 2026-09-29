@@ -16,13 +16,17 @@ class RanobeLibDocumentsProviderAndroidTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "provider-test-${System.nanoTime()}")
         assertTrue(root.mkdir())
+        assertTrue(File(root, "book").mkdir())
+        assertTrue(File(root, "manga").mkdir())
         val serviceField = ShizukuAccess::class.java.getDeclaredField("files")
         serviceField.isAccessible = true
         val previous = serviceField.get(ShizukuAccess)
         serviceField.set(ShizukuAccess, TestFiles(root))
         try {
             val tree = DocumentFile.fromTreeUri(context, ShizukuAccess.treeUri)!!
+            val manga = DocumentFile.fromTreeUri(context, ShizukuAccess.mangaTreeUri)!!
             assertTrue(tree.isDirectory)
+            assertTrue(manga.isDirectory)
             val title = tree.createDirectory("title")!!
             val info = title.createFile("application/json", "info.json")!!
             context.contentResolver.openOutputStream(info.uri, "w")!!.use {
@@ -43,10 +47,13 @@ class RanobeLibDocumentsProviderAndroidTest {
     }
 
     private class TestFiles(private val root: File) : IReaderLbFiles.Stub() {
-        private fun file(path: String) = if (path.isEmpty()) root else File(root, path)
+        private fun file(path: String) = File(root, path)
         override fun probe() = true
+        override fun diagnostics() = "Test service root=${root.path}"
         override fun list(relativePath: String): Array<String> =
             file(relativePath).list()?.toList().orEmpty().toTypedArray()
+        override fun listEntries(relativePath: String): Array<String> =
+            file(relativePath).listFiles().orEmpty().map { (if (it.isDirectory) "D" else "F") + it.name }.toTypedArray()
         override fun exists(relativePath: String) = file(relativePath).exists()
         override fun isDirectory(relativePath: String) = file(relativePath).isDirectory
         override fun length(relativePath: String) = file(relativePath).length()

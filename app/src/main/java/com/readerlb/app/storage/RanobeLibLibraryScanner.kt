@@ -12,6 +12,8 @@ import java.io.StringReader
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
+enum class LocalContentType { BOOK, MANGA }
+
 data class LocalLibraryItem(
     val title: String,
     val slugUrl: String,
@@ -21,7 +23,8 @@ data class LocalLibraryItem(
     val coverUri: Uri?,
     val writeTime: Long,
     val createdByReaderLB: Boolean,
-    val folderName: String = slugUrl
+    val folderName: String = slugUrl,
+    val contentType: LocalContentType = LocalContentType.BOOK
 )
 
 data class LocalLibrarySnapshot(
@@ -63,6 +66,7 @@ internal fun encodeLocalLibraryCache(
                     "folderName",
                     item.folderName
                 )
+                .put("contentType", item.contentType.name)
                 .apply {
                     item.coverUri?.let {
                         put(
@@ -156,7 +160,10 @@ internal fun decodeLocalLibraryCache(
                             .trim()
                             .ifBlank {
                                 slugUrl
-                            }
+                            },
+                    contentType = runCatching {
+                        LocalContentType.valueOf(item.optString("contentType", "BOOK"))
+                    }.getOrDefault(LocalContentType.BOOK)
                 )
             )
         }
@@ -179,11 +186,13 @@ class RanobeLibLibraryScanner(
                     .getTreeDocumentId(
                         treeUri
                     )
-            }.getOrElse {
+            }.getOrElse { cause ->
                 error(
                     "Не удалось определить папку RanobeLib"
                 )
             }
+
+        val contentType = if (rootDocumentId == "manga") LocalContentType.MANGA else LocalContentType.BOOK
 
         var completed = 0
         var skipped = 0
@@ -206,9 +215,12 @@ class RanobeLibLibraryScanner(
             val item = runCatching {
                 readTitle(
                     treeUri = treeUri,
-                    directory = child
+                    directory = child,
+                    contentType = contentType
                 )
-            }.getOrElse {
+            }.getOrElse { cause ->
+                android.util.Log.e("ReaderLBScanner", "Skipping ${child.documentId}", cause)
+                TesterDiagnostics.record(context, "scan.skip", "root=$rootDocumentId document=${child.documentId}", cause)
                 skipped += 1
                 null
             }
@@ -247,7 +259,8 @@ class RanobeLibLibraryScanner(
 
     private fun readTitle(
         treeUri: Uri,
-        directory: SafDocument
+        directory: SafDocument,
+        contentType: LocalContentType
     ): LocalLibraryItem? {
         val children =
             LinkedHashMap<String, SafDocument>()
@@ -344,9 +357,10 @@ class RanobeLibLibraryScanner(
                     0L
                 ),
             createdByReaderLB =
-                chapters.createdByReaderLB,
+                contentType == LocalContentType.BOOK && chapters.createdByReaderLB,
             folderName =
-                directory.name
+                directory.name,
+            contentType = contentType
         )
     }
 

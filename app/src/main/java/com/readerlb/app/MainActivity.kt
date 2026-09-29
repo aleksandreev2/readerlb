@@ -17,6 +17,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -107,6 +108,8 @@ import com.readerlb.app.importer.EpubImportLimits
 import com.readerlb.app.importer.ExportProgress
 import com.readerlb.app.importer.ExportStage
 import com.readerlb.app.importer.ImportRepository
+import com.readerlb.app.importer.MangaFileImporter
+import com.readerlb.app.importer.MangaSourcePreview
 import com.readerlb.app.importer.ParsedBook
 import com.readerlb.app.importer.PortableTitleInfo
 import com.readerlb.app.importer.RanobeLibExporter
@@ -118,6 +121,7 @@ import com.readerlb.app.importer.compareChapterNumbers
 import com.readerlb.app.storage.HistoryStore
 import com.readerlb.app.storage.ImportHistoryItem
 import com.readerlb.app.storage.LocalLibraryItem
+import com.readerlb.app.storage.LocalContentType
 import com.readerlb.app.storage.Preferences
 import com.readerlb.app.storage.RanobeLibAccessAssessment
 import com.readerlb.app.storage.RanobeLibAccessCapability
@@ -125,6 +129,7 @@ import com.readerlb.app.storage.assessRanobeLibAccess
 import com.readerlb.app.storage.RanobeLibLibraryScanner
 import com.readerlb.app.storage.ShizukuAccess
 import com.readerlb.app.storage.ShizukuAccessState
+import com.readerlb.app.storage.TesterDiagnostics
 import com.readerlb.app.storage.decodeLocalLibraryCache
 import com.readerlb.app.storage.encodeLocalLibraryCache
 import com.readerlb.app.update.UpdateDownloadProgress
@@ -169,6 +174,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        TesterDiagnostics.installCrashHandler(this)
+        TesterDiagnostics.record(this, "app.start", "activity created; savedState=${savedInstanceState != null}")
         acceptIntent(intent)
 
         setContent {
@@ -341,7 +348,7 @@ private fun RanobeLibAccessSetupSheet(
         ) {
             item {
                 Text(
-                    "Доступ к RanobeLib",
+                    "Доступ к локальной библиотеке",
                     color = Ink,
                     fontSize = 22.sp,
                     fontWeight =
@@ -372,7 +379,7 @@ private fun RanobeLibAccessSetupSheet(
                             title =
                                 "Доступ уже есть",
                             text =
-                                "ReaderLB может читать локальную библиотеку RanobeLib и добавлять главы напрямую.",
+                                "ReaderLB может читать локальные новеллы из files/book и мангу из files/manga. Импорт выбирает папку по типу файла.",
                             success = true
                         )
                     }
@@ -392,16 +399,16 @@ private fun RanobeLibAccessSetupSheet(
                             icon =
                                 Icons.Default.Info,
                             title =
-                                "Нужен доступ к папке book",
+                                "Android 10: доступ к папке book",
                             text =
-                                "Android позволяет выдать его напрямую. ReaderLB откроет системный выбор папки сразу в каталоге RanobeLib.",
+                                "Системный выбор папки подключает новеллы из book. Для манги нужен доступ через Shizuku к files/manga.",
                             success = false
                         )
                     }
 
                     item {
                         Text(
-                            "Выберите папку book и подтвердите доступ. ReaderLB сохранит системное разрешение, чтобы не спрашивать его при каждом запуске.",
+                            "Выберите book для новелл. На Android 11+ ReaderLB использует Shizuku и files для обоих типов контента.",
                             color = Muted,
                             fontSize = 13.sp,
                             lineHeight = 19.sp
@@ -449,7 +456,7 @@ private fun RanobeLibAccessSetupSheet(
                         RanobeLibAccessCapability.SHIZUKU_NOT_INSTALLED ->
                             "Подключите Shizuku"
                         RanobeLibAccessCapability.SHIZUKU_FOLDER_MISSING ->
-                            "Не удалось открыть папку RanobeLib"
+                            "Не удалось открыть MangaLib files"
                         else -> "Проверяем доступ к книгам"
                     }
                     val detail = when (assessment.capability) {
@@ -458,11 +465,11 @@ private fun RanobeLibAccessSetupSheet(
                         RanobeLibAccessCapability.SHIZUKU_STOPPED ->
                             "Запустите сервис в приложении Shizuku и вернитесь сюда."
                         RanobeLibAccessCapability.SHIZUKU_PERMISSION_REQUIRED ->
-                            "Shizuku запущен. Разрешите ReaderLB использовать его для доступа к локальной папке RanobeLib."
+                            "Shizuku запущен. Разрешите ReaderLB доступ к Android/data/ru.libappc/files для локальных новелл и манги."
                         RanobeLibAccessCapability.SHIZUKU_FOLDER_MISSING ->
-                            "Shizuku подключён, но ReaderLB не смог подтвердить чтение и запись в Android/data/ru.libappc/files/book. Папка может отсутствовать или прошивка может блокировать shell-доступ."
+                            "Shizuku подключён, но ReaderLB не смог подтвердить чтение и запись в Android/data/ru.libappc/files. Папка может отсутствовать или прошивка может блокировать shell-доступ."
                         else ->
-                            "ReaderLB проверяет только Android/data/ru.libappc/files/book. Весь накопитель и содержимое книг на этом этапе не сканируются."
+                            "ReaderLB проверяет Android/data/ru.libappc/files. Новеллы находятся в book, манга — в manga. Весь накопитель на этом этапе не сканируется."
                     }
                     item {
                         AccessSetupStatusCard(
@@ -630,7 +637,7 @@ private fun RanobeLibAccessBanner(
                         )
                 )
                 Text(
-                    "RanobeLib не подключена",
+                    "Локальная библиотека не подключена",
                     color = Ink,
                     fontWeight =
                         FontWeight.Bold,
@@ -641,7 +648,7 @@ private fun RanobeLibAccessBanner(
                 )
             }
             Text(
-                "ReaderLB поможет подключить скачанные книги RanobeLib.",
+                "ReaderLB поможет подключить скачанные новеллы и мангу.",
                 color = Muted,
                 fontSize = 12.sp,
                 lineHeight = 17.sp
@@ -900,6 +907,7 @@ private fun MainApp(
     onOpenUpdatesConsumed: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var showTesterGuide by remember { mutableStateOf(BuildConfig.TESTER_DIAGNOSTICS) }
     val preferences = remember { Preferences(context) }
     val historyStore = remember { HistoryStore(context) }
     val libraryScanner = remember {
@@ -1213,22 +1221,23 @@ private fun MainApp(
     }
 
     fun removeLocalTitleFromUi(
-        slugUrl: String
+        itemKey: String
     ) {
         localLibrary =
             localLibrary.filterNot {
-                it.slugUrl == slugUrl
+                localItemKey(it) == itemKey
             }
         preferences.localLibraryCacheJson =
             encodeLocalLibraryCache(
                 localLibrary
             )
         libraryStatus =
-            "Новелла удалена"
+            "Тайтл удалён"
     }
 
     fun refreshLocalLibrary() {
         val tree = folderUri
+        TesterDiagnostics.record(context, "scan.start", "tree=${tree?.authority}/${tree?.let { runCatching { android.provider.DocumentsContract.getTreeDocumentId(it) }.getOrNull() }} state=${ShizukuAccess.state}")
 
         if (tree == null) {
             libraryScanJob?.cancel()
@@ -1263,31 +1272,49 @@ private fun MainApp(
 
                 val result = try {
                     withTimeout(
-                        120_000L
+                        600_000L
                     ) {
                         runInterruptible(
                             Dispatchers.IO
                         ) {
-                            Result.success(
-                                libraryScanner.scan(
-                                    tree
-                                ) {
-                                        completed,
-                                        total ->
-                                    scope.launch {
-                                        libraryScanned =
-                                            maxOf(
-                                                libraryScanned,
-                                                completed
-                                            )
-                                        libraryScanTotal =
-                                            maxOf(
-                                                libraryScanTotal,
-                                                total
-                                            )
+                            val book = runCatching { libraryScanner.scan(tree) { completed, total ->
+                                scope.launch { libraryScanned = completed; libraryScanTotal = total }
+                                if (completed > 0 && completed % 25 == 0) {
+                                    TesterDiagnostics.record(context, "scan.progress", "root=book completed=$completed")
+                                }
+                            } }
+                            TesterDiagnostics.record(context, "scan.book", book.fold(
+                                { "items=${it.items.size} skipped=${it.skippedTitles}" },
+                                { "failed" }
+                            ), book.exceptionOrNull())
+                            if (tree != ShizukuAccess.treeUri) {
+                                Result.success(book.getOrThrow())
+                            } else {
+                                val manga = runCatching {
+                                    libraryScanner.scan(ShizukuAccess.mangaTreeUri) { completed, total ->
+                                        scope.launch {
+                                            libraryScanned = (book.getOrNull()?.items?.size ?: 0) + completed
+                                            libraryScanTotal = total
+                                        }
+                                        if (completed > 0 && completed % 25 == 0) {
+                                            TesterDiagnostics.record(context, "scan.progress", "root=manga completed=$completed")
+                                        }
                                     }
                                 }
-                            )
+                                TesterDiagnostics.record(context, "scan.manga", manga.fold(
+                                    { "items=${it.items.size} skipped=${it.skippedTitles}" },
+                                    { "failed" }
+                                ), manga.exceptionOrNull())
+                                if (book.isFailure && manga.isFailure) {
+                                    Result.failure(book.exceptionOrNull() ?: error("Library scan failed"))
+                                } else {
+                                    val snapshots = listOfNotNull(book.getOrNull(), manga.getOrNull())
+                                    Result.success(com.readerlb.app.storage.LocalLibrarySnapshot(
+                                        items = snapshots.flatMap { it.items }.sortedByDescending { it.writeTime },
+                                        skippedTitles = snapshots.sumOf { it.skippedTitles }
+                                    ))
+                                }
+                            }
                         }
                     }
                 } catch (
@@ -1296,9 +1323,8 @@ private fun MainApp(
                 ) {
                     Result.failure(
                         IllegalStateException(
-                            "RanobeLib слишком долго отвечает. " +
-                                "Проверьте доступ к папке book " +
-                                "и повторите сканирование."
+                            "Сканирование большой библиотеки превысило 10 минут. " +
+                                "Откройте диагностику и проверьте последнее событие scan.progress."
                         )
                     )
                 } catch (
@@ -1315,6 +1341,7 @@ private fun MainApp(
 
                 result.onSuccess {
                         snapshot ->
+                    TesterDiagnostics.record(context, "scan.complete", "items=${snapshot.items.size} skipped=${snapshot.skippedTitles} book=${snapshot.items.count { it.contentType == LocalContentType.BOOK }} manga=${snapshot.items.count { it.contentType == LocalContentType.MANGA }}")
                     localLibrary =
                         snapshot.items
                     preferences
@@ -1347,6 +1374,7 @@ private fun MainApp(
                                 " тайтлов"
                         }
                 }.onFailure {
+                    TesterDiagnostics.record(context, "scan.failed", "Library scan failed", it)
                     libraryError =
                         it.message
                             ?: "Не удалось прочитать библиотеку RanobeLib"
@@ -1659,6 +1687,19 @@ private fun MainApp(
         )
     }
 
+    if (showTesterGuide) {
+        AlertDialog(
+            onDismissRequest = { showTesterGuide = false },
+            title = { Text("ReaderLB · тестовая сборка") },
+            text = {
+                Column(Modifier.heightIn(max = 440.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    Text("Что проверить на Android 11+:\n\n1. Запустите Shizuku и дайте ReaderLB разрешение на доступ к MangaLib files/. Проверьте статус «Подключено».\n\n2. Откройте «Библиотека» и обновите список. Проверьте новеллы из files/book и мангу из files/manga.\n\n3. Импортируйте EPUB/TXT как новеллу и CBZ/PDF как главу манги. Для нескольких глав одного тайтла укажите одинаковое название манги.\n\n4. Проверьте чтение новелл и манги, порядок страниц, вертикальные и горизонтальные изображения, экспорт EPUB/PDF.\n\n5. После ошибки откройте «Настройки» → «Скопировать диагностику» или «Поделиться диагностикой». Пришлите отчёт и действия перед ошибкой. Отчёт содержит системные пути и имена проблемных папок — проверьте его перед отправкой.")
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTesterGuide = false }) { Text("Начать проверку") } }
+        )
+    }
+
     Scaffold(
         containerColor = Canvas,
         bottomBar = {
@@ -1756,6 +1797,7 @@ private fun MainApp(
                     history = historyStore.load()
                     refreshLocalLibrary()
                 },
+                onMangaImported = ::refreshLocalLibrary,
                 onOpenLibrary = {
                     tab = AppTab.LIBRARY
                 }
@@ -1845,6 +1887,7 @@ private fun MainApp(
                     importHintsDone = false
                     tab = AppTab.IMPORT
                 },
+                onShowTesterGuide = { showTesterGuide = true },
                 onPickFolder = {
                     if (
                         ranobeLibAccess.canUseSystemFolderPicker &&
@@ -1868,6 +1911,9 @@ private fun MainApp(
         }
     }
 }
+
+internal fun localItemKey(item: LocalLibraryItem): String =
+    "${item.contentType}:${item.folderName}"
 
 @Composable
 private fun HomeScreen(
@@ -1894,13 +1940,17 @@ private fun HomeScreen(
     }
     val selectedItem =
         localLibrary.firstOrNull {
-            it.slugUrl == selectedSlug
+            localItemKey(it) == selectedSlug
         }
 
     BackHandler(enabled = selectedItem != null) {
         selectedSlug = null
     }
 
+    if (selectedItem?.contentType == LocalContentType.MANGA) {
+        MangaTitleDetail(modifier, selectedItem, onBack = { selectedSlug = null }, onDeleted = onTitleDeleted)
+        return
+    }
     if (selectedItem != null) {
         LibraryTitleDetail(
             modifier = modifier,
@@ -1956,10 +2006,13 @@ private fun HomeScreen(
                         fontWeight = FontWeight.Bold,
                         color = Ink
                     )
-                    Row {
-                        Text("RanobeLib ", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        Text("APP", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Blue)
-                    }
+                    Text(
+                        "RanobeLib/MangaLib",
+                        fontSize = 18.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Blue
+                    )
                 }
                 IconButton(onClick = onSettings) {
                     Icon(
@@ -1973,7 +2026,7 @@ private fun HomeScreen(
 
         item {
             GradientButton(
-                text = "Добавить новеллу",
+                text = "Добавить новеллу или мангу",
                 leadingIcon =
                     Icons.Default.Add,
                 onClick = onAdd
@@ -2015,7 +2068,7 @@ private fun HomeScreen(
                     Modifier.weight(1f),
                     Icons.Default.List,
                     shownTitleCount.toString(),
-                    "Новеллы"
+                    "Тайтлы"
                 )
                 StatCard(
                     Modifier.weight(1f),
@@ -2027,7 +2080,7 @@ private fun HomeScreen(
                     Modifier.weight(1f),
                     Icons.Default.Check,
                     installedCount.toString(),
-                    "В RanobeLib"
+                    "Локально"
                 )
             }
         }
@@ -2054,6 +2107,16 @@ private fun HomeScreen(
                     modifier = Modifier.clickable(
                         onClick = onOpenLibrary
                     )
+                )
+            }
+        }
+
+        if (libraryConnected && libraryLoading && localLibrary.isNotEmpty()) {
+            item {
+                Text(
+                    "Обновляю библиотеку: проверено $libraryScanned тайтлов. Пока показаны предыдущие результаты.",
+                    color = Muted,
+                    fontSize = 12.sp
                 )
             }
         }
@@ -2112,13 +2175,13 @@ private fun HomeScreen(
                 localLibrary.isNotEmpty() -> {
                 items(
                     localLibrary.take(6),
-                    key = { it.slugUrl }
+                    key = { localItemKey(it) }
                 ) { item ->
                     LocalLibraryCard(
                         item = item,
                         onClick = {
                             selectedSlug =
-                                item.slugUrl
+                                localItemKey(item)
                         }
                     )
                 }
@@ -2135,6 +2198,20 @@ private fun HomeScreen(
                 item {
                     EmptyLibraryCard(onAdd)
                 }
+            }
+        }
+
+        if (libraryConnected && history.isNotEmpty()) {
+            item {
+                Text(
+                    "Последние импорты",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            items(history.take(6)) { importItem ->
+                HistoryCard(importItem)
             }
         }
     }
@@ -2156,11 +2233,13 @@ private fun ImportScreen(
     onPickFolder: () -> Unit,
     onNeedRanobeLibAccess: () -> Unit,
     onImported: (com.readerlb.app.importer.ExportResult) -> Unit,
+    onMangaImported: () -> Unit,
     onOpenLibrary: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { ImportRepository(context) }
+    val mangaImporter = remember { MangaFileImporter(context) }
     val exporter = remember { RanobeLibExporter(context) }
     val transferManager = remember {
         ReaderLbTransferManager(context)
@@ -2193,6 +2272,10 @@ private fun ImportScreen(
     var parsed by remember {
         mutableStateOf<ParsedBook?>(null)
     }
+    var mangaPreview by remember { mutableStateOf<MangaSourcePreview?>(null) }
+    var mangaVolume by rememberSaveable { mutableStateOf("") }
+    var mangaNumber by rememberSaveable { mutableStateOf("") }
+    var mangaChapterTitle by rememberSaveable { mutableStateOf("") }
     var portablePackage by remember {
         mutableStateOf<PortableTitleInfo?>(null)
     }
@@ -2300,6 +2383,10 @@ private fun ImportScreen(
         selectedUri = uri.toString()
         fileName = repository.displayName(uri)
         parsed = null
+        mangaPreview = null
+        mangaVolume = ""
+        mangaNumber = ""
+        mangaChapterTitle = ""
         portablePackage = null
         title = ""
         firstChapter = ""
@@ -2341,12 +2428,20 @@ private fun ImportScreen(
 
         val uri = Uri.parse(rawUri)
         parsed = null
+        mangaPreview = null
         portablePackage = null
         error = null
         success = null
         busy = true
 
         try {
+            if (fileName.endsWith(".cbz", true) || fileName.endsWith(".pdf", true)) {
+                val preview = withContext(Dispatchers.IO) { mangaImporter.inspect(uri, fileName) }
+                mangaPreview = preview
+                mangaVolume = preview.volume
+                mangaNumber = preview.number
+                mangaChapterTitle = preview.chapterTitle
+            } else {
             val looksLikeReaderLbPackage =
                 fileName.endsWith(
                     ".readerlb.zip",
@@ -2401,6 +2496,7 @@ private fun ImportScreen(
                     title = book.title
                 }
             }
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (throwable: Throwable) {
@@ -2424,6 +2520,7 @@ private fun ImportScreen(
             selectedUri = null
             fileName = ""
             portablePackage = null
+            mangaPreview = null
             title = ""
             firstChapter = ""
             lastChapter = ""
@@ -2435,6 +2532,7 @@ private fun ImportScreen(
 
     val emptyImportState =
         parsed == null &&
+            mangaPreview == null &&
             portablePackage == null &&
             selectedUri == null &&
             !busy &&
@@ -2475,6 +2573,9 @@ private fun ImportScreen(
                         arrayOf(
                             "application/epub+zip",
                             "application/zip",
+                            "application/pdf",
+                            "application/x-cbz",
+                            "application/vnd.comicbook+zip",
                             "text/plain",
                             "application/octet-stream"
                         )
@@ -2524,6 +2625,9 @@ private fun ImportScreen(
                         arrayOf(
                             "application/epub+zip",
                             "application/zip",
+                            "application/pdf",
+                            "application/x-cbz",
+                            "application/vnd.comicbook+zip",
                             "text/plain",
                             "application/octet-stream"
                         )
@@ -2554,15 +2658,90 @@ private fun ImportScreen(
         if (
             showHints &&
             parsed == null &&
+            mangaPreview == null &&
             portablePackage == null &&
             !busy
         ) {
             item {
                 CoachHintCard(
                     title = "Начните с файла",
-                    text = "Выберите EPUB или TXT. ReaderLB сам найдёт " +
-                        "главы, обложку и иллюстрации — ничего вручную " +
-                        "заполнять до анализа не нужно."
+                    text = "Выберите EPUB/TXT для новеллы или CBZ/PDF для главы манги. " +
+                        "После анализа проверьте название и номер главы."
+                )
+            }
+        }
+
+        mangaPreview?.let { preview ->
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Глава манги · ${preview.format.uppercase(Locale.ROOT)} · ${preview.pageCount} страниц",
+                            color = Ink, fontWeight = FontWeight.Bold)
+                        Text("Укажите одно название для файлов одного тайтла. Глава будет добавлена в files/manga через Shizuku.",
+                            color = Muted, fontSize = 12.sp)
+                        OutlinedTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            label = { Text("Название манги") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = mangaVolume,
+                                onValueChange = { mangaVolume = sanitizeChapterRangeInput(it) },
+                                label = { Text("Том") },
+                                modifier = Modifier.weight(1f), singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = mangaNumber,
+                                onValueChange = { mangaNumber = sanitizeChapterRangeInput(it) },
+                                label = { Text("Глава") },
+                                modifier = Modifier.weight(1f), singleLine = true
+                            )
+                        }
+                        OutlinedTextField(
+                            value = mangaChapterTitle,
+                            onValueChange = { mangaChapterTitle = it },
+                            label = { Text("Название главы (необязательно)") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
+                        )
+                    }
+                }
+            }
+            if (ShizukuAccess.state != ShizukuAccessState.READY) {
+                item { OutlineAction("Настроить доступ к files через Shizuku", onNeedRanobeLibAccess) }
+            }
+            item {
+                GradientButton(
+                    text = if (busy) "Импортирую мангу…" else "Импортировать ${preview.pageCount} страниц",
+                    enabled = !busy && title.isNotBlank() && mangaVolume.isNotBlank() &&
+                        mangaNumber.isNotBlank() && ShizukuAccess.state == ShizukuAccessState.READY,
+                    onClick = {
+                        val rawUri = selectedUri ?: return@GradientButton
+                        busy = true
+                        error = null
+                        success = null
+                        scope.launch {
+                            runCatching {
+                                withContext(Dispatchers.IO) {
+                                    mangaImporter.importFile(
+                                        Uri.parse(rawUri), fileName, title,
+                                        preview.copy(volume = mangaVolume, number = mangaNumber,
+                                            chapterTitle = mangaChapterTitle)
+                                    )
+                                }
+                            }.onSuccess { result ->
+                                success = "Готово: ${result.pageCount} страниц добавлено. В тайтле ${result.chapterCount} глав."
+                                onMangaImported()
+                            }.onFailure { failure ->
+                                error = failure.message ?: "Не удалось импортировать мангу"
+                            }
+                            busy = false
+                        }
+                    }
                 )
             }
         }
@@ -3342,7 +3521,7 @@ private fun FileDropCard(
             Spacer(Modifier.height(14.dp))
             Text(
                 if (fileName.isBlank()) {
-                    "Выберите EPUB или TXT"
+                    "Выберите EPUB, TXT, CBZ или PDF"
                 } else {
                     fileName
                 },
@@ -3409,7 +3588,7 @@ private fun FileDropCard(
                 }
             }
             Text(
-                "Поддерживаются: EPUB, TXT, пакеты ReaderLB · ZIP с EPUB-структурой",
+                "Новеллы: EPUB, TXT, пакет ReaderLB · Манга: CBZ, PDF",
                 color = Muted,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 12.dp)
@@ -3619,13 +3798,17 @@ private fun LibraryScreen(
     }
 
     val selectedItem = items.firstOrNull {
-        it.slugUrl == selectedSlug
+        localItemKey(it) == selectedSlug
     }
 
     BackHandler(enabled = selectedItem != null) {
         selectedSlug = null
     }
 
+    if (selectedItem?.contentType == LocalContentType.MANGA) {
+        MangaTitleDetail(modifier, selectedItem, onBack = { selectedSlug = null }, onDeleted = onTitleDeleted)
+        return
+    }
     if (selectedItem != null) {
         LibraryTitleDetail(
             modifier = modifier,
@@ -3743,7 +3926,7 @@ private fun LibraryScreen(
                     )
                     Text(
                         if (connected) {
-                            "Реальные локальные тайтлы RanobeLib."
+                            "Реальные локальные тайтлы."
                         } else {
                             "Подключите папку book, чтобы видеть " +
                                 "то, что реально скачано в RanobeLib."
@@ -4011,7 +4194,7 @@ private fun LibraryScreen(
                                 Modifier.weight(
                                     1f
                                 ),
-                            text = "RanobeLib",
+                            text = "Скачано",
                             selected =
                                 sourceFilter ==
                                     LibrarySourceFilter
@@ -4141,13 +4324,13 @@ private fun LibraryScreen(
                 else -> {
                     items(
                         visibleItems,
-                        key = { it.slugUrl }
+                        key = { localItemKey(it) }
                     ) { item ->
                         LocalLibraryCard(
                             item = item,
                             onClick = {
                                 selectedSlug =
-                                    item.slugUrl
+                                    localItemKey(item)
                             }
                         )
                     }
@@ -4272,6 +4455,7 @@ private fun SettingsScreen(
     onCheckUpdates: () -> Unit,
     onInstallUpdate: () -> Unit,
     onRepeatHints: () -> Unit,
+    onShowTesterGuide: () -> Unit,
     onPickFolder: () -> Unit,
     onForgetFolder: () -> Unit
 ) {
@@ -4299,16 +4483,15 @@ private fun SettingsScreen(
             ) {
                 Column(Modifier.padding(18.dp)) {
                     Text(
-                        "Связь с RanobeLib",
+                        "Локальная библиотека RanobeLib/MangaLib",
                         fontWeight = FontWeight.Bold,
                         color = Ink
                     )
                     Text(
                         if (folderUri == null) {
-                            "ReaderLB нужен доступ к книгам RanobeLib."
+                            "ReaderLB нужен доступ к Android/data/ru.libappc/files через Shizuku."
                         } else {
-                            "Подключено. ReaderLB может читать локальную " +
-                                "библиотеку и добавлять главы напрямую."
+                            "Подключено. Новеллы читаются из files/book, манга — из files/manga."
                         },
                         color = Muted,
                         fontSize = 13.sp,
@@ -4328,13 +4511,13 @@ private fun SettingsScreen(
                                 "Изменить папку"
 
                             else ->
-                                "Проверить доступ"
+                                "Проверить доступ к files"
                         },
                         onPickFolder
                     )
                     if (folderUri != null) {
                         Text(
-                            "Отключить RanobeLib",
+                            "Отключить библиотеку",
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier
                                 .padding(top = 14.dp)
@@ -4588,6 +4771,9 @@ private fun SettingsScreen(
                         "Повторить подсказки",
                         onRepeatHints
                     )
+                    if (BuildConfig.TESTER_DIAGNOSTICS) {
+                        OutlineAction("Гайд для тестеров", onShowTesterGuide)
+                    }
                     OutlineAction(
                         "Скопировать диагностику",
                         onClick = {
@@ -4602,6 +4788,7 @@ private fun SettingsScreen(
                                     .newPlainText(
                                         "ReaderLB diagnostics",
                                         buildReaderLbDiagnostics(
+                                            context = context,
                                             folderConnected =
                                                 folderUri != null,
                                             autoUpdateChecks =
@@ -4612,11 +4799,21 @@ private fun SettingsScreen(
                             diagnosticsCopied = true
                         }
                     )
+                    if (BuildConfig.TESTER_DIAGNOSTICS) {
+                        OutlineAction("Поделиться диагностикой") {
+                            val report = buildReaderLbDiagnostics(context, folderUri != null, autoUpdateChecks)
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "ReaderLB tester diagnostics")
+                                putExtra(Intent.EXTRA_TEXT, report)
+                            }
+                            context.startActivity(Intent.createChooser(send, "Отправить отчёт ReaderLB"))
+                        }
+                    }
                     if (diagnosticsCopied) {
                         Text(
-                            "Скопировано. Отчёт не содержит " +
-                                "названий книг, путей к EPUB или " +
-                                "содержимого библиотеки.",
+                            if (BuildConfig.TESTER_DIAGNOSTICS) "Скопировано. Отчёт содержит пути и имена проблемных папок; проверьте его перед отправкой."
+                            else "Скопировано. Отчёт не содержит названий книг, путей к EPUB или содержимого библиотеки.",
                             color = Success,
                             fontSize = 12.sp,
                             lineHeight = 17.sp
@@ -4680,9 +4877,12 @@ private fun SettingsScreen(
 }
 
 private fun buildReaderLbDiagnostics(
+    context: android.content.Context,
     folderConnected: Boolean,
     autoUpdateChecks: Boolean
-): String =
+): String = if (BuildConfig.TESTER_DIAGNOSTICS) {
+    TesterDiagnostics.report(context, folderConnected, autoUpdateChecks)
+} else
     buildString {
         appendLine("ReaderLB diagnostics")
         append("Version: ")
@@ -5059,7 +5259,7 @@ private fun LibraryTitleDetail(
                                 confirmDelete =
                                     false
                                 onDeleted(
-                                    item.slugUrl
+                                    localItemKey(item)
                                 )
                             }.onFailure {
                                 error =
@@ -6314,7 +6514,7 @@ private fun ExportOptionSwitch(
 }
 
 @Composable
-private fun TitleInfoRow(
+internal fun TitleInfoRow(
     label: String,
     value: String
 ) {
@@ -6398,7 +6598,7 @@ private fun localChapterRangeText(
             item.lastChapter
     }
 
-private fun formatLocalLibraryTime(
+internal fun formatLocalLibraryTime(
     millis: Long
 ): String {
     if (millis <= 0L) {
@@ -6546,12 +6746,10 @@ private fun LocalLibraryCard(
                             )
                     ) {
                         Text(
-                            if (
-                                item.createdByReaderLB
-                            ) {
-                                "Импорт ReaderLB"
-                            } else {
-                                "Скачано в RanobeLib"
+                            when {
+                                item.contentType == LocalContentType.MANGA -> "Скачано в MangaLib"
+                                item.createdByReaderLB -> "Импорт ReaderLB"
+                                else -> "Скачано в RanobeLib"
                             },
                             color = Blue,
                             fontSize = 10.sp,
@@ -6566,7 +6764,7 @@ private fun LocalLibraryCard(
 }
 
 @Composable
-private fun rememberLibraryCover(
+internal fun rememberLibraryCover(
     uri: Uri?
 ): androidx.compose.runtime.State<
     androidx.compose.ui.graphics.ImageBitmap?
@@ -6819,14 +7017,14 @@ private fun EmptyLibraryCard(onAdd: () -> Unit) {
                 modifier = Modifier.padding(top = 10.dp)
             )
             Text(
-                "Добавьте EPUB — ReaderLB подготовит его для локальной библиотеки.",
+                "Добавьте EPUB/TXT для новеллы или CBZ/PDF для манги.",
                 textAlign = TextAlign.Center,
                 color = Muted,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
             )
             Text(
-                "Добавить новеллу",
+                "Добавить новеллу или мангу",
                 color = Blue,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onAdd)
@@ -7297,7 +7495,7 @@ private fun StatusCard(message: String, success: Boolean) {
 }
 
 @Composable
-private fun OutlineAction(text: String, onClick: () -> Unit) {
+internal fun OutlineAction(text: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()

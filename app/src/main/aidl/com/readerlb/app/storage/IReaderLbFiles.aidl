@@ -4,7 +4,9 @@ import android.os.ParcelFileDescriptor;
 
 interface IReaderLbFiles {
     boolean probe();
+    String diagnostics();
     String[] list(String relativePath);
+    String[] listEntries(String relativePath);
     boolean exists(String relativePath);
     boolean isDirectory(String relativePath);
     long length(String relativePath);

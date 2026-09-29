@@ -30,36 +30,30 @@ class MainActivitySmokeTest {
         skipOnboardingIfNeeded()
 
         if (
-            composeRule
-                .onAllNodesWithText(
-                    "Доступ к RanobeLib"
-                )
-                .fetchSemanticsNodes()
-                .isEmpty()
+            composeRule.onAllNodesWithText("Доступ к локальной библиотеке")
+                .fetchSemanticsNodes().isEmpty()
         ) {
-            composeRule
-                .onNodeWithText(
-                    "Проверить доступ"
-                )
-                .performClick()
+            val verify = composeRule.onAllNodesWithText("Проверить доступ к files")
+            if (verify.fetchSemanticsNodes().isEmpty()) {
+                // A configured API30 lab can already have Shizuku connected.
+                composeRule.onNodeWithText("Библиотека").fetchSemanticsNode()
+                return
+            }
+            composeRule.onNodeWithText("Проверить доступ к files").performClick()
             composeRule.waitForIdle()
         }
 
         composeRule
             .onNodeWithText(
-                "Доступ к RanobeLib"
+                "Доступ к локальной библиотеке"
             )
             .fetchSemanticsNode()
-        composeRule
-            .onNodeWithText(
-                "Подключите Shizuku"
-            )
-            .fetchSemanticsNode()
-        composeRule
-            .onNodeWithText(
-                "Установить Shizuku"
-            )
-            .fetchSemanticsNode()
+        assertTrue(
+            "Access setup should explain the current Shizuku state",
+            listOf("Подключите Shizuku", "Запустите Shizuku", "ReaderLB нужен доступ к книгам",
+                "Не удалось открыть MangaLib files", "Проверяем доступ к книгам")
+                .any { composeRule.onAllNodesWithText(it).fetchSemanticsNodes().isNotEmpty() }
+        )
 
         composeRule
             .onNodeWithText(
@@ -97,7 +91,7 @@ class MainActivitySmokeTest {
         val addNovelNodes =
             composeRule
                 .onAllNodesWithText(
-                    "Добавить новеллу",
+                    "Добавить новеллу или мангу",
                     substring = true
                 )
                 .fetchSemanticsNodes()
@@ -115,7 +109,7 @@ class MainActivitySmokeTest {
 
         composeRule
             .onAllNodesWithText(
-                "Добавить новеллу",
+                    "Добавить новеллу или мангу",
                 substring = true
             )[0]
             .performClick()
@@ -184,7 +178,7 @@ class MainActivitySmokeTest {
 
         composeRule
             .onAllNodesWithText(
-                "Добавить новеллу",
+                "Добавить новеллу или мангу",
                 substring = true
             )[0]
             .performClick()

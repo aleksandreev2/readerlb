@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
+import com.readerlb.app.storage.ShizukuAccess
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -126,6 +127,9 @@ class RanobeLibExporter(private val context: Context) {
         source: File,
         slugUrl: String
     ): DirectWriteResult {
+        if (treeUri == ShizukuAccess.treeUri) {
+            ShizukuAccess.ensureContentRoot(context, "book")
+        }
         val root = DocumentFile.fromTreeUri(context, treeUri)
             ?: error("Нет доступа к папке RanobeLib")
 

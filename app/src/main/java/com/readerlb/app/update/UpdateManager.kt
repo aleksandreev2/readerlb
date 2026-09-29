@@ -530,7 +530,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_INSTALL_RESULT =
-            "com.readerlb.app.UPDATE_INSTALL_RESULT"
+            "${BuildConfig.APPLICATION_ID}.UPDATE_INSTALL_RESULT"
     }
 }
 

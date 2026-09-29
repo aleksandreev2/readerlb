@@ -1,43 +1,102 @@
 package com.readerlb.app.storage
 
 import android.os.ParcelFileDescriptor
+import android.os.Process
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.file.Files
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
-/** Runs under Shizuku's shell or root UID. Only RanobeLib's known book directory is exposed. */
+/** Runs under Shizuku's shell or root UID. Access is confined to MangaLib's files directory. */
 class ShizukuFileService : IReaderLbFiles.Stub() {
-    @Volatile private var bookRoot: File? = null
+    @Volatile private var roots: Map<String, File> = emptyMap()
+    private data class PendingWrite(
+        val finished: CountDownLatch = CountDownLatch(1),
+        @Volatile var failure: String? = null
+    )
+    private val pendingWrites = ConcurrentHashMap<String, PendingWrite>()
+
+    private fun awaitWrite(path: String) {
+        val pending = pendingWrites[path] ?: return
+        if (!pending.finished.await(10, TimeUnit.MINUTES)) {
+            throw IOException("Timed out writing $path")
+        }
+        pending.failure?.let { throw IOException("Writing $path failed: $it") }
+        pendingWrites.remove(path, pending)
+    }
 
     override fun probe(): Boolean {
-        val candidates = buildList {
-            add(File("/storage/emulated/0/Android/data/ru.libappc/files/book"))
-            File("/storage").listFiles().orEmpty().forEach { volume ->
-                if (volume.name.matches(Regex("[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}"))) {
-                    add(File(volume, "Android/data/ru.libappc/files/book"))
+        roots = listOf("files", "book", "manga").mapNotNull { kind ->
+            val suffix = if (kind == "files") "" else "/$kind"
+            val candidates = buildList {
+                add(File("/storage/emulated/0/Android/data/ru.libappc/files$suffix"))
+                File("/storage").listFiles().orEmpty().forEach { volume ->
+                    if (volume.name.matches(Regex("[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}"))) {
+                        add(File(volume, "Android/data/ru.libappc/files$suffix"))
+                    }
+                }
+            }
+            candidates.firstOrNull(::isUsableLibraryRoot)?.canonicalFile?.let { kind to it }
+        }.toMap()
+        return roots.isNotEmpty()
+    }
+
+    override fun diagnostics(): String = buildString {
+        appendLine("Service UID=${Process.myUid()}, PID=${Process.myPid()}")
+        appendLine("Selected roots: ${roots.keys.sorted().joinToString().ifEmpty { "none" }}")
+        for (kind in listOf("files", "book", "manga")) {
+            val suffix = if (kind == "files") "" else "/$kind"
+            val candidates = buildList {
+                add(File("/storage/emulated/0/Android/data/ru.libappc/files$suffix"))
+                File("/storage").listFiles().orEmpty().forEach { volume ->
+                    if (volume.name.matches(Regex("[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}"))) {
+                        add(File(volume, "Android/data/ru.libappc/files$suffix"))
+                    }
+                }
+            }
+            for (root in candidates) {
+                appendLine("$kind candidate=${root.path}")
+                appendLine("  exists=${root.exists()}, directory=${root.isDirectory}, canRead=${root.canRead()}, canWrite=${root.canWrite()}")
+                appendLine("  canonical=${runCatching { root.canonicalPath }.getOrElse { "ERROR ${it.javaClass.simpleName}: ${it.message}" }}")
+                if (root.isDirectory) {
+                    val read = runCatching { Files.newDirectoryStream(root.toPath()).use { } }
+                    appendLine("  directory read=${read.fold({ "OK" }, { "ERROR ${it.javaClass.simpleName}: ${it.message}" })}")
+                    val write = runCatching {
+                        val probe = File.createTempFile(".readerlb-probe-", ".tmp", root)
+                        try {
+                            probe.writeBytes(byteArrayOf(1))
+                            check(probe.readBytes().contentEquals(byteArrayOf(1)))
+                        } finally { probe.delete() }
+                    }
+                    appendLine("  write/read probe=${write.fold({ "OK" }, { "ERROR ${it.javaClass.simpleName}: ${it.message}" })}")
                 }
             }
         }
-
-        // Access probing must stay constant-time with respect to library size.
-        // Do not enumerate title folders or parse title metadata here: a user can
-        // legitimately have tens of gigabytes of books. The normal library scanner
-        // owns title discovery and reports progress separately after connection.
-        bookRoot = candidates
-            .firstOrNull(::isUsableLibraryRoot)
-            ?.canonicalFile
-        return bookRoot != null
     }
 
     override fun list(relativePath: String): Array<String> =
         resolve(relativePath).list().orEmpty().sorted().toTypedArray()
 
+    override fun listEntries(relativePath: String): Array<String> {
+        val directory = resolve(relativePath)
+        val entries = directory.listFiles()
+            ?: throw IOException("Cannot list $relativePath: exists=${directory.exists()} directory=${directory.isDirectory} readable=${directory.canRead()}")
+        return entries.sortedBy { it.name }
+            .map { (if (it.isDirectory) "D" else "F") + it.name }
+            .toTypedArray()
+    }
+
     override fun exists(relativePath: String): Boolean = resolve(relativePath).exists()
 
     override fun isDirectory(relativePath: String): Boolean = resolve(relativePath).isDirectory
 
-    override fun length(relativePath: String): Long = resolve(relativePath).length()
+    override fun length(relativePath: String): Long {
+        awaitWrite(relativePath)
+        return resolve(relativePath).length()
+    }
 
     override fun lastModified(relativePath: String): Long = resolve(relativePath).lastModified()
 
@@ -45,6 +104,43 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
         require(mode in setOf("r", "w", "wt", "wa", "rw", "rwt")) { "Unsupported mode" }
         val file = resolve(relativePath)
         if (!file.isFile) throw FileNotFoundException(relativePath)
+        if (mode == "r") awaitWrite(relativePath)
+        // Android 11 SELinux denies Binder transfer of a descriptor backed by
+        // another package's Android/data file. A pipe carries the bytes instead.
+        if (mode == "r") {
+            val (reader, writer) = ParcelFileDescriptor.createReliablePipe()
+            Thread {
+                try {
+                    file.inputStream().use { input ->
+                        ParcelFileDescriptor.AutoCloseOutputStream(writer).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } catch (failure: Exception) {
+                    writer.closeWithError(failure.message ?: "Library read failed")
+                }
+            }.apply { isDaemon = true; start() }
+            return reader
+        }
+        if (mode in setOf("w", "wt", "wa")) {
+            awaitWrite(relativePath)
+            val (reader, writer) = ParcelFileDescriptor.createReliablePipe()
+            val pending = PendingWrite()
+            pendingWrites[relativePath] = pending
+            Thread {
+                try {
+                    ParcelFileDescriptor.AutoCloseInputStream(reader).use { input ->
+                        java.io.FileOutputStream(file, mode == "wa").use { output -> input.copyTo(output) }
+                    }
+                } catch (failure: Exception) {
+                    pending.failure = "${failure.javaClass.simpleName}: ${failure.message}"
+                    reader.closeWithError(failure.message ?: "Library write failed")
+                } finally {
+                    pending.finished.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+            return writer
+        }
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.parseMode(mode))
     }
 
@@ -56,22 +152,29 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
 
     override fun delete(relativePath: String): Boolean {
         val file = resolve(relativePath)
-        require(relativePath.isNotEmpty()) { "Cannot delete library root" }
-        return deleteInsideRoot(file)
+        require(relativePath.contains('/')) { "Cannot delete library root" }
+        return deleteInsideRoot(file, rootFor(relativePath))
     }
 
     override fun rename(from: String, to: String): Boolean {
-        require(from.isNotEmpty() && to.isNotEmpty()) { "Cannot rename library root" }
+        require(from.contains('/') && to.contains('/')) { "Cannot rename library root" }
+        require(from.substringBefore('/') == to.substringBefore('/')) { "Cross-root rename denied" }
         val source = resolve(from)
         val target = resolve(to)
         require(source.parentFile == target.parentFile) { "Cross-folder rename denied" }
         return source.exists() && !target.exists() && source.renameTo(target)
     }
 
+    private fun rootFor(path: String): File =
+        roots[path.substringBefore('/')] ?: throw FileNotFoundException(path)
+
     private fun resolve(relativePath: String): File {
-        val root = bookRoot ?: throw IOException("RanobeLib access is disconnected")
-        require(isSafeLibraryPath(relativePath)) { "Invalid library path" }
-        val candidate = if (relativePath.isEmpty()) root else File(root, relativePath).absoluteFile
+        require(isSafeLibraryPath(relativePath) && relativePath.isNotEmpty()) {
+            "Invalid library path"
+        }
+        val root = rootFor(relativePath)
+        val inside = relativePath.substringAfter('/', "")
+        val candidate = if (inside.isEmpty()) root else File(root, inside).absoluteFile
         val file = candidate.canonicalFile
         require(candidate.path == file.path) { "Symbolic links are not allowed" }
         require(file.path == root.path || file.path.startsWith(root.path + File.separator)) {
@@ -80,8 +183,7 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
         return file
     }
 
-    private fun deleteInsideRoot(file: File): Boolean {
-        val root = bookRoot ?: return false
+    private fun deleteInsideRoot(file: File, root: File): Boolean {
         val canonical = file.canonicalFile
         require(canonical.path.startsWith(root.path + File.separator)) {
             "Path escapes RanobeLib"
@@ -89,7 +191,7 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
         if (Files.isSymbolicLink(file.toPath())) return file.delete()
         if (file.isDirectory) {
             for (child in file.listFiles().orEmpty()) {
-                if (!deleteInsideRoot(child)) return false
+                if (!deleteInsideRoot(child, root)) return false
             }
         }
         return file.delete()
