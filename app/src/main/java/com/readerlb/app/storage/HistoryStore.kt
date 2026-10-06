@@ -14,7 +14,9 @@ data class ImportHistoryItem(
     val installedDirectly: Boolean,
     val updatedExisting: Boolean,
     val addedChapterCount: Int,
-    val timestamp: Long
+    val timestamp: Long,
+    val contentType: LocalContentType =
+        LocalContentType.BOOK
 )
 
 class HistoryStore(
@@ -73,7 +75,18 @@ class HistoryStore(
                             } else {
                                 chapters
                             },
-                            timestamp = item.optLong("timestamp")
+                            timestamp = item.optLong("timestamp"),
+                            contentType =
+                                runCatching {
+                                    LocalContentType.valueOf(
+                                        item.optString(
+                                            "contentType",
+                                            "BOOK"
+                                        )
+                                    )
+                                }.getOrDefault(
+                                    LocalContentType.BOOK
+                                )
                         )
                     )
                 }
@@ -101,19 +114,74 @@ class HistoryStore(
                 installedDirectly = result.installedDirectly,
                 updatedExisting = result.updatedExisting,
                 addedChapterCount = result.addedChapterCount,
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                contentType = LocalContentType.BOOK
             )
         )
 
-        val out = JSONArray()
+        save(
+            current
+        )
 
-        current
+    fun addManga(
+        title: String,
+        folderName: String,
+        volume: String,
+        number: String,
+        chapterCount: Int
+    ) {
+        val current =
+            load().toMutableList()
+
+        current.removeAll {
+            it.slugUrl ==
+                folderName
+        }
+
+        current.add(
+            0,
+            ImportHistoryItem(
+                title = title,
+                chapters = chapterCount,
+                firstChapter = number,
+                lastChapter = number,
+                slugUrl = folderName,
+                installedDirectly = true,
+                updatedExisting =
+                    chapterCount > 1,
+                addedChapterCount = 1,
+                timestamp =
+                    System.currentTimeMillis(),
+                contentType =
+                    LocalContentType.MANGA
+            )
+        )
+
+        save(
+            current
+        )
+    }
+
+    private fun save(
+        items: List<ImportHistoryItem>
+    ) {
+        val out =
+            JSONArray()
+
+        items
             .take(50)
-            .forEach { item ->
+            .forEach {
+                    item ->
                 out.put(
                     JSONObject()
-                        .put("title", item.title)
-                        .put("chapters", item.chapters)
+                        .put(
+                            "title",
+                            item.title
+                        )
+                        .put(
+                            "chapters",
+                            item.chapters
+                        )
                         .put(
                             "firstChapter",
                             item.firstChapter
@@ -122,7 +190,10 @@ class HistoryStore(
                             "lastChapter",
                             item.lastChapter
                         )
-                        .put("slugUrl", item.slugUrl)
+                        .put(
+                            "slugUrl",
+                            item.slugUrl
+                        )
                         .put(
                             "installedDirectly",
                             item.installedDirectly
@@ -139,6 +210,10 @@ class HistoryStore(
                             "timestamp",
                             item.timestamp
                         )
+                        .put(
+                            "contentType",
+                            item.contentType.name
+                        )
                 )
             }
 
@@ -149,4 +224,5 @@ class HistoryStore(
             )
             .apply()
     }
+
 }
