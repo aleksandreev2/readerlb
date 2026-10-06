@@ -13,6 +13,7 @@ import com.readerlb.app.storage.LocalLibraryItem
 import com.readerlb.app.storage.LocalMangaReader
 import com.readerlb.app.storage.MangaChapter
 import com.readerlb.app.storage.MangaPage
+import com.readerlb.app.storage.TesterDiagnostics
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.util.zip.CRC32
@@ -26,7 +27,8 @@ class LocalMangaExportManager(private val context: Context) {
     fun export(
         item: LocalLibraryItem,
         format: LocalBookExportFormat,
-        onProgress: (LocalExportProgress) -> Unit = {}
+        onProgress: (LocalExportProgress) -> Unit = {},
+        destinationUri: Uri? = null
     ): ExportedLocalBookFile {
         require(item.contentType == LocalContentType.MANGA) { "Это не локальная манга" }
         require(format == LocalBookExportFormat.EPUB || format == LocalBookExportFormat.PDF) {
@@ -35,13 +37,40 @@ class LocalMangaExportManager(private val context: Context) {
         val chapters = reader.chapters(item)
         require(chapters.isNotEmpty()) { "Манга не содержит глав" }
         val name = "${safeExportFileName(item.title)}.${format.extension}"
-        return writePendingDownload(context.contentResolver, name, format.mimeType) { output ->
+        val writerBlock: (OutputStream) -> ExportedLocalBookFile = { output ->
             when (format) {
                 LocalBookExportFormat.EPUB -> writeEpub(item, chapters, output, onProgress)
                 LocalBookExportFormat.PDF -> writePdf(item, chapters, output, onProgress)
                 else -> error("Unsupported manga export format")
             }
             ExportedLocalBookFile(Uri.EMPTY, name, chapters.size, format)
+        }
+
+        return try {
+            if (destinationUri == null) {
+                writePendingDownload(
+                    resolver = context.contentResolver,
+                    displayName = name,
+                    mimeType = format.mimeType,
+                    block = writerBlock
+                )
+            } else {
+                writeDocumentUri(
+                    resolver = context.contentResolver,
+                    uri = destinationUri,
+                    displayName = name,
+                    mimeType = format.mimeType,
+                    block = writerBlock
+                )
+            }
+        } catch (failure: ExportDestinationUnavailableException) {
+            TesterDiagnostics.record(
+                context,
+                "manga.export.destination." + failure.stage,
+                "name=" + failure.displayName + "; mime=" + failure.mimeType,
+                failure
+            )
+            throw failure
         }
     }
 
