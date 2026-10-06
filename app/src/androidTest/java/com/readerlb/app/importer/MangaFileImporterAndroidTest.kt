@@ -74,6 +74,7 @@ class MangaFileImporterAndroidTest {
             val item = RanobeLibLibraryScanner(context).scan(ShizukuAccess.mangaTreeUri)
                 .items.single { it.folderName == folder }
             assertEquals(2, item.chapterCount)
+            assertTrue(item.createdByReaderLB)
             val reader = LocalMangaReader(context)
             val chapters = reader.chapters(item)
             assertEquals(listOf("3", "4"), chapters.map { it.number })
