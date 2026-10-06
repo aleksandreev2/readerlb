@@ -28,11 +28,13 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
             DocumentsContract.Root.COLUMN_TITLE,
             DocumentsContract.Root.COLUMN_FLAGS
         ))
-        cursor.newRow().apply {
-            add(DocumentsContract.Root.COLUMN_ROOT_ID, "book")
-            add(DocumentsContract.Root.COLUMN_DOCUMENT_ID, "book")
-            add(DocumentsContract.Root.COLUMN_TITLE, "RanobeLib")
-            add(DocumentsContract.Root.COLUMN_FLAGS, DocumentsContract.Root.FLAG_SUPPORTS_CREATE)
+        for (kind in listOf("book", "manga")) {
+            cursor.newRow().apply {
+                add(DocumentsContract.Root.COLUMN_ROOT_ID, kind)
+                add(DocumentsContract.Root.COLUMN_DOCUMENT_ID, kind)
+                add(DocumentsContract.Root.COLUMN_TITLE, if (kind == "book") "RanobeLib" else "MangaLib")
+                add(DocumentsContract.Root.COLUMN_FLAGS, DocumentsContract.Root.FLAG_SUPPORTS_CREATE)
+            }
         }
         return cursor
     }
@@ -50,8 +52,9 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
     ): Cursor {
         val cursor = MatrixCursor(projection ?: documentColumns)
         val parent = relative(parentDocumentId)
-        ShizukuAccess.service().list(parent).forEach { name ->
-            addDocument(cursor, "$parentDocumentId/$name")
+        ShizukuAccess.service().listEntries(parent).forEach { entry ->
+            if (entry.length < 2) return@forEach
+            addDocument(cursor, "$parentDocumentId/${entry.substring(1)}", entry[0] == 'D')
         }
         return cursor
     }
@@ -96,11 +99,11 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
     override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean =
         documentId.startsWith("$parentDocumentId/")
 
-    private fun addDocument(cursor: MatrixCursor, documentId: String) {
+    private fun addDocument(cursor: MatrixCursor, documentId: String, knownDirectory: Boolean? = null) {
         val path = relative(documentId)
         val remote = ShizukuAccess.service()
-        if (!remote.exists(path)) return
-        val directory = remote.isDirectory(path)
+        if (knownDirectory == null && !remote.exists(path)) return
+        val directory = knownDirectory ?: remote.isDirectory(path)
         val flags = if (directory) {
             DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE or
                 DocumentsContract.Document.FLAG_SUPPORTS_DELETE or
@@ -113,19 +116,24 @@ class RanobeLibDocumentsProvider : DocumentsProvider() {
         cursor.newRow().apply {
             add(DocumentsContract.Document.COLUMN_DOCUMENT_ID, documentId)
             add(DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                if (path.isEmpty()) "book" else path.substringAfterLast('/'))
+                if (documentId in setOf("files", "book", "manga")) documentId else path.substringAfterLast('/'))
             add(DocumentsContract.Document.COLUMN_MIME_TYPE,
                 if (directory) DocumentsContract.Document.MIME_TYPE_DIR
                 else mimeType(path))
-            add(DocumentsContract.Document.COLUMN_SIZE, remote.length(path))
-            add(DocumentsContract.Document.COLUMN_LAST_MODIFIED, remote.lastModified(path))
+            if (cursor.columnNames.contains(DocumentsContract.Document.COLUMN_SIZE)) {
+                add(DocumentsContract.Document.COLUMN_SIZE, remote.length(path))
+            }
+            if (cursor.columnNames.contains(DocumentsContract.Document.COLUMN_LAST_MODIFIED)) {
+                add(DocumentsContract.Document.COLUMN_LAST_MODIFIED, remote.lastModified(path))
+            }
             add(DocumentsContract.Document.COLUMN_FLAGS, flags)
         }
     }
 
     private fun relative(documentId: String): String = when {
-        documentId == "book" -> ""
-        documentId.startsWith("book/") -> documentId.removePrefix("book/")
+        documentId == "book" || documentId.startsWith("book/") -> documentId
+        documentId == "manga" || documentId.startsWith("manga/") -> documentId
+        documentId == "files" || documentId.startsWith("files/") -> documentId
         else -> throw FileNotFoundException(documentId)
     }
 

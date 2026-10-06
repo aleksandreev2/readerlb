@@ -5,6 +5,12 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 val releaseKeystorePath =
     System.getenv("READERLB_KEYSTORE_PATH")
 val debugKeystorePath =
@@ -17,7 +23,8 @@ val debugKeystorePath =
 
 android {
     namespace = "com.readerlb.app"
-    compileSdk = 35
+    compileSdk = 36
+    testBuildType = if (providers.gradleProperty("readerlbQaTests").orNull == "true") "qa" else "debug"
 
     defaultConfig {
         applicationId = "com.readerlb.app"
@@ -34,9 +41,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 
     signingConfigs {
         getByName("debug") {
@@ -60,7 +64,18 @@ android {
     }
 
     buildTypes {
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-tester"
+            buildConfigField("boolean", "TESTER_DIAGNOSTICS", "true")
+            matchingFallbacks += listOf("debug")
+        }
+        getByName("debug") {
+            buildConfigField("boolean", "TESTER_DIAGNOSTICS", "false")
+        }
         getByName("release") {
+            buildConfigField("boolean", "TESTER_DIAGNOSTICS", "false")
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfigs.findByName("release")
@@ -121,6 +136,7 @@ dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.jsoup:jsoup:1.18.3")
+    implementation("org.aomedia.avif.android:avif:1.3.0.841110fd")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

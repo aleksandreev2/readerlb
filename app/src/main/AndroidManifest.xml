@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="ru.libappc" />
     </queries>
 
     <application
@@ -70,6 +71,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/zip" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/x-cbz" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
 
@@ -78,6 +82,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/zip" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/x-cbz" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>

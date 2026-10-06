@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,13 +17,17 @@ class RanobeLibDocumentsProviderAndroidTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "provider-test-${System.nanoTime()}")
         assertTrue(root.mkdir())
+        assertTrue(File(root, "book").mkdir())
+        assertTrue(File(root, "manga").mkdir())
         val serviceField = ShizukuAccess::class.java.getDeclaredField("files")
         serviceField.isAccessible = true
         val previous = serviceField.get(ShizukuAccess)
         serviceField.set(ShizukuAccess, TestFiles(root))
         try {
             val tree = DocumentFile.fromTreeUri(context, ShizukuAccess.treeUri)!!
+            val manga = DocumentFile.fromTreeUri(context, ShizukuAccess.mangaTreeUri)!!
             assertTrue(tree.isDirectory)
+            assertTrue(manga.isDirectory)
             val title = tree.createDirectory("title")!!
             val info = title.createFile("application/json", "info.json")!!
             context.contentResolver.openOutputStream(info.uri, "w")!!.use {
@@ -42,11 +47,150 @@ class RanobeLibDocumentsProviderAndroidTest {
         }
     }
 
+    @Test
+    fun scannerReadsKnownMetadataWithoutListingEveryChapterFile() {
+        val context =
+            InstrumentationRegistry
+                .getInstrumentation()
+                .targetContext
+        val root =
+            File(
+                context.cacheDir,
+                "scanner-fast-path-${System.nanoTime()}"
+            )
+        assertTrue(
+            root.mkdir()
+        )
+        val title =
+            File(
+                root,
+                "book/990001--fixture"
+            )
+        assertTrue(
+            title.mkdirs()
+        )
+        File(
+            root,
+            "manga"
+        ).mkdirs()
+        File(
+            title,
+            "info.json"
+        ).writeText(
+            """
+            {
+              "media":{
+                "rusName":"Fast path fixture",
+                "slugUrl":"990001--fixture",
+                "imageUrl":"cover.jpg"
+              },
+              "writeTime":123
+            }
+            """.trimIndent()
+        )
+        File(
+            title,
+            "chapters.json"
+        ).writeText(
+            """
+            [
+              {"number":"1","branches":[]},
+              {"number":"2","branches":[]}
+            ]
+            """.trimIndent()
+        )
+        File(
+            title,
+            "cover.jpg"
+        ).writeBytes(
+            byteArrayOf(
+                1,
+                2,
+                3
+            )
+        )
+        repeat(
+            500
+        ) {
+                index ->
+            File(
+                title,
+                "v1-n$index-$index.zip"
+            ).writeBytes(
+                byteArrayOf()
+            )
+        }
+
+        val service =
+            TestFiles(
+                root
+            )
+        val serviceField =
+            ShizukuAccess::class.java
+                .getDeclaredField(
+                    "files"
+                )
+        serviceField.isAccessible = true
+        val previous =
+            serviceField.get(
+                ShizukuAccess
+            )
+        serviceField.set(
+            ShizukuAccess,
+            service
+        )
+
+        try {
+            val snapshot =
+                RanobeLibLibraryScanner(
+                    context
+                ).scan(
+                    ShizukuAccess.treeUri
+                )
+            assertEquals(
+                1,
+                snapshot.items.size
+            )
+            assertEquals(
+                2,
+                snapshot.items
+                    .single()
+                    .chapterCount
+            )
+            assertTrue(
+                service.listEntryCalls
+                    .contains(
+                        "book"
+                    )
+            )
+            assertFalse(
+                service.listEntryCalls
+                    .contains(
+                        "book/990001--fixture"
+                    )
+            )
+        } finally {
+            serviceField.set(
+                ShizukuAccess,
+                previous
+            )
+            root.deleteRecursively()
+        }
+    }
+
     private class TestFiles(private val root: File) : IReaderLbFiles.Stub() {
-        private fun file(path: String) = if (path.isEmpty()) root else File(root, path)
+        val listEntryCalls = mutableListOf<String>()
+        private fun file(path: String) = File(root, path)
         override fun probe() = true
+        override fun diagnostics() = "Test service root=${root.path}"
         override fun list(relativePath: String): Array<String> =
             file(relativePath).list()?.toList().orEmpty().toTypedArray()
+        override fun listEntries(relativePath: String): Array<String> {
+            listEntryCalls += relativePath
+            return file(relativePath).listFiles().orEmpty()
+                .map { (if (it.isDirectory) "D" else "F") + it.name }
+                .toTypedArray()
+        }
         override fun exists(relativePath: String) = file(relativePath).exists()
         override fun isDirectory(relativePath: String) = file(relativePath).isDirectory
         override fun length(relativePath: String) = file(relativePath).length()

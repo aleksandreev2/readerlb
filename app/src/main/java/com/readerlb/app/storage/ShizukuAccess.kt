@@ -8,6 +8,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.IBinder
 import android.provider.DocumentsContract
+import androidx.documentfile.provider.DocumentFile
+import com.readerlb.app.BuildConfig
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
@@ -31,42 +34,123 @@ object ShizukuAccess {
     private var binding = false
     private var appContext: Context? = null
     @Volatile private var files: IReaderLbFiles? = null
+
+    val isServiceConnected: Boolean get() = files != null
+
+    fun rootDiagnostics(): String = files?.let { remote ->
+        runCatching { remote.diagnostics() }.getOrElse { "Remote diagnostics failed: ${it.stackTraceToString()}" }
+    } ?: "User service is not connected; root paths cannot be checked."
+
+    private fun record(stage: String, detail: String, error: Throwable? = null) {
+        appContext?.let { TesterDiagnostics.record(it, stage, detail, error) }
+    }
     var state by mutableStateOf(ShizukuAccessState.CHECKING)
         private set
 
     val treeUri: Uri
         get() = DocumentsContract.buildTreeDocumentUri(
-            "com.readerlb.app.ranobelib", "book"
+            "${BuildConfig.APPLICATION_ID}.ranobelib", "book"
+        )
+
+    val mangaTreeUri: Uri
+        get() = DocumentsContract.buildTreeDocumentUri(
+            "${BuildConfig.APPLICATION_ID}.ranobelib", "manga"
+        )
+
+    val filesTreeUri: Uri
+        get() = DocumentsContract.buildTreeDocumentUri(
+            "${BuildConfig.APPLICATION_ID}.ranobelib", "files"
         )
 
     fun service(): IReaderLbFiles = files ?: error("RanobeLib access is disconnected")
 
+    fun ensureContentRoot(context: Context, kind: String): Uri {
+        require(kind == "book" || kind == "manga") { "Unsupported library folder" }
+        val remote = service()
+        val contentReady = runCatching {
+            remote.exists(kind) &&
+                remote.isDirectory(kind)
+        }.getOrDefault(false)
+        if (contentReady) {
+            record(
+                "shizuku.root",
+                "using existing $kind root directly"
+            )
+            return if (kind == "book") treeUri else mangaTreeUri
+        }
+
+        val filesReady = runCatching {
+            remote.exists("files") &&
+                remote.isDirectory("files")
+        }.getOrDefault(false)
+        require(filesReady) {
+            "Папка $kind не найдена, а parent files недоступен для её создания"
+        }
+
+        val filesDirectory =
+            DocumentFile.fromTreeUri(
+                context,
+                filesTreeUri
+            ) ?: error(
+                "Подключите Shizuku для доступа к Android/data/ru.libappc/files"
+            )
+        require(filesDirectory.isDirectory) {
+            "Папка MangaLib files не найдена"
+        }
+        val child =
+            filesDirectory.findFile(kind)
+                ?: filesDirectory.createDirectory(kind)
+        require(child?.isDirectory == true) {
+            "Не удалось создать files/$kind"
+        }
+        require(remote.probe()) {
+            "Не удалось обновить Shizuku root после создания files/$kind"
+        }
+        record(
+            "shizuku.root",
+            "created files/$kind on selected volume"
+        )
+        return if (kind == "book") treeUri else mangaTreeUri
+    }
+
     fun refresh(context: Context) {
         appContext = context.applicationContext
+        record("shizuku.refresh", "state=$state binding=$binding service=${files != null}")
         if (!initialized) {
             initialized = true
-            Shizuku.addBinderReceivedListener { appContext?.let(::refresh) }
+            Shizuku.addBinderReceivedListener {
+                record("shizuku.binder", "received")
+                appContext?.let(::refresh)
+            }
             Shizuku.addBinderDeadListener {
+                record("shizuku.binder", "dead")
                 files = null
                 binding = false
                 appContext?.let(::refresh)
             }
-            Shizuku.addRequestPermissionResultListener { requestCode, _ ->
+            Shizuku.addRequestPermissionResultListener { requestCode, grantResult ->
+                record("shizuku.permission", "requestCode=$requestCode result=$grantResult")
                 if (requestCode == PERMISSION_REQUEST) appContext?.let(::refresh)
             }
         }
         val installed = try {
-            context.packageManager.getPackageInfo(PACKAGE, 0)
+            val info = context.packageManager.getPackageInfo(PACKAGE, 0)
+            record("shizuku.manager", "installed version=${info.versionName} code=${info.longVersionCode}")
             true
         } catch (_: PackageManager.NameNotFoundException) {
+            record("shizuku.manager", "not installed or not visible")
             false
         }
-        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+        val ping = runCatching { Shizuku.pingBinder() }
+        record("shizuku.ping", "result=${ping.getOrNull()}", ping.exceptionOrNull())
+        if (ping.getOrDefault(false) != true) {
             disconnect(if (installed) ShizukuAccessState.STOPPED
                 else ShizukuAccessState.NOT_INSTALLED)
             return
         }
-        if (runCatching { Shizuku.checkSelfPermission() }.getOrDefault(
+        val permission = runCatching { Shizuku.checkSelfPermission() }
+        record("shizuku.permission", "check=${permission.getOrNull()}", permission.exceptionOrNull())
+        if (permission.getOrDefault(
                 PackageManager.PERMISSION_DENIED
             ) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -78,18 +162,29 @@ object ShizukuAccess {
             probe(current)
             return
         }
-        if (binding) return
+        if (binding) {
+            record("shizuku.bind", "already in progress")
+            return
+        }
         binding = true
         state = ShizukuAccessState.CONNECTING
+        record("shizuku.bind", "requesting user service")
         runCatching {
             Shizuku.bindUserService(
                 Shizuku.UserServiceArgs(
                     ComponentName(context, ShizukuFileService::class.java)
                 ).processNameSuffix("ranobelib_files").tag("ranobelib_files")
-                    .version(1).daemon(false),
+                    .version(6).daemon(false),
                 connection
             )
+            scope.launch {
+                delay(15_000)
+                if (binding && files == null) {
+                    record("shizuku.bind", "still waiting for onServiceConnected after 15 seconds")
+                }
+            }
         }.onFailure {
+            record("shizuku.bind", "request failed", it)
             binding = false
             state = ShizukuAccessState.STOPPED
         }
@@ -97,8 +192,12 @@ object ShizukuAccess {
 
     fun requestPermission() {
         if (state == ShizukuAccessState.PERMISSION_REQUIRED) {
+            record("shizuku.permission", "requesting")
             runCatching { Shizuku.requestPermission(PERMISSION_REQUEST) }
-                .onFailure { appContext?.let(::refresh) }
+                .onFailure {
+                    record("shizuku.permission", "request failed", it)
+                    appContext?.let(::refresh)
+                }
         }
     }
 
@@ -115,30 +214,36 @@ object ShizukuAccess {
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            record("shizuku.bind", "connected component=$name binderAlive=${binder.isBinderAlive}")
             binding = false
             files = IReaderLbFiles.Stub.asInterface(binder)
             files?.let(::probe)
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
+            record("shizuku.bind", "disconnected component=$name")
             disconnect(ShizukuAccessState.STOPPED)
         }
     }
 
     private fun probe(remote: IReaderLbFiles) {
         state = ShizukuAccessState.CHECKING
+        record("shizuku.probe", "starting")
         scope.launch {
-            val available = withContext(Dispatchers.IO) {
-                runCatching { remote.probe() }.getOrDefault(false)
+            val started = System.currentTimeMillis()
+            val result = withContext(Dispatchers.IO) {
+                runCatching { remote.probe() }
             }
+            record("shizuku.probe", "result=${result.getOrNull()} durationMs=${System.currentTimeMillis() - started}; ${rootDiagnostics()}", result.exceptionOrNull())
             if (files === remote) {
-                state = if (available) ShizukuAccessState.READY
+                state = if (result.getOrDefault(false)) ShizukuAccessState.READY
                     else ShizukuAccessState.FOLDER_MISSING
             }
         }
     }
 
     private fun disconnect(newState: ShizukuAccessState) {
+        if (state != newState || files != null) record("shizuku.state", "$state -> $newState")
         files = null
         binding = false
         state = newState

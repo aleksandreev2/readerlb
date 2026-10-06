@@ -8,6 +8,17 @@ import android.provider.MediaStore
 import com.readerlb.app.importer.chapterNumberDecimal
 import com.readerlb.app.importer.chapterNumberInRange
 import com.readerlb.app.storage.LocalLibraryItem
+import com.readerlb.app.storage.TesterDiagnostics
+
+class ExportDestinationUnavailableException(
+    val stage: String,
+    val displayName: String,
+    val mimeType: String,
+    cause: Throwable? = null
+) : IllegalStateException(
+    "Android не смог подготовить файл экспорта ($stage). Выберите место сохранения вручную.",
+    cause
+)
 
 data class ExportedLocalBookFile(
     val uri: Uri,
@@ -44,7 +55,8 @@ class LocalLibraryExportManager(
             LocalExportOptions(),
         onProgress: (
             LocalExportProgress
-        ) -> Unit = {}
+        ) -> Unit = {},
+        destinationUri: Uri? = null
     ): ExportedLocalBookFile {
         val source =
             reader.open(
@@ -101,14 +113,9 @@ class LocalLibraryExportManager(
             return chapter
         }
 
-        return writePendingDownload(
-            resolver =
-                context.contentResolver,
-            displayName =
-                displayName,
-            mimeType =
-                format.mimeType
-        ) { output ->
+        val writerBlock:
+            (java.io.OutputStream) ->
+                ExportedLocalBookFile = { output ->
             when (format) {
                 LocalBookExportFormat
                     .TXT -> {
@@ -236,6 +243,49 @@ class LocalLibraryExportManager(
                     warnings.toList()
             )
         }
+
+        return try {
+            if (destinationUri == null) {
+                writePendingDownload(
+                    resolver =
+                        context.contentResolver,
+                    displayName =
+                        displayName,
+                    mimeType =
+                        format.mimeType,
+                    block =
+                        writerBlock
+                )
+            } else {
+                writeDocumentUri(
+                    resolver =
+                        context.contentResolver,
+                    uri =
+                        destinationUri,
+                    displayName =
+                        displayName,
+                    mimeType =
+                        format.mimeType,
+                    block =
+                        writerBlock
+                )
+            }
+        } catch (
+            failure:
+                ExportDestinationUnavailableException
+        ) {
+            TesterDiagnostics.record(
+                context,
+                "export.destination." +
+                    failure.stage,
+                "name=" +
+                    failure.displayName +
+                    "; mime=" +
+                    failure.mimeType,
+                failure
+            )
+            throw failure
+        }
     }
 
     private fun readChapter(
@@ -294,6 +344,37 @@ internal fun writePendingDownload(
     resolver: android.content.ContentResolver,
     displayName: String,
     mimeType: String,
+    insertDownload: (
+        ContentValues
+    ) -> Uri? = { values ->
+        resolver.insert(
+            MediaStore
+                .Downloads
+                .EXTERNAL_CONTENT_URI,
+            values
+        )
+    },
+    publishDownload: (
+        Uri,
+        ContentValues
+    ) -> Int = { uri, values ->
+        resolver.update(
+            uri,
+            values,
+            null,
+            null
+        )
+    },
+    deleteDownload: (
+        Uri
+    ) -> Unit = { uri ->
+        resolver.delete(
+            uri,
+            null,
+            null
+        )
+        Unit
+    },
     block: (
         java.io.OutputStream
     ) -> ExportedLocalBookFile
@@ -330,23 +411,46 @@ internal fun writePendingDownload(
             }
 
     val uri =
-        resolver.insert(
-            MediaStore
-                .Downloads
-                .EXTERNAL_CONTENT_URI,
-            values
-        ) ?: error(
-            "Android не создал файл экспорта"
+        try {
+            insertDownload(
+                values
+            )
+        } catch (
+            throwable: Throwable
+        ) {
+            throw ExportDestinationUnavailableException(
+                stage = "media-store-insert",
+                displayName = displayName,
+                mimeType = mimeType,
+                cause = throwable
+            )
+        } ?: throw ExportDestinationUnavailableException(
+            stage = "media-store-insert",
+            displayName = displayName,
+            mimeType = mimeType
         )
 
     try {
         val output =
-            resolver
-                .openOutputStream(
-                    uri,
-                    "w"
-                ) ?: error(
-                "Android не дал записать файл экспорта"
+            try {
+                resolver
+                    .openOutputStream(
+                        uri,
+                        "w"
+                    )
+            } catch (
+                throwable: Throwable
+            ) {
+                throw ExportDestinationUnavailableException(
+                    stage = "media-store-open",
+                    displayName = displayName,
+                    mimeType = mimeType,
+                    cause = throwable
+                )
+            } ?: throw ExportDestinationUnavailableException(
+                stage = "media-store-open",
+                displayName = displayName,
+                mimeType = mimeType
             )
 
         val result =
@@ -365,22 +469,89 @@ internal fun writePendingDownload(
                     )
                 }
 
-        resolver.update(
-            uri,
-            published,
-            null,
-            null
-        )
+        val updated =
+            try {
+                publishDownload(
+                    uri,
+                    published
+                )
+            } catch (
+                throwable: Throwable
+            ) {
+                throw ExportDestinationUnavailableException(
+                    stage = "media-store-publish",
+                    displayName = displayName,
+                    mimeType = mimeType,
+                    cause = throwable
+                )
+            }
+
+        if (updated <= 0) {
+            throw ExportDestinationUnavailableException(
+                stage = "media-store-publish",
+                displayName = displayName,
+                mimeType = mimeType
+            )
+        }
 
         return result.copy(
             uri = uri
         )
     } catch (throwable: Throwable) {
-        resolver.delete(
-            uri,
-            null,
-            null
+        runCatching {
+            deleteDownload(
+                uri
+            )
+        }
+        throw throwable
+    }
+}
+
+internal fun writeDocumentUri(
+    resolver: android.content.ContentResolver,
+    uri: Uri,
+    displayName: String,
+    mimeType: String,
+    block: (
+        java.io.OutputStream
+    ) -> ExportedLocalBookFile
+): ExportedLocalBookFile {
+    val output =
+        try {
+            resolver
+                .openOutputStream(
+                    uri,
+                    "w"
+                )
+        } catch (
+            throwable: Throwable
+        ) {
+            throw ExportDestinationUnavailableException(
+                stage = "document-open",
+                displayName = displayName,
+                mimeType = mimeType,
+                cause = throwable
+            )
+        } ?: throw ExportDestinationUnavailableException(
+            stage = "document-open",
+            displayName = displayName,
+            mimeType = mimeType
         )
+
+    return try {
+        output.buffered().use(
+            block
+        ).copy(
+            uri = uri
+        )
+    } catch (throwable: Throwable) {
+        runCatching {
+            resolver.delete(
+                uri,
+                null,
+                null
+            )
+        }
         throw throwable
     }
 }
