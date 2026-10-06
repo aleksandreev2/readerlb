@@ -2,7 +2,6 @@ package com.readerlb.app.export
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
@@ -14,6 +13,7 @@ import com.readerlb.app.storage.LocalMangaReader
 import com.readerlb.app.storage.MangaChapter
 import com.readerlb.app.storage.MangaPage
 import com.readerlb.app.storage.TesterDiagnostics
+import com.readerlb.app.storage.decodeMangaBitmap
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.util.zip.CRC32
@@ -204,14 +204,12 @@ class LocalMangaExportManager(private val context: Context) {
     }
 }
 
-private fun decode(page: MangaPage): Bitmap =
-    if (page.format == "avif") {
-        com.radzivon.bartoshyk.avif.coder.HeifCoder().decode(page.bytes)
-    } else {
-        requireNotNull(BitmapFactory.decodeByteArray(page.bytes, 0, page.bytes.size)) {
-            "Не удалось открыть страницу ${page.name}"
-        }
-    }
+private fun decode(
+    page: MangaPage
+): Bitmap =
+    decodeMangaBitmap(
+        page
+    )
 
 private fun ZipOutputStream.textEntry(name: String, value: String) {
     putNextEntry(ZipEntry(name))
