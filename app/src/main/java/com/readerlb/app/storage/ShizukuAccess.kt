@@ -66,13 +66,50 @@ object ShizukuAccess {
 
     fun ensureContentRoot(context: Context, kind: String): Uri {
         require(kind == "book" || kind == "manga") { "Unsupported library folder" }
-        val filesDirectory = DocumentFile.fromTreeUri(context, filesTreeUri)
-            ?: error("Подключите Shizuku для доступа к Android/data/ru.libappc/files")
-        require(filesDirectory.isDirectory) { "Папка MangaLib files не найдена" }
-        val child = filesDirectory.findFile(kind) ?: filesDirectory.createDirectory(kind)
-        require(child?.isDirectory == true) { "Не удалось создать files/$kind" }
-        service().probe()
-        record("shizuku.root", "ready files/$kind")
+        val remote = service()
+        val contentReady = runCatching {
+            remote.exists(kind) &&
+                remote.isDirectory(kind)
+        }.getOrDefault(false)
+        if (contentReady) {
+            record(
+                "shizuku.root",
+                "using existing $kind root directly"
+            )
+            return if (kind == "book") treeUri else mangaTreeUri
+        }
+
+        val filesReady = runCatching {
+            remote.exists("files") &&
+                remote.isDirectory("files")
+        }.getOrDefault(false)
+        require(filesReady) {
+            "Папка $kind не найдена, а parent files недоступен для её создания"
+        }
+
+        val filesDirectory =
+            DocumentFile.fromTreeUri(
+                context,
+                filesTreeUri
+            ) ?: error(
+                "Подключите Shizuku для доступа к Android/data/ru.libappc/files"
+            )
+        require(filesDirectory.isDirectory) {
+            "Папка MangaLib files не найдена"
+        }
+        val child =
+            filesDirectory.findFile(kind)
+                ?: filesDirectory.createDirectory(kind)
+        require(child?.isDirectory == true) {
+            "Не удалось создать files/$kind"
+        }
+        require(remote.probe()) {
+            "Не удалось обновить Shizuku root после создания files/$kind"
+        }
+        record(
+            "shizuku.root",
+            "created files/$kind on selected volume"
+        )
         return if (kind == "book") treeUri else mangaTreeUri
     }
 
