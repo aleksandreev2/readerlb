@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.JsonReader
 import android.util.JsonToken
+import com.readerlb.app.BuildConfig
 import com.readerlb.app.importer.compareChapterNumbers
 import org.json.JSONArray
 import org.json.JSONObject
@@ -262,6 +263,17 @@ class RanobeLibLibraryScanner(
         directory: SafDocument,
         contentType: LocalContentType
     ): LocalLibraryItem? {
+        if (
+            treeUri.authority ==
+            "${BuildConfig.APPLICATION_ID}.ranobelib"
+        ) {
+            return readTitleFast(
+                treeUri = treeUri,
+                directory = directory,
+                contentType = contentType
+            )
+        }
+
         val children =
             LinkedHashMap<String, SafDocument>()
 
@@ -288,58 +300,156 @@ class RanobeLibLibraryScanner(
             children["chapters.json"]
                 ?: return null
 
-        val info = JSONObject(
-            readText(
-                uri = infoFile.uri,
+        val info =
+            JSONObject(
+                readText(
+                    uri = infoFile.uri,
+                    displayName =
+                        infoFile.name
+                )
+            )
+        val chapters =
+            readChapterSummary(
+                uri = chaptersFile.uri,
                 displayName =
-                    infoFile.name
-            )
-        )
-        val media = info.getJSONObject(
-            "media"
-        )
-        val chapters = readChapterSummary(
-            uri = chaptersFile.uri,
-            displayName =
-                chaptersFile.name
-        )
-
-        val title = sequenceOf(
-            media.optString("rusName"),
-            media.optString("name"),
-            media.optString("engName"),
-            directory.name
-        )
-            .map(String::trim)
-            .firstOrNull(
-                String::isNotBlank
-            )
-            ?: error(
-                "У тайтла нет названия"
+                    chaptersFile.name
             )
 
-        val slugUrl = media
-            .optString("slugUrl")
-            .trim()
-            .ifBlank {
-                directory.name
-            }
-
+        val media =
+            info.getJSONObject(
+                "media"
+            )
         val coverName =
             resolveLocalCoverName(
                 imageUrl =
-                    media
-                        .optString(
-                            "imageUrl"
-                        ),
+                    media.optString(
+                        "imageUrl"
+                    ),
                 availableFileNames =
                     children.keys
             )
-
         val coverUri =
             coverName
-                ?.let(children::get)
+                ?.let(
+                    children::get
+                )
                 ?.uri
+
+        return buildTitleItem(
+            directory = directory,
+            contentType = contentType,
+            info = info,
+            chapters = chapters,
+            coverUri = coverUri
+        )
+    }
+
+    private fun readTitleFast(
+        treeUri: Uri,
+        directory: SafDocument,
+        contentType: LocalContentType
+    ): LocalLibraryItem? {
+        val infoFile =
+            findKnownDocument(
+                treeUri,
+                directory.documentId,
+                "info.json"
+            ) ?: return null
+        val chaptersFile =
+            findKnownDocument(
+                treeUri,
+                directory.documentId,
+                "chapters.json"
+            ) ?: return null
+
+        val info =
+            JSONObject(
+                readText(
+                    uri = infoFile.uri,
+                    displayName =
+                        infoFile.name
+                )
+            )
+        val chapters =
+            readChapterSummary(
+                uri = chaptersFile.uri,
+                displayName =
+                    chaptersFile.name
+            )
+        val media =
+            info.getJSONObject(
+                "media"
+            )
+
+        val coverUri =
+            coverCandidateNames(
+                media.optString(
+                    "imageUrl"
+                )
+            )
+                .asSequence()
+                .mapNotNull {
+                        name ->
+                    findKnownDocument(
+                        treeUri,
+                        directory.documentId,
+                        name
+                    )
+                }
+                .firstOrNull()
+                ?.uri
+
+        return buildTitleItem(
+            directory = directory,
+            contentType = contentType,
+            info = info,
+            chapters = chapters,
+            coverUri = coverUri
+        )
+    }
+
+    private fun buildTitleItem(
+        directory: SafDocument,
+        contentType: LocalContentType,
+        info: JSONObject,
+        chapters: LocalChapterSummary,
+        coverUri: Uri?
+    ): LocalLibraryItem {
+        val media =
+            info.getJSONObject(
+                "media"
+            )
+        val title =
+            sequenceOf(
+                media.optString(
+                    "rusName"
+                ),
+                media.optString(
+                    "name"
+                ),
+                media.optString(
+                    "engName"
+                ),
+                directory.name
+            )
+                .map(
+                    String::trim
+                )
+                .firstOrNull(
+                    String::isNotBlank
+                )
+                ?: error(
+                    "У тайтла нет названия"
+                )
+
+        val slugUrl =
+            media.optString(
+                "slugUrl"
+            )
+                .trim()
+                .ifBlank {
+                    directory.name
+                }
 
         return LocalLibraryItem(
             title = title,
@@ -357,11 +467,74 @@ class RanobeLibLibraryScanner(
                     0L
                 ),
             createdByReaderLB =
-                contentType == LocalContentType.BOOK && chapters.createdByReaderLB,
+                contentType ==
+                    LocalContentType.BOOK &&
+                    chapters.createdByReaderLB,
             folderName =
                 directory.name,
             contentType = contentType
         )
+    }
+
+    private fun findKnownDocument(
+        treeUri: Uri,
+        parentDocumentId: String,
+        name: String
+    ): SafDocument? {
+        val documentId =
+            "$parentDocumentId/$name"
+        val uri =
+            DocumentsContract
+                .buildDocumentUriUsingTree(
+                    treeUri,
+                    documentId
+                )
+        val projection =
+            arrayOf(
+                DocumentsContract.Document
+                    .COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document
+                    .COLUMN_MIME_TYPE
+            )
+        val cursor =
+            context.contentResolver
+                .query(
+                    uri,
+                    projection,
+                    null,
+                    null,
+                    null
+                ) ?: return null
+
+        return cursor.use {
+            if (!it.moveToFirst()) {
+                return@use null
+            }
+            val displayName =
+                it.getString(
+                    it.getColumnIndexOrThrow(
+                        DocumentsContract.Document
+                            .COLUMN_DISPLAY_NAME
+                    )
+                ).orEmpty()
+            val mimeType =
+                it.getString(
+                    it.getColumnIndexOrThrow(
+                        DocumentsContract.Document
+                            .COLUMN_MIME_TYPE
+                    )
+                ).orEmpty()
+            SafDocument(
+                documentId =
+                    documentId,
+                name =
+                    displayName.ifBlank {
+                        name
+                    },
+                mimeType = mimeType,
+                uri = uri
+            )
+        }
     }
 
     private fun readChapterSummary(
@@ -487,6 +660,64 @@ class RanobeLibLibraryScanner(
         val mimeType: String,
         val uri: Uri
     )
+}
+
+internal fun coverCandidateNames(
+    imageUrl: String
+): List<String> {
+    val requestedRaw =
+        imageUrl
+            .trim()
+            .substringBefore('#')
+            .substringBefore('?')
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .trim()
+    val requested =
+        runCatching {
+            URLDecoder.decode(
+                requestedRaw,
+                StandardCharsets.UTF_8
+                    .name()
+            )
+        }
+            .getOrDefault(
+                requestedRaw
+            )
+            .trim()
+
+    return buildList {
+        if (
+            requested.isNotBlank()
+        ) {
+            add(
+                requested
+            )
+            val stem =
+                requested.substringBeforeLast(
+                    '.',
+                    missingDelimiterValue =
+                        requested
+                )
+            LOCAL_COVER_EXTENSIONS.forEach {
+                    extension ->
+                add(
+                    "$stem.$extension"
+                )
+            }
+        }
+        PREFERRED_LOCAL_COVER_STEMS.forEach {
+                stem ->
+            LOCAL_COVER_EXTENSIONS.forEach {
+                    extension ->
+                add(
+                    "$stem.$extension"
+                )
+            }
+        }
+    }.distinctBy {
+        it.lowercase()
+    }
 }
 
 internal fun resolveLocalCoverName(
