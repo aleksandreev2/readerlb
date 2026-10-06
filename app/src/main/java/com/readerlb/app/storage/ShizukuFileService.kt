@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit
 /** Runs under Shizuku's shell or root UID. Access is confined to MangaLib's files directory. */
 class ShizukuFileService : IReaderLbFiles.Stub() {
     @Volatile private var roots: Map<String, File> = emptyMap()
+    @Volatile private var selectedVolumeRoot: File? = null
     private data class PendingWrite(
         val finished: CountDownLatch = CountDownLatch(1),
         @Volatile var failure: String? = null
@@ -29,49 +30,117 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
     }
 
     override fun probe(): Boolean {
-        roots = listOf("files", "book", "manga").mapNotNull { kind ->
-            val suffix = if (kind == "files") "" else "/$kind"
-            val candidates = buildList {
-                add(File("/storage/emulated/0/Android/data/ru.libappc/files$suffix"))
-                File("/storage").listFiles().orEmpty().forEach { volume ->
-                    if (volume.name.matches(Regex("[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}"))) {
-                        add(File(volume, "Android/data/ru.libappc/files$suffix"))
-                    }
-                }
-            }
-            candidates.firstOrNull(::isUsableLibraryRoot)?.canonicalFile?.let { kind to it }
-        }.toMap()
+        val selection =
+            selectConsistentLibraryRoots(
+                libraryFilesCandidates()
+            )
+        roots =
+            selection?.roots
+                ?: emptyMap()
+        selectedVolumeRoot =
+            selection?.filesRoot
         return roots.isNotEmpty()
     }
 
     override fun diagnostics(): String = buildString {
         appendLine("Service UID=${Process.myUid()}, PID=${Process.myPid()}")
-        appendLine("Selected roots: ${roots.keys.sorted().joinToString().ifEmpty { "none" }}")
-        for (kind in listOf("files", "book", "manga")) {
-            val suffix = if (kind == "files") "" else "/$kind"
-            val candidates = buildList {
-                add(File("/storage/emulated/0/Android/data/ru.libappc/files$suffix"))
-                File("/storage").listFiles().orEmpty().forEach { volume ->
-                    if (volume.name.matches(Regex("[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}"))) {
-                        add(File(volume, "Android/data/ru.libappc/files$suffix"))
+        appendLine(
+            "Selected volume root: " +
+                (
+                    selectedVolumeRoot
+                        ?.path
+                        ?: "none"
+                )
+        )
+        appendLine(
+            "Selected roots: " +
+                roots.keys
+                    .sorted()
+                    .joinToString()
+                    .ifEmpty { "none" }
+        )
+        roots.toSortedMap().forEach {
+                (kind, root) ->
+            appendLine(
+                "  $kind -> ${root.path}"
+            )
+        }
+
+        for (filesRoot in libraryFilesCandidates()) {
+            appendLine(
+                "volume candidate=${filesRoot.path}"
+            )
+            for (kind in listOf("files", "book", "manga")) {
+                val root =
+                    if (kind == "files") {
+                        filesRoot
+                    } else {
+                        File(
+                            filesRoot,
+                            kind
+                        )
                     }
-                }
-            }
-            for (root in candidates) {
-                appendLine("$kind candidate=${root.path}")
-                appendLine("  exists=${root.exists()}, directory=${root.isDirectory}, canRead=${root.canRead()}, canWrite=${root.canWrite()}")
-                appendLine("  canonical=${runCatching { root.canonicalPath }.getOrElse { "ERROR ${it.javaClass.simpleName}: ${it.message}" }}")
+                appendLine(
+                    "$kind candidate=${root.path}"
+                )
+                appendLine(
+                    "  exists=${root.exists()}, directory=${root.isDirectory}, canRead=${root.canRead()}, canWrite=${root.canWrite()}"
+                )
+                appendLine(
+                    "  canonical=" +
+                        runCatching {
+                            root.canonicalPath
+                        }.getOrElse {
+                            "ERROR ${it.javaClass.simpleName}: ${it.message}"
+                        }
+                )
                 if (root.isDirectory) {
-                    val read = runCatching { Files.newDirectoryStream(root.toPath()).use { } }
-                    appendLine("  directory read=${read.fold({ "OK" }, { "ERROR ${it.javaClass.simpleName}: ${it.message}" })}")
-                    val write = runCatching {
-                        val probe = File.createTempFile(".readerlb-probe-", ".tmp", root)
-                        try {
-                            probe.writeBytes(byteArrayOf(1))
-                            check(probe.readBytes().contentEquals(byteArrayOf(1)))
-                        } finally { probe.delete() }
-                    }
-                    appendLine("  write/read probe=${write.fold({ "OK" }, { "ERROR ${it.javaClass.simpleName}: ${it.message}" })}")
+                    val read =
+                        runCatching {
+                            Files.newDirectoryStream(
+                                root.toPath()
+                            ).use { }
+                        }
+                    appendLine(
+                        "  directory read=" +
+                            read.fold(
+                                { "OK" },
+                                {
+                                    "ERROR ${it.javaClass.simpleName}: ${it.message}"
+                                }
+                            )
+                    )
+                    val write =
+                        runCatching {
+                            val probe =
+                                File.createTempFile(
+                                    ".readerlb-probe-",
+                                    ".tmp",
+                                    root
+                                )
+                            try {
+                                probe.writeBytes(
+                                    byteArrayOf(1)
+                                )
+                                check(
+                                    probe.readBytes()
+                                        .contentEquals(
+                                            byteArrayOf(1)
+                                        )
+                                )
+                            } finally {
+                                probe.delete()
+                            }
+                        }
+                    appendLine(
+                        "  write/read probe=" +
+                            write.fold(
+                                { "OK" },
+                                {
+                                    "ERROR ${it.javaClass.simpleName}: ${it.message}"
+                                }
+                            )
+                    )
                 }
             }
         }
@@ -198,6 +267,127 @@ class ShizukuFileService : IReaderLbFiles.Stub() {
     }
 
 }
+
+internal data class LibraryRootSelection(
+    val filesRoot: File,
+    val roots: Map<String, File>
+)
+
+internal fun selectConsistentLibraryRoots(
+    filesCandidates: List<File>
+): LibraryRootSelection? {
+    var best: LibraryRootSelection? = null
+    var bestScore = -1
+
+    filesCandidates.forEach {
+            filesRoot ->
+        val selected =
+            linkedMapOf<String, File>()
+
+        fun addIfUsable(
+            kind: String,
+            root: File
+        ) {
+            if (isUsableLibraryRoot(root)) {
+                selected[kind] =
+                    runCatching {
+                        root.canonicalFile
+                    }.getOrDefault(
+                        root.absoluteFile
+                    )
+            }
+        }
+
+        addIfUsable(
+            "files",
+            filesRoot
+        )
+        addIfUsable(
+            "book",
+            File(
+                filesRoot,
+                "book"
+            )
+        )
+        addIfUsable(
+            "manga",
+            File(
+                filesRoot,
+                "manga"
+            )
+        )
+
+        if (selected.isEmpty()) {
+            return@forEach
+        }
+
+        val contentRoots =
+            listOf(
+                "book",
+                "manga"
+            ).count(
+                selected::containsKey
+            )
+        val score =
+            contentRoots * 100 +
+                if (
+                    selected.containsKey(
+                        "files"
+                    )
+                ) {
+                    1
+                } else {
+                    0
+                }
+
+        if (score > bestScore) {
+            bestScore = score
+            best =
+                LibraryRootSelection(
+                    filesRoot =
+                        runCatching {
+                            filesRoot
+                                .canonicalFile
+                        }.getOrDefault(
+                            filesRoot.absoluteFile
+                        ),
+                    roots =
+                        selected.toMap()
+                )
+        }
+    }
+
+    return best
+}
+
+private fun libraryFilesCandidates(): List<File> =
+    buildList {
+        add(
+            File(
+                "/storage/emulated/0/Android/data/ru.libappc/files"
+            )
+        )
+        File("/storage")
+            .listFiles()
+            .orEmpty()
+            .forEach {
+                    volume ->
+                if (
+                    volume.name.matches(
+                        Regex(
+                            "[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}"
+                        )
+                    )
+                ) {
+                    add(
+                        File(
+                            volume,
+                            "Android/data/ru.libappc/files"
+                        )
+                    )
+                }
+            }
+    }
 
 internal fun isUsableLibraryRoot(root: File): Boolean {
     if (!root.isDirectory) return false
