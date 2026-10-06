@@ -1271,74 +1271,210 @@ private fun MainApp(
                 libraryScanned = 0
                 libraryScanTotal = 0
 
-                val result = try {
-                    withTimeout(
-                        600_000L
-                    ) {
-                        runInterruptible(
-                            Dispatchers.IO
+                suspend fun scanRoot(
+                    root: Uri,
+                    label: String,
+                    progressOffset: Int = 0
+                ): Result<com.readerlb.app.storage.LocalLibrarySnapshot> =
+                    try {
+                        withTimeout(
+                            300_000L
                         ) {
-                            val book = runCatching { libraryScanner.scan(tree) { completed, total ->
-                                scope.launch { libraryScanned = completed; libraryScanTotal = total }
-                                if (completed > 0 && completed % 25 == 0) {
-                                    TesterDiagnostics.record(context, "scan.progress", "root=book completed=$completed")
-                                }
-                            } }
-                            TesterDiagnostics.record(context, "scan.book", book.fold(
-                                { "items=${it.items.size} skipped=${it.skippedTitles}" },
-                                { "failed" }
-                            ), book.exceptionOrNull())
-                            if (tree != ShizukuAccess.treeUri) {
-                                Result.success(book.getOrThrow())
-                            } else {
-                                val manga = runCatching {
-                                    libraryScanner.scan(ShizukuAccess.mangaTreeUri) { completed, total ->
-                                        scope.launch {
-                                            libraryScanned = (book.getOrNull()?.items?.size ?: 0) + completed
-                                            libraryScanTotal = total
-                                        }
-                                        if (completed > 0 && completed % 25 == 0) {
-                                            TesterDiagnostics.record(context, "scan.progress", "root=manga completed=$completed")
-                                        }
+                            runInterruptible(
+                                Dispatchers.IO
+                            ) {
+                                libraryScanner.scan(
+                                    root
+                                ) {
+                                        completed,
+                                        total ->
+                                    scope.launch {
+                                        libraryScanned =
+                                            progressOffset +
+                                                completed
+                                        libraryScanTotal =
+                                            if (
+                                                total > 0
+                                            ) {
+                                                progressOffset +
+                                                    total
+                                            } else {
+                                                0
+                                            }
+                                    }
+                                    if (
+                                        completed > 0 &&
+                                        completed % 25 ==
+                                            0
+                                    ) {
+                                        TesterDiagnostics.record(
+                                            context,
+                                            "scan.progress",
+                                            "root=$label completed=$completed"
+                                        )
                                     }
                                 }
-                                TesterDiagnostics.record(context, "scan.manga", manga.fold(
-                                    { "items=${it.items.size} skipped=${it.skippedTitles}" },
-                                    { "failed" }
-                                ), manga.exceptionOrNull())
-                                if (book.isFailure && manga.isFailure) {
-                                    Result.failure(book.exceptionOrNull() ?: error("Library scan failed"))
-                                } else {
-                                    val snapshots = listOfNotNull(book.getOrNull(), manga.getOrNull())
-                                    Result.success(com.readerlb.app.storage.LocalLibrarySnapshot(
-                                        items = snapshots.flatMap { it.items }.sortedByDescending { it.writeTime },
-                                        skippedTitles = snapshots.sumOf { it.skippedTitles }
-                                    ))
-                                }
                             }
+                        }.let(
+                            Result.Companion::success
+                        )
+                    } catch (
+                        timeout:
+                            TimeoutCancellationException
+                    ) {
+                        Result.failure(
+                            IllegalStateException(
+                                "Сканирование $label превысило 5 минут. " +
+                                    "Откройте диагностику и проверьте последнее событие scan.progress.",
+                                timeout
+                            )
+                        )
+                    } catch (
+                        cancelled:
+                            CancellationException
+                    ) {
+                        throw cancelled
+                    } catch (
+                        throwable:
+                            Throwable
+                    ) {
+                        Result.failure(
+                            throwable
+                        )
+                    }
+
+                val book =
+                    scanRoot(
+                        tree,
+                        "book"
+                    )
+                TesterDiagnostics.record(
+                    context,
+                    "scan.book",
+                    book.fold(
+                        {
+                            "items=${it.items.size} skipped=${it.skippedTitles}"
+                        },
+                        {
+                            "failed"
+                        }
+                    ),
+                    book.exceptionOrNull()
+                )
+
+                val result =
+                    if (
+                        tree !=
+                        ShizukuAccess.treeUri
+                    ) {
+                        book
+                    } else {
+                        book.getOrNull()
+                            ?.let {
+                                    snapshot ->
+                                val retainedManga =
+                                    previous.filter {
+                                        it.contentType ==
+                                            LocalContentType.MANGA
+                                    }
+                                val partialItems =
+                                    (
+                                        snapshot.items +
+                                            retainedManga
+                                        )
+                                        .sortedByDescending {
+                                            it.writeTime
+                                        }
+                                localLibrary =
+                                    partialItems
+                                preferences
+                                    .localLibraryCacheTree =
+                                    tree
+                                preferences
+                                    .localLibraryCacheJson =
+                                    encodeLocalLibraryCache(
+                                        partialItems
+                                    )
+                                librarySkipped =
+                                    snapshot.skippedTitles
+                                libraryScanned =
+                                    snapshot.items.size +
+                                        snapshot.skippedTitles
+                                libraryScanTotal = 0
+                                libraryStatus =
+                                    "Новеллы готовы · манга сканируется…"
+                                TesterDiagnostics.record(
+                                    context,
+                                    "scan.partial",
+                                    "bookItems=${snapshot.items.size}; retainedManga=${retainedManga.size}"
+                                )
+                            }
+
+                        val bookOffset =
+                            book.getOrNull()
+                                ?.let {
+                                    it.items.size +
+                                        it.skippedTitles
+                                }
+                                ?: 0
+                        val manga =
+                            scanRoot(
+                                ShizukuAccess
+                                    .mangaTreeUri,
+                                "manga",
+                                progressOffset =
+                                    bookOffset
+                            )
+                        TesterDiagnostics.record(
+                            context,
+                            "scan.manga",
+                            manga.fold(
+                                {
+                                    "items=${it.items.size} skipped=${it.skippedTitles}"
+                                },
+                                {
+                                    "failed"
+                                }
+                            ),
+                            manga.exceptionOrNull()
+                        )
+
+                        if (
+                            book.isFailure &&
+                            manga.isFailure
+                        ) {
+                            Result.failure(
+                                book.exceptionOrNull()
+                                    ?: manga.exceptionOrNull()
+                                    ?: error(
+                                        "Library scan failed"
+                                    )
+                            )
+                        } else {
+                            val snapshots =
+                                listOfNotNull(
+                                    book.getOrNull(),
+                                    manga.getOrNull()
+                                )
+                            Result.success(
+                                com.readerlb.app.storage
+                                    .LocalLibrarySnapshot(
+                                        items =
+                                            snapshots
+                                                .flatMap {
+                                                    it.items
+                                                }
+                                                .sortedByDescending {
+                                                    it.writeTime
+                                                },
+                                        skippedTitles =
+                                            snapshots.sumOf {
+                                                it.skippedTitles
+                                            }
+                                    )
+                            )
                         }
                     }
-                } catch (
-                    timeout:
-                    TimeoutCancellationException
-                ) {
-                    Result.failure(
-                        IllegalStateException(
-                            "Сканирование большой библиотеки превысило 10 минут. " +
-                                "Откройте диагностику и проверьте последнее событие scan.progress."
-                        )
-                    )
-                } catch (
-                    cancelled:
-                    CancellationException
-                ) {
-                    throw cancelled
-                } catch (
-                    throwable:
-                    Throwable
-                ) {
-                    Result.failure(throwable)
-                }
 
                 result.onSuccess {
                         snapshot ->
