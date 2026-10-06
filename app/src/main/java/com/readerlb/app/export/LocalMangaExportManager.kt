@@ -85,7 +85,7 @@ class LocalMangaExportManager(private val context: Context) {
         try {
             chapters.forEachIndexed { chapterIndex, chapter ->
                 checkInterrupted()
-                reader.pages(item, chapter).forEach { image ->
+                reader.forEachPage(item, chapter) { image ->
                     checkInterrupted()
                     val bitmap = decode(image)
                     try {
@@ -148,8 +148,11 @@ class LocalMangaExportManager(private val context: Context) {
             var pageNumber = 0
             chapters.forEachIndexed { chapterIndex, chapter ->
                 checkInterrupted()
-                reader.pages(item, chapter).forEachIndexed { index, image ->
+                var chapterPageIndex = 0
+                reader.forEachPage(item, chapter) { image ->
                     checkInterrupted()
+                    val index = chapterPageIndex
+                    chapterPageIndex += 1
                     pageNumber++
                     val fileNumber = pageNumber.toString().padStart(5, '0')
                     val imageName = "images/page$fileNumber.jpg"
