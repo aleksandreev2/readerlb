@@ -1,7 +1,6 @@
 package com.readerlb.app
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,6 +67,7 @@ import com.readerlb.app.importer.ReaderLbTransferManager
 import com.readerlb.app.storage.MangaChapter
 import com.readerlb.app.storage.MangaPage
 import com.readerlb.app.storage.MangaPageInfo
+import com.readerlb.app.storage.decodeMangaBitmap
 import com.readerlb.app.export.ExportedLocalBookFile
 import com.readerlb.app.export.ExportDestinationUnavailableException
 import com.readerlb.app.export.LocalBookExportFormat
@@ -630,11 +630,9 @@ private fun MangaExportSheet(
     }
 }
 
-private fun decodeMangaPage(page: MangaPage): Bitmap =
-    if (page.format == "avif") {
-        com.radzivon.bartoshyk.avif.coder.HeifCoder().decode(page.bytes)
-    } else {
-        requireNotNull(BitmapFactory.decodeByteArray(page.bytes, 0, page.bytes.size)) {
-            "Unsupported image"
-        }
-    }
+private fun decodeMangaPage(
+    page: MangaPage
+): Bitmap =
+    decodeMangaBitmap(
+        page
+    )
