@@ -67,6 +67,7 @@ import com.readerlb.app.storage.ShizukuAccess
 import com.readerlb.app.importer.ReaderLbTransferManager
 import com.readerlb.app.storage.MangaChapter
 import com.readerlb.app.storage.MangaPage
+import com.readerlb.app.storage.MangaPageInfo
 import com.readerlb.app.export.ExportedLocalBookFile
 import com.readerlb.app.export.ExportDestinationUnavailableException
 import com.readerlb.app.export.LocalBookExportFormat
@@ -97,7 +98,7 @@ internal fun MangaTitleDetail(
     val scope = rememberCoroutineScope()
     var chapters by remember(item.slugUrl) { mutableStateOf<List<MangaChapter>?>(null) }
     var selectedChapter by remember(item.slugUrl) { mutableStateOf<MangaChapter?>(null) }
-    var pages by remember(item.slugUrl) { mutableStateOf<List<MangaPage>?>(null) }
+    var pages by remember(item.slugUrl) { mutableStateOf<List<MangaPageInfo>?>(null) }
     var pageIndex by remember(item.slugUrl) { mutableIntStateOf(0) }
     var bitmap by remember(item.slugUrl) { mutableStateOf<Bitmap?>(null) }
     var error by remember(item.slugUrl) { mutableStateOf<String?>(null) }
@@ -124,14 +125,32 @@ internal fun MangaTitleDetail(
         pages = null
         bitmap = null
         pageIndex = 0
-        runCatching { withContext(Dispatchers.IO) { reader.pages(item, chapter) } }
+        runCatching { withContext(Dispatchers.IO) { reader.pageInfos(item, chapter) } }
             .onSuccess { pages = it }
             .onFailure { error = it.message ?: "Не удалось прочитать ZIP главы" }
     }
-    LaunchedEffect(pages, pageIndex) {
-        val page = pages?.getOrNull(pageIndex) ?: return@LaunchedEffect
+    LaunchedEffect(pages, pageIndex, selectedChapter) {
+        val page =
+            pages?.getOrNull(
+                pageIndex
+            ) ?: return@LaunchedEffect
+        val chapter =
+            selectedChapter
+                ?: return@LaunchedEffect
         bitmap = null
-        runCatching { withContext(Dispatchers.IO) { decodeMangaPage(page) } }
+        runCatching {
+            withContext(
+                Dispatchers.IO
+            ) {
+                decodeMangaPage(
+                    reader.readPage(
+                        item,
+                        chapter,
+                        page
+                    )
+                )
+            }
+        }
             .onSuccess { bitmap = it }
             .onFailure { error = it.message ?: "Не удалось открыть страницу" }
     }
