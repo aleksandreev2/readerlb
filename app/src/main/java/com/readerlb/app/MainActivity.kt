@@ -97,6 +97,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.firebase.messaging.FirebaseMessaging
 import com.readerlb.app.export.ExportedLocalBookFile
+import com.readerlb.app.export.ExportDestinationUnavailableException
 import com.readerlb.app.export.LocalBookExportFormat
 import com.readerlb.app.export.LocalExportOptions
 import com.readerlb.app.export.LocalExportProgress
@@ -5005,6 +5006,9 @@ private fun LibraryTitleDetail(
     var exportJob by remember {
         mutableStateOf<Job?>(null)
     }
+    var pendingDocumentExport by remember {
+        mutableStateOf<ExportDestinationUnavailableException?>(null)
+    }
 
     val exportFormat =
         LocalBookExportFormat.entries[
@@ -5016,7 +5020,7 @@ private fun LibraryTitleDetail(
             )
         ]
 
-    fun startExport() {
+    fun startExport(destinationUri: Uri? = null) {
         val tree =
             treeUri
                 ?: run {
@@ -5074,7 +5078,9 @@ private fun LibraryTitleDetail(
                                     exportProgress =
                                         progress
                                 }
-                            }
+                            },
+                            destinationUri =
+                                destinationUri
                         )
                     }
 
@@ -5086,6 +5092,20 @@ private fun LibraryTitleDetail(
             ) {
                 exportError =
                     "Экспорт отменён."
+            } catch (
+                failure:
+                    ExportDestinationUnavailableException
+            ) {
+                if (destinationUri == null) {
+                    exportError =
+                        "Android не смог сохранить файл в Downloads. Выберите место сохранения вручную."
+                    pendingDocumentExport =
+                        failure
+                } else {
+                    exportError =
+                        failure.message
+                            ?: "Не удалось открыть выбранный файл для записи"
+                }
             } catch (throwable: Throwable) {
                 exportError =
                     throwable.message
@@ -5095,6 +5115,75 @@ private fun LibraryTitleDetail(
                 exportJob = null
             }
         }
+    }
+
+    val documentExportLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts
+                .StartActivityForResult()
+        ) { activityResult ->
+            val pending =
+                pendingDocumentExport
+                    ?: return@rememberLauncherForActivityResult
+            pendingDocumentExport = null
+
+            val uri =
+                activityResult
+                    .data
+                    ?.data
+
+            if (
+                activityResult.resultCode !=
+                android.app.Activity.RESULT_OK ||
+                uri == null
+            ) {
+                exportError =
+                    "Сохранение в Downloads недоступно, а выбор другого места отменён."
+            } else {
+                TesterDiagnostics.record(
+                    context,
+                    "export.fallback.selected",
+                    "name=" +
+                        pending.displayName +
+                        "; mime=" +
+                        pending.mimeType
+                )
+                startExport(
+                    destinationUri =
+                        uri
+                )
+            }
+        }
+
+    LaunchedEffect(
+        pendingDocumentExport
+    ) {
+        val pending =
+            pendingDocumentExport
+                ?: return@LaunchedEffect
+        TesterDiagnostics.record(
+            context,
+            "export.fallback.open",
+            "stage=" +
+                pending.stage +
+                "; name=" +
+                pending.displayName
+        )
+        documentExportLauncher.launch(
+            Intent(
+                Intent.ACTION_CREATE_DOCUMENT
+            )
+                .addCategory(
+                    Intent.CATEGORY_OPENABLE
+                )
+                .setType(
+                    pending.mimeType
+                )
+                .putExtra(
+                    Intent.EXTRA_TITLE,
+                    pending.displayName
+                )
+        )
     }
 
     fun openExportedFile(
