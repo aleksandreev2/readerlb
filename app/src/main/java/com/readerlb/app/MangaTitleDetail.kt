@@ -3,6 +3,8 @@ package com.readerlb.app
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -66,6 +68,7 @@ import com.readerlb.app.importer.ReaderLbTransferManager
 import com.readerlb.app.storage.MangaChapter
 import com.readerlb.app.storage.MangaPage
 import com.readerlb.app.export.ExportedLocalBookFile
+import com.readerlb.app.export.ExportDestinationUnavailableException
 import com.readerlb.app.export.LocalBookExportFormat
 import com.readerlb.app.export.LocalExportProgress
 import com.readerlb.app.export.LocalMangaExportManager
@@ -105,6 +108,9 @@ internal fun MangaTitleDetail(
     var exportResult by remember(item.slugUrl) { mutableStateOf<ExportedLocalBookFile?>(null) }
     var exportError by remember(item.slugUrl) { mutableStateOf<String?>(null) }
     var exportJob by remember(item.slugUrl) { mutableStateOf<Job?>(null) }
+    var pendingDocumentExport by remember(item.slugUrl) {
+        mutableStateOf<ExportDestinationUnavailableException?>(null)
+    }
     var confirmDelete by remember(item.slugUrl) { mutableStateOf(false) }
     var deleteBusy by remember(item.slugUrl) { mutableStateOf(false) }
 
@@ -130,6 +136,117 @@ internal fun MangaTitleDetail(
             .onFailure { error = it.message ?: "Не удалось открыть страницу" }
     }
 
+    fun startMangaExport(
+        destinationUri: android.net.Uri? = null
+    ) {
+        if (exportBusy) {
+            return
+        }
+
+        exportBusy = true
+        exportProgress = null
+        exportResult = null
+        exportError = null
+
+        exportJob = scope.launch {
+            try {
+                val result =
+                    runInterruptible(
+                        Dispatchers.IO
+                    ) {
+                        exporter.export(
+                            item = item,
+                            format = exportFormat,
+                            onProgress = {
+                                    progress ->
+                                scope.launch {
+                                    exportProgress =
+                                        progress
+                                }
+                            },
+                            destinationUri =
+                                destinationUri
+                        )
+                    }
+                exportResult = result
+            } catch (
+                failure:
+                    ExportDestinationUnavailableException
+            ) {
+                if (destinationUri == null) {
+                    exportError =
+                        "Android не смог сохранить файл в Downloads. Выберите место сохранения вручную."
+                    pendingDocumentExport =
+                        failure
+                } else {
+                    exportError =
+                        failure.message
+                            ?: "Не удалось открыть выбранный файл для записи"
+                }
+            } catch (throwable: Throwable) {
+                exportError =
+                    throwable.message
+                        ?: "Не удалось экспортировать мангу"
+            } finally {
+                exportBusy = false
+                exportJob = null
+            }
+        }
+    }
+
+    val documentExportLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts
+                .StartActivityForResult()
+        ) { activityResult ->
+            val pending =
+                pendingDocumentExport
+                    ?: return@rememberLauncherForActivityResult
+            pendingDocumentExport = null
+
+            val uri =
+                activityResult
+                    .data
+                    ?.data
+
+            if (
+                activityResult.resultCode !=
+                android.app.Activity.RESULT_OK ||
+                uri == null
+            ) {
+                exportError =
+                    "Сохранение в Downloads недоступно, а выбор другого места отменён."
+            } else {
+                startMangaExport(
+                    destinationUri =
+                        uri
+                )
+            }
+        }
+
+    LaunchedEffect(
+        pendingDocumentExport
+    ) {
+        val pending =
+            pendingDocumentExport
+                ?: return@LaunchedEffect
+        documentExportLauncher.launch(
+            Intent(
+                Intent.ACTION_CREATE_DOCUMENT
+            )
+                .addCategory(
+                    Intent.CATEGORY_OPENABLE
+                )
+                .setType(
+                    pending.mimeType
+                )
+                .putExtra(
+                    Intent.EXTRA_TITLE,
+                    pending.displayName
+                )
+        )
+    }
+
     if (showExport) {
         MangaExportSheet(
             item = item,
@@ -140,24 +257,7 @@ internal fun MangaTitleDetail(
             error = exportError,
             onFormat = { exportFormat = it; exportError = null },
             onExport = {
-                if (!exportBusy) {
-                    exportBusy = true
-                    exportProgress = null
-                    exportResult = null
-                    exportError = null
-                    exportJob = scope.launch {
-                        runCatching {
-                            runInterruptible(Dispatchers.IO) {
-                                exporter.export(item, exportFormat) { progress ->
-                                    scope.launch { exportProgress = progress }
-                                }
-                            }
-                        }.onSuccess { exportResult = it }
-                            .onFailure { exportError = it.message ?: "Не удалось экспортировать мангу" }
-                        exportBusy = false
-                        exportJob = null
-                    }
-                }
+                startMangaExport()
             },
             onCancel = { exportJob?.cancel() },
             onOpen = { result ->
