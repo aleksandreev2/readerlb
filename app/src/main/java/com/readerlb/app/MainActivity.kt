@@ -1934,7 +1934,25 @@ private fun MainApp(
                     history = historyStore.load()
                     refreshLocalLibrary()
                 },
-                onMangaImported = ::refreshLocalLibrary,
+                onMangaImported = {
+                        mangaTitle,
+                        folderName,
+                        chapterNumber,
+                        chapterCount ->
+                    historyStore.addManga(
+                        title =
+                            mangaTitle,
+                        folderName =
+                            folderName,
+                        number =
+                            chapterNumber,
+                        chapterCount =
+                            chapterCount
+                    )
+                    history =
+                        historyStore.load()
+                    refreshLocalLibrary()
+                },
                 onOpenLibrary = {
                     tab = AppTab.LIBRARY
                 }
@@ -2370,7 +2388,12 @@ private fun ImportScreen(
     onPickFolder: () -> Unit,
     onNeedRanobeLibAccess: () -> Unit,
     onImported: (com.readerlb.app.importer.ExportResult) -> Unit,
-    onMangaImported: () -> Unit,
+    onMangaImported: (
+        title: String,
+        folderName: String,
+        chapterNumber: String,
+        chapterCount: Int
+    ) -> Unit,
     onOpenLibrary: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2861,18 +2884,33 @@ private fun ImportScreen(
                         busy = true
                         error = null
                         success = null
+                        val importPreview =
+                            preview.copy(
+                                volume =
+                                    mangaVolume,
+                                number =
+                                    mangaNumber,
+                                chapterTitle =
+                                    mangaChapterTitle
+                            )
                         scope.launch {
                             runCatching {
                                 withContext(Dispatchers.IO) {
                                     mangaImporter.importFile(
-                                        Uri.parse(rawUri), fileName, title,
-                                        preview.copy(volume = mangaVolume, number = mangaNumber,
-                                            chapterTitle = mangaChapterTitle)
+                                        Uri.parse(rawUri),
+                                        fileName,
+                                        title,
+                                        importPreview
                                     )
                                 }
                             }.onSuccess { result ->
                                 success = "Готово: ${result.pageCount} страниц добавлено. В тайтле ${result.chapterCount} глав."
-                                onMangaImported()
+                                onMangaImported(
+                                    title.trim(),
+                                    result.folderName,
+                                    importPreview.number,
+                                    result.chapterCount
+                                )
                             }.onFailure { failure ->
                                 error = failure.message ?: "Не удалось импортировать мангу"
                             }
@@ -7123,7 +7161,16 @@ private fun HistoryCard(item: ImportHistoryItem) {
                     maxLines = 2
                 )
                 Text(
-                    if (item.firstChapter == item.lastChapter) "Глава ${item.firstChapter}" else "Главы ${item.firstChapter}–${item.lastChapter}",
+                    when {
+                        item.contentType ==
+                            LocalContentType.MANGA ->
+                            "Манга · глава ${item.firstChapter}"
+                        item.firstChapter ==
+                            item.lastChapter ->
+                            "Глава ${item.firstChapter}"
+                        else ->
+                            "Главы ${item.firstChapter}–${item.lastChapter}"
+                    },
                     color = Muted,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(top = 3.dp)
@@ -7162,6 +7209,15 @@ private fun HistoryCard(item: ImportHistoryItem) {
 
                             item.updatedExisting ->
                                 "Уже актуально"
+
+                            item.contentType ==
+                                LocalContentType.MANGA &&
+                                item.updatedExisting ->
+                                "MangaLib · добавлена глава"
+
+                            item.contentType ==
+                                LocalContentType.MANGA ->
+                                "В MangaLib"
 
                             item.installedDirectly ->
                                 "В RanobeLib"
