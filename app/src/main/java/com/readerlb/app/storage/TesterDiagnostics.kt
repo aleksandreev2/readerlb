@@ -2,6 +2,7 @@ package com.readerlb.app.storage
 
 import android.content.Context
 import android.os.Build
+import android.os.Environment
 import com.readerlb.app.BuildConfig
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,6 +46,21 @@ object TesterDiagnostics {
         appendLine("Android: ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}")
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
         appendLine("ABI: ${Build.SUPPORTED_ABIS.joinToString()}")
+        appendLine("External storage state: ${Environment.getExternalStorageState()}")
+        appendLine(
+            "App internal free: " +
+                context.filesDir.usableSpace +
+                " bytes"
+        )
+        appendLine(
+            "App external free: " +
+                (
+                    context.getExternalFilesDir(null)
+                        ?.usableSpace
+                        ?: -1L
+                ) +
+                " bytes"
+        )
         appendLine("Selected library access: ${if (folderConnected) "connected" else "not connected"}")
         appendLine("Shizuku state: ${ShizukuAccess.state}")
         appendLine("Shizuku service connected: ${ShizukuAccess.isServiceConnected}")
