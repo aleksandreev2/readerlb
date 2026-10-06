@@ -3901,7 +3901,8 @@ private enum class LibrarySortMode {
 private enum class LibrarySourceFilter {
     ALL,
     READERLB,
-    RANOBELIB
+    RANOBELIB,
+    MANGALIB
 }
 
 @Composable
@@ -4005,7 +4006,14 @@ private fun LibraryScreen(
                         item.createdByReaderLB
                     LibrarySourceFilter
                         .RANOBELIB ->
-                        !item.createdByReaderLB
+                        !item.createdByReaderLB &&
+                            item.contentType ==
+                            LocalContentType.BOOK
+                    LibrarySourceFilter
+                        .MANGALIB ->
+                        !item.createdByReaderLB &&
+                            item.contentType ==
+                            LocalContentType.MANGA
                 }
 
             matchesQuery &&
@@ -4331,7 +4339,7 @@ private fun LibraryScreen(
                                 Modifier.weight(
                                     1f
                                 ),
-                            text = "Скачано",
+                            text = "RanobeLib",
                             selected =
                                 sourceFilter ==
                                     LibrarySourceFilter
@@ -4340,6 +4348,23 @@ private fun LibraryScreen(
                                 sourceFilterIndex =
                                     LibrarySourceFilter
                                         .RANOBELIB
+                                        .ordinal
+                            }
+                        )
+                        LibrarySortPill(
+                            modifier =
+                                Modifier.weight(
+                                    1f
+                                ),
+                            text = "MangaLib",
+                            selected =
+                                sourceFilter ==
+                                    LibrarySourceFilter
+                                        .MANGALIB,
+                            onClick = {
+                                sourceFilterIndex =
+                                    LibrarySourceFilter
+                                        .MANGALIB
                                         .ordinal
                             }
                         )
@@ -6972,9 +6997,13 @@ private fun LocalLibraryCard(
                     ) {
                         Text(
                             when {
-                                item.contentType == LocalContentType.MANGA -> "Скачано в MangaLib"
-                                item.createdByReaderLB -> "Импорт ReaderLB"
-                                else -> "Скачано в RanobeLib"
+                                item.createdByReaderLB ->
+                                    "Импорт ReaderLB"
+                                item.contentType ==
+                                    LocalContentType.MANGA ->
+                                    "Скачано в MangaLib"
+                                else ->
+                                    "Скачано в RanobeLib"
                             },
                             color = Blue,
                             fontSize = 10.sp,
