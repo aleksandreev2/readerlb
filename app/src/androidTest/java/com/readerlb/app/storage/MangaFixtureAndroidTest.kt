@@ -28,16 +28,29 @@ class MangaFixtureAndroidTest {
         assertEquals(1, item.chapterCount)
         val reader = LocalMangaReader(instrumentation.targetContext)
         val chapter = reader.chapters(item).single()
-        val pages = reader.pages(item, chapter)
+        val pages = reader.pageInfos(item, chapter)
         assertEquals(listOf("p1", "p2", "p10", "p18"), pages.map { it.name.substringBefore('-') })
         assertTrue(pages.all { it.format == "avif" })
-        assertFalse(pages.first().isLandscape)
-        assertTrue(pages.last().isLandscape)
-        val bitmap = com.radzivon.bartoshyk.avif.coder.HeifCoder().decode(pages.first().bytes)
-        assertEquals(800, bitmap.width)
-        assertEquals(1131, bitmap.height)
-        val landscape = com.radzivon.bartoshyk.avif.coder.HeifCoder().decode(pages.last().bytes)
-        assertEquals(1003, landscape.width)
-        assertEquals(800, landscape.height)
+
+        val first = reader.readPage(item, chapter, pages.first())
+        val last = reader.readPage(item, chapter, pages.last())
+        assertFalse(first.isLandscape)
+        assertTrue(last.isLandscape)
+
+        val bitmap = com.radzivon.bartoshyk.avif.coder.HeifCoder().decode(first.bytes)
+        try {
+            assertEquals(800, bitmap.width)
+            assertEquals(1131, bitmap.height)
+        } finally {
+            bitmap.recycle()
+        }
+
+        val landscape = com.radzivon.bartoshyk.avif.coder.HeifCoder().decode(last.bytes)
+        try {
+            assertEquals(1003, landscape.width)
+            assertEquals(800, landscape.height)
+        } finally {
+            landscape.recycle()
+        }
     }
 }
