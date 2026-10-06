@@ -136,7 +136,7 @@ dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.jsoup:jsoup:1.18.3")
-    implementation("io.github.awxkee:avif-coder:2.2.0")
+    implementation("org.aomedia.avif.android:avif:1.3.0.841110fd")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
