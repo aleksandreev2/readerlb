@@ -452,7 +452,11 @@ private fun MangaTitleCard(
                         modifier = Modifier.padding(top = 14.dp)
                     )
                     Text(
-                        "Скачано в MangaLib",
+                        if (item.createdByReaderLB) {
+                            "Импорт ReaderLB"
+                        } else {
+                            "Скачано в MangaLib"
+                        },
                         color = Muted,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(top = 5.dp)
@@ -479,7 +483,14 @@ private fun MangaTitleCard(
                         if (item.firstChapter == item.lastChapter) "Глава ${item.firstChapter}"
                         else "Главы ${item.firstChapter}–${item.lastChapter}"
                     )
-                    TitleInfoRow("Источник", "Скачано в MangaLib")
+                    TitleInfoRow(
+                        "Источник",
+                        if (item.createdByReaderLB) {
+                            "Импорт ReaderLB"
+                        } else {
+                            "Скачано в MangaLib"
+                        }
+                    )
                     TitleInfoRow("Обновлено", formatLocalLibraryTime(item.writeTime))
                     Text("ID: ${item.slugUrl}", color = Muted, fontSize = 10.sp)
                 }
