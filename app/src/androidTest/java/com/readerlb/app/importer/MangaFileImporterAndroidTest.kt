@@ -77,8 +77,8 @@ class MangaFileImporterAndroidTest {
             val reader = LocalMangaReader(context)
             val chapters = reader.chapters(item)
             assertEquals(listOf("3", "4"), chapters.map { it.number })
-            assertEquals(18, reader.pages(item, chapters[0]).size)
-            assertEquals(pdfPreview.pageCount, reader.pages(item, chapters[1]).size)
+            assertEquals(18, reader.pageInfos(item, chapters[0]).size)
+            assertEquals(pdfPreview.pageCount, reader.pageInfos(item, chapters[1]).size)
         } finally {
             folder?.let { DocumentFile.fromTreeUri(context, ShizukuAccess.mangaTreeUri)?.findFile(it)?.delete() }
             cbz.delete()
@@ -140,8 +140,8 @@ class MangaFileImporterAndroidTest {
             val reader = LocalMangaReader(context)
             val chapters = reader.chapters(item)
             assertEquals(listOf("3", "4"), chapters.map { it.number })
-            assertEquals(listOf("p1.png", "p2.png", "p10.png"), reader.pages(item, chapters[0]).map { it.name })
-            assertEquals(2, reader.pages(item, chapters[1]).size)
+            assertEquals(listOf("p1.png", "p2.png", "p10.png"), reader.pageInfos(item, chapters[0]).map { it.name })
+            assertEquals(2, reader.pageInfos(item, chapters[1]).size)
         } finally {
             folder?.let { DocumentFile.fromTreeUri(context, ShizukuAccess.mangaTreeUri)?.findFile(it)?.delete() }
             cbz.delete()
