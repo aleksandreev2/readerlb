@@ -22,68 +22,111 @@ data class ImportHistoryItem(
 class HistoryStore(
     context: Context
 ) {
-    private val prefs = context.getSharedPreferences(
-        "readerlb_history",
-        Context.MODE_PRIVATE
-    )
+    private val prefs =
+        context.getSharedPreferences(
+            "readerlb_history",
+            Context.MODE_PRIVATE
+        )
 
     fun load(): List<ImportHistoryItem> {
-        val raw = prefs.getString(
-            "items",
-            "[]"
-        ) ?: "[]"
+        val raw =
+            prefs.getString(
+                "items",
+                "[]"
+            ) ?: "[]"
 
         return runCatching {
-            val array = JSONArray(raw)
+            val array =
+                JSONArray(
+                    raw
+                )
             buildList {
-                for (index in 0 until array.length()) {
-                    val item = array.getJSONObject(index)
-                    val chapters = item.optInt("chapters")
-
-                    val first = item
-                        .optString("firstChapter")
-                        .ifBlank {
-                            if (chapters > 0) "1" else "0"
-                        }
-                    val last = item
-                        .optString("lastChapter")
-                        .ifBlank {
-                            chapters.toString()
-                        }
+                for (
+                    index in 0 until
+                        array.length()
+                ) {
+                    val item =
+                        array.getJSONObject(
+                            index
+                        )
+                    val chapters =
+                        item.optInt(
+                            "chapters"
+                        )
+                    val first =
+                        item
+                            .optString(
+                                "firstChapter"
+                            )
+                            .ifBlank {
+                                if (
+                                    chapters > 0
+                                ) {
+                                    "1"
+                                } else {
+                                    "0"
+                                }
+                            }
+                    val last =
+                        item
+                            .optString(
+                                "lastChapter"
+                            )
+                            .ifBlank {
+                                chapters.toString()
+                            }
 
                     add(
                         ImportHistoryItem(
-                            title = item.optString("title"),
-                            chapters = chapters,
-                            firstChapter = first,
-                            lastChapter = last,
-                            slugUrl = item.optString("slugUrl"),
-                            installedDirectly = item.optBoolean(
-                                "installedDirectly"
-                            ),
-                            updatedExisting = item.optBoolean(
-                                "updatedExisting",
-                                false
-                            ),
-                            addedChapterCount = if (
-                                item.has("addedChapterCount")
-                            ) {
-                                item.optInt(
-                                    "addedChapterCount",
+                            title =
+                                item.optString(
+                                    "title"
+                                ),
+                            chapters =
+                                chapters,
+                            firstChapter =
+                                first,
+                            lastChapter =
+                                last,
+                            slugUrl =
+                                item.optString(
+                                    "slugUrl"
+                                ),
+                            installedDirectly =
+                                item.optBoolean(
+                                    "installedDirectly"
+                                ),
+                            updatedExisting =
+                                item.optBoolean(
+                                    "updatedExisting",
+                                    false
+                                ),
+                            addedChapterCount =
+                                if (
+                                    item.has(
+                                        "addedChapterCount"
+                                    )
+                                ) {
+                                    item.optInt(
+                                        "addedChapterCount",
+                                        chapters
+                                    )
+                                } else {
                                     chapters
-                                )
-                            } else {
-                                chapters
-                            },
-                            timestamp = item.optLong("timestamp"),
+                                },
+                            timestamp =
+                                item.optLong(
+                                    "timestamp"
+                                ),
                             contentType =
                                 runCatching {
-                                    LocalContentType.valueOf(
-                                        item.optString(
-                                            "contentType",
-                                            "BOOK"
+                                    LocalContentType
+                                        .valueOf(
+                                            item.optString(
+                                                "contentType",
+                                                "BOOK"
+                                            )
                                         )
-                                    )
                                 }.getOrDefault(
                                     LocalContentType.BOOK
                                 )
@@ -91,42 +134,55 @@ class HistoryStore(
                     )
                 }
             }
-        }.getOrDefault(emptyList())
+        }.getOrDefault(
+            emptyList()
+        )
     }
 
     fun add(
         result: ExportResult
     ) {
-        val current = load().toMutableList()
+        val current =
+            load().toMutableList()
 
         current.removeAll {
-            it.slugUrl == result.slugUrl
+            it.slugUrl ==
+                result.slugUrl
         }
 
         current.add(
             0,
             ImportHistoryItem(
                 title = result.title,
-                chapters = result.chapterCount,
-                firstChapter = result.firstChapter,
-                lastChapter = result.lastChapter,
-                slugUrl = result.slugUrl,
-                installedDirectly = result.installedDirectly,
-                updatedExisting = result.updatedExisting,
-                addedChapterCount = result.addedChapterCount,
-                timestamp = System.currentTimeMillis(),
-                contentType = LocalContentType.BOOK
+                chapters =
+                    result.chapterCount,
+                firstChapter =
+                    result.firstChapter,
+                lastChapter =
+                    result.lastChapter,
+                slugUrl =
+                    result.slugUrl,
+                installedDirectly =
+                    result.installedDirectly,
+                updatedExisting =
+                    result.updatedExisting,
+                addedChapterCount =
+                    result.addedChapterCount,
+                timestamp =
+                    System.currentTimeMillis(),
+                contentType =
+                    LocalContentType.BOOK
             )
         )
 
         save(
             current
         )
+    }
 
     fun addManga(
         title: String,
         folderName: String,
-        volume: String,
         number: String,
         chapterCount: Int
     ) {
@@ -224,5 +280,4 @@ class HistoryStore(
             )
             .apply()
     }
-
 }
