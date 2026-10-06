@@ -467,8 +467,12 @@ class RanobeLibLibraryScanner(
                     0L
                 ),
             createdByReaderLB =
-                contentType ==
-                    LocalContentType.BOOK &&
+                media.optString(
+                    "sourceId"
+                ).equals(
+                    "readerlb",
+                    ignoreCase = true
+                ) ||
                     chapters.createdByReaderLB,
             folderName =
                 directory.name,
