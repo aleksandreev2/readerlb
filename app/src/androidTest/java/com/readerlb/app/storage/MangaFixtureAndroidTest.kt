@@ -37,7 +37,7 @@ class MangaFixtureAndroidTest {
         assertFalse(first.isLandscape)
         assertTrue(last.isLandscape)
 
-        val bitmap = com.radzivon.bartoshyk.avif.coder.HeifCoder().decode(first.bytes)
+        val bitmap = decodeMangaBitmap(first)
         try {
             assertEquals(800, bitmap.width)
             assertEquals(1131, bitmap.height)
@@ -45,7 +45,7 @@ class MangaFixtureAndroidTest {
             bitmap.recycle()
         }
 
-        val landscape = com.radzivon.bartoshyk.avif.coder.HeifCoder().decode(last.bytes)
+        val landscape = decodeMangaBitmap(last)
         try {
             assertEquals(1003, landscape.width)
             assertEquals(800, landscape.height)
