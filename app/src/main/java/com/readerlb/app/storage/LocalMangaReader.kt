@@ -1,12 +1,16 @@
 package com.readerlb.app.storage
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONArray
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
+import java.nio.ByteBuffer
 import java.nio.file.Files
+import org.aomedia.avif.android.AvifDecoder
 import java.util.zip.ZipInputStream
 
 internal data class MangaChapter(
@@ -558,6 +562,93 @@ internal fun detectMangaImageFormat(
     }
     return null
 }
+
+internal fun decodeMangaBitmap(
+    page: MangaPage
+): Bitmap =
+    if (
+        page.format ==
+        "avif"
+    ) {
+        decodeAvifBitmap(
+            page.bytes,
+            page.name
+        )
+    } else {
+        requireNotNull(
+            BitmapFactory.decodeByteArray(
+                page.bytes,
+                0,
+                page.bytes.size
+            )
+        ) {
+            "Не удалось открыть страницу ${page.name}"
+        }
+    }
+
+private fun decodeAvifBitmap(
+    bytes: ByteArray,
+    name: String
+): Bitmap {
+    require(
+        bytes.isNotEmpty()
+    ) {
+        "Пустая AVIF-страница $name"
+    }
+
+    val encoded =
+        ByteBuffer.allocateDirect(
+            bytes.size
+        )
+    encoded.put(
+        bytes
+    )
+    encoded.rewind()
+
+    val info =
+        AvifDecoder.Info()
+    require(
+        AvifDecoder.getInfo(
+            encoded,
+            bytes.size,
+            info
+        )
+    ) {
+        "Не удалось прочитать AVIF: $name"
+    }
+    require(
+        info.width > 0 &&
+            info.height > 0
+    ) {
+        "Некорректный размер AVIF: $name"
+    }
+
+    encoded.rewind()
+    val bitmap =
+        Bitmap.createBitmap(
+            info.width,
+            info.height,
+            Bitmap.Config.ARGB_8888
+        )
+    try {
+        check(
+            AvifDecoder.decode(
+                encoded,
+                bytes.size,
+                bitmap
+            )
+        ) {
+            "Не удалось декодировать AVIF: $name"
+        }
+        return bitmap
+    } catch (
+        throwable: Throwable
+    ) {
+        bitmap.recycle()
+        throw throwable
+    }
+}
+
 
 internal fun avifDimensions(
     bytes: ByteArray
